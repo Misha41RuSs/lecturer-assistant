@@ -1,0 +1,104 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: root_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  content-service:
+    build: ./content-service
+    container_name: content_service
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/content_db
+      - SPRING_DATASOURCE_USERNAME=user
+      - SPRING_DATASOURCE_PASSWORD=password
+    depends_on:
+      postgres:
+        condition: service_started
+    networks:
+      - app-network
+
+  lecture-broadcasting-service:
+    build: ./lecture-broadcasting-service
+    container_name: lecture_broadcasting_service
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/broadcasting_db
+      - SPRING_DATASOURCE_USERNAME=user
+      - SPRING_DATASOURCE_PASSWORD=password
+    depends_on:
+      postgres:
+        condition: service_started
+    networks:
+      - app-network
+
+  quiz-service:
+    build: ./quiz-service
+    container_name: quiz_service
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/quiz_db
+      - SPRING_DATASOURCE_USERNAME=user
+      - SPRING_DATASOURCE_PASSWORD=password
+    depends_on:
+      postgres:
+        condition: service_started
+    networks:
+      - app-network
+
+  analytics-service:
+    build: ./analytics-service
+    container_name: analytics_service
+    ports:
+      - "8084:8084"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/analytics_db
+      - SPRING_DATASOURCE_USERNAME=user
+      - SPRING_DATASOURCE_PASSWORD=password
+    depends_on:
+      postgres:
+        condition: service_started
+    networks:
+      - app-network
+
+  admin-gateway:
+    build: ./admin-gateway
+    container_name: admin_gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - CONTENT_SERVICE_URL=http://content-service:8081
+      - LECTURE_BROADCASTING_SERVICE_URL=http://lecture-broadcasting-service:8082
+      - QUIZ_SERVICE_URL=http://quiz-service:8083
+      - ANALYTICS_SERVICE_URL=http://analytics-service:8084
+    depends_on:
+      - content-service
+      - lecture-broadcasting-service
+      - quiz-service
+      - analytics-service
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+

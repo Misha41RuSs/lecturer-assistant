@@ -1,0 +1,39 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: admin-gateway
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins: "*"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+      routes:
+        - id: content-service-route
+          uri: ${CONTENT_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/content/**,/presentations/**,/slides/**,/slide-sequences/**
+
+        - id: lecture-broadcasting-service-route
+          uri: ${LECTURE_BROADCASTING_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/lectures/**,/ws/broadcasting/**
+
+        - id: quiz-service-route
+          uri: ${QUIZ_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/quizzes/**,/questions/**
+
+        - id: analytics-service-route
+          uri: ${ANALYTICS_SERVICE_URL:http://localhost:8084}
+          predicates:
+            - Path=/analytics/**
