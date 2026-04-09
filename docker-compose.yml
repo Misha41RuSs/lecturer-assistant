@@ -41,6 +41,10 @@ services:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/broadcasting_db
       - SPRING_DATASOURCE_USERNAME=user
       - SPRING_DATASOURCE_PASSWORD=password
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME}
+      - CONTENT_SERVICE_URL=http://content-service:8081
+      - ANALYTICS_SERVICE_URL=http://analytics-service:8084
     depends_on:
       postgres:
         condition: service_started
