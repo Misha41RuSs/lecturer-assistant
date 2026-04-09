@@ -17,8 +17,9 @@ import {
 	X
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useParams } from 'react-router'
 import { toast } from 'sonner'
+import { updateCurrentSlide } from '../app/api/client'
 import { DrawingOverlay } from '../features/DrawingOverlay'
 
 const slidesData = [
@@ -90,6 +91,7 @@ interface Question {
 }
 
 export function LivePresentationPage() {
+	const { lectureId } = useParams<{ lectureId: string }>()
 	const [currentSlide, setCurrentSlide] = useState(0)
 	const [quickMessage, setQuickMessage] = useState('')
 	const [activeTab, setActiveTab] = useState<'questions' | 'students'>(
@@ -177,13 +179,14 @@ export function LivePresentationPage() {
 				return
 			if (e.key === 'ArrowRight' || e.key === ' ') {
 				e.preventDefault()
-				setCurrentSlide(p => Math.min(p + 1, slidesData.length - 1))
+				handleSlideChange(Math.min(currentSlide + 1, slidesData.length - 1))
 			}
-			if (e.key === 'ArrowLeft') setCurrentSlide(p => Math.max(p - 1, 0))
+			if (e.key === 'ArrowLeft')
+				handleSlideChange(Math.max(currentSlide - 1, 0))
 		}
 		window.addEventListener('keydown', handler)
 		return () => window.removeEventListener('keydown', handler)
-	}, [])
+	}, [currentSlide, lectureId])
 
 	const formatTime = (s: number) =>
 		`${Math.floor(s / 60)
@@ -246,15 +249,42 @@ export function LivePresentationPage() {
 
 	const handleSendSatisfaction = () => {
 		toast.success(
-			`Опрос удовлетворённости отправлен ${connectedStudents.length} студентам`
+			`Satisfaction poll sent to ${connectedStudents.length} students`
 		)
 		setShowSatisfactionModal(false)
+	}
+
+	const handleSlideChange = async (newSlideIndex: number) => {
+		if (!lectureId) {
+			console.error('No lecture ID found')
+			return
+		}
+
+		const newSlide = slidesData[newSlideIndex]
+		if (!newSlide) return
+
+		try {
+			// Call API to update current slide
+			await updateCurrentSlide(parseInt(lectureId), newSlide.id.toString())
+
+			// Update local state
+			setCurrentSlide(newSlideIndex)
+
+			// Save to localStorage
+			localStorage.setItem('lecture_slide', String(newSlideIndex))
+		} catch (error) {
+			console.error('Failed to update slide:', error)
+			toast.error('Failed to update slide on server')
+			// Still update local state even if API fails
+			setCurrentSlide(newSlideIndex)
+			localStorage.setItem('lecture_slide', String(newSlideIndex))
+		}
 	}
 
 	const openProjection = () => {
 		window.open(`/projection/1`, 'projection', 'width=1280,height=720')
 		toast.success(
-			'Окно проектора открыто. Выведите его на второй экран — там отображается только слайд, без интерфейса преподавателя.'
+			'Projector window opened. Display it on second screen - only slide is shown there, without lecturer interface.'
 		)
 	}
 
@@ -454,7 +484,7 @@ export function LivePresentationPage() {
 						{/* Nav */}
 						<div className="flex items-center justify-between mt-4">
 							<button
-								onClick={() => setCurrentSlide(Math.max(0, currentSlide - 1))}
+								onClick={() => handleSlideChange(Math.max(0, currentSlide - 1))}
 								disabled={currentSlide === 0}
 								className="p-2 sm:px-4 sm:py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 disabled:opacity-30"
 							>
@@ -465,7 +495,7 @@ export function LivePresentationPage() {
 							</span>
 							<button
 								onClick={() =>
-									setCurrentSlide(
+									handleSlideChange(
 										Math.min(slidesData.length - 1, currentSlide + 1)
 									)
 								}
@@ -481,7 +511,7 @@ export function LivePresentationPage() {
 							{slidesData.map((s, i) => (
 								<button
 									key={s.id}
-									onClick={() => setCurrentSlide(i)}
+									onClick={() => handleSlideChange(i)}
 									className={`flex-shrink-0 w-20 aspect-video bg-gradient-to-br ${s.color} rounded border-2 transition-all relative ${
 										i === currentSlide
 											? 'border-orange-500 scale-105'
