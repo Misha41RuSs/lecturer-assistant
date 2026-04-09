@@ -134,14 +134,18 @@ export async function updateCurrentSlide(lectureId: number, slideId: string) {
 
 export async function updateLecture(
 	lectureId: number,
-	body: { name: string }
+	body: { name: string; accessType?: string; password?: string }
 ) {
+	const payload: Record<string, string> = { name: body.name.trim() }
+	if (body.accessType) payload.accessType = body.accessType
+	if (body.password !== undefined) payload.password = body.password
+
 	const res = await fetch(`${BASE_URL}/lectures/${lectureId}`, {
 		method: 'PUT',
 		headers: {
 			'Content-Type': 'application/json'
 		},
-		body: JSON.stringify({ name: body.name.trim() })
+		body: JSON.stringify(payload)
 	})
 
 	if (!res.ok) {
@@ -149,6 +153,32 @@ export async function updateLecture(
 		throw new Error(`Failed to update lecture: ${res.status} ${t}`)
 	}
 
+	return res.json()
+}
+
+export async function broadcastSlideImage(lectureId: number, imageBlob: Blob): Promise<void> {
+	const formData = new FormData()
+	formData.append('image', imageBlob, 'slide.png')
+	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/broadcast-image`, {
+		method: 'POST',
+		body: formData
+	})
+	if (!res.ok) {
+		const t = await res.text()
+		throw new Error(`Failed to broadcast image: ${res.status} ${t}`)
+	}
+}
+
+export async function updateSlideSequence(sequenceId: string, slideIds: string[]) {
+	const res = await fetch(`${BASE_URL}/slide-sequences/${sequenceId}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(slideIds)
+	})
+	if (!res.ok) {
+		const t = await res.text()
+		throw new Error(`Failed to update sequence: ${res.status} ${t}`)
+	}
 	return res.json()
 }
 

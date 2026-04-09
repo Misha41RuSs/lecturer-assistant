@@ -29,10 +29,18 @@ public class Lecture {
     @Column(name = "sequence_id", nullable = true)
     private java.util.UUID sequenceId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "access_type", nullable = false)
+    private AccessType accessType = AccessType.OPEN;
+
+    @Column(name = "password", nullable = true)
+    private String password;
+
     public Lecture(String name, java.util.UUID sequenceId) {
         this.name = name;
         this.sequenceId = sequenceId;
         this.status = LectureStatus.CREATED;
         this.currentSlide = 1;
+        this.accessType = AccessType.OPEN;
     }
 }

@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.university.lecturebroadcasting.entity.AccessType;
 import ru.university.lecturebroadcasting.entity.Lecture;
 import ru.university.lecturebroadcasting.entity.LectureStatus;
 import ru.university.lecturebroadcasting.entity.Student;
@@ -30,14 +31,21 @@ public class LectureService {
 
     @Transactional
     public Lecture createLecture(String name, java.util.UUID sequenceId) {
+        return createLecture(name, sequenceId, AccessType.OPEN, null);
+    }
+
+    @Transactional
+    public Lecture createLecture(String name, java.util.UUID sequenceId, AccessType accessType, String password) {
         String cleaned = normalizeLectureJoinKey(name);
         if (cleaned.isEmpty()) {
             throw new IllegalArgumentException("Lecture name must not be blank");
         }
         Lecture lecture = new Lecture(cleaned, sequenceId);
+        lecture.setAccessType(accessType != null ? accessType : AccessType.OPEN);
+        lecture.setPassword(password != null && !password.isBlank() ? password.trim() : null);
         Lecture saved = lectureRepository.save(lecture);
-        log.info("Lecture created: id={} name={} status={} sequenceId={}",
-                saved.getId(), saved.getName(), saved.getStatus(), saved.getSequenceId());
+        log.info("Lecture created: id={} name={} status={} accessType={} sequenceId={}",
+                saved.getId(), saved.getName(), saved.getStatus(), saved.getAccessType(), saved.getSequenceId());
         return saved;
     }
 
@@ -90,6 +98,11 @@ public class LectureService {
 
     @Transactional
     public Student joinLecture(String lectureNameOrId, Long chatId) {
+        return joinLecture(lectureNameOrId, chatId, null);
+    }
+
+    @Transactional
+    public Student joinLecture(String lectureNameOrId, Long chatId, String password) {
         String key = normalizeLectureJoinKey(lectureNameOrId);
         if (key.isEmpty()) {
             throw new IllegalArgumentException("Lecture name or id is empty");
@@ -123,6 +136,19 @@ public class LectureService {
             }
         }
 
+        // Проверка пароля
+        if (lecture.getAccessType() == AccessType.PASSWORD) {
+            String lp = lecture.getPassword();
+            if (lp != null && !lp.isBlank()) {
+                if (password == null || password.isBlank()) {
+                    throw new PasswordRequiredException("Password required for lecture: " + lecture.getName());
+                }
+                if (!password.trim().equals(lp.trim())) {
+                    throw new WrongPasswordException("Wrong password for lecture: " + lecture.getName());
+                }
+            }
+        }
+
         Student student = studentRepository.findByChatId(chatId)
                 .orElseGet(() -> new Student(chatId, lecture));
         student.setLecture(lecture);
@@ -131,6 +157,11 @@ public class LectureService {
 
     @Transactional
     public Lecture updateLectureName(Long id, String name) {
+        return updateLecture(id, name, null, null);
+    }
+
+    @Transactional
+    public Lecture updateLecture(Long id, String name, AccessType accessType, String password) {
         String cleaned = normalizeLectureJoinKey(name);
         if (cleaned.isEmpty()) {
             throw new IllegalArgumentException("Lecture name must not be blank");
@@ -138,6 +169,14 @@ public class LectureService {
         Lecture lecture = lectureRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Lecture not found: " + id));
         lecture.setName(cleaned);
+        if (accessType != null) {
+            lecture.setAccessType(accessType);
+        }
+        if (accessType == AccessType.PASSWORD && password != null && !password.isBlank()) {
+            lecture.setPassword(password.trim());
+        } else if (accessType == AccessType.OPEN) {
+            lecture.setPassword(null);
+        }
         return lectureRepository.save(lecture);
     }
 
@@ -217,4 +256,11 @@ public class LectureService {
     }
 
     public record SlideUpdateResult(Lecture lecture, byte[] imageBytes, List<Long> chatIds) {}
+
+    public List<Long> getStudentChatIds(Long lectureId) {
+        return studentRepository.findByLecture_Id(lectureId)
+                .stream()
+                .map(Student::getChatId)
+                .toList();
+    }
 }

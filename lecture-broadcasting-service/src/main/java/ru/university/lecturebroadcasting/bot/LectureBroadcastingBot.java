@@ -15,16 +15,23 @@ import ru.university.lecturebroadcasting.entity.Student;
 import ru.university.lecturebroadcasting.repository.StudentRepository;
 import ru.university.lecturebroadcasting.service.LectureService;
 
+import ru.university.lecturebroadcasting.service.PasswordRequiredException;
+import ru.university.lecturebroadcasting.service.WrongPasswordException;
+
 import java.io.ByteArrayInputStream;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Component
 public class LectureBroadcastingBot extends TelegramLongPollingBot {
 
     private static final String CALLBACK_PREV_SLIDE = "prev_slide";
+
+    /** chatId → название лекции, ожидающей ввода пароля */
+    private final ConcurrentHashMap<Long, String> pendingPasswordJoin = new ConcurrentHashMap<>();
 
     private final String botUsername;
     private final StudentRepository studentRepository;
@@ -85,6 +92,14 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
 
+        // Студент ответил паролем на предыдущий запрос
+        if (pendingPasswordJoin.containsKey(chatId) && !cmd.startsWith("/")) {
+            String lectureName = pendingPasswordJoin.remove(chatId);
+            String password = text.trim();
+            tryJoinWithPassword(chatId, lectureName, password);
+            return;
+        }
+
         if ("/join".equals(cmd) || text.toLowerCase(Locale.ROOT).startsWith("/join")) {
             String[] parts = text.split("\\s+", 2);
             if (parts.length < 2 || parts[1].isBlank()) {
@@ -99,27 +114,42 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 sendText(chatId, "Укажите название лекции или её id после команды /join.");
                 return;
             }
-            try {
-                Student student = lectureService.joinLecture(lectureName, chatId);
-                sendText(chatId, "Вы подключились к лекции: " + student.getLecture().getName());
-            } catch (IllegalStateException e) {
-                sendText(chatId,
-                        "Лекция «" + lectureName + "» уже завершена (лектор нажал «Завершить») — к ней нельзя подключиться.\n\n"
-                                + "Чтобы снова открыть доступ, лектору нужно в веб-интерфейсе открыть настройки этой лекции и снова нажать «Начать лекцию» (статус станет ACTIVE).");
-            } catch (IllegalArgumentException e) {
-                sendText(chatId,
-                        "Лекция не найдена: " + lectureName + "\n\n"
-                                + "Проверьте название в разделе «Мои лекции» или список лекций в API (GET /lectures).\n"
-                                + "Можно подключиться по id: /join <число из URL …/settings/…>");
-            } catch (RuntimeException e) {
-                log.error("/join internal error chatId={} key={}", chatId, lectureName, e);
-                sendText(chatId,
-                        "Техническая ошибка при подключении (см. логи контейнера lecture_broadcasting_service).");
-            }
+            tryJoinWithPassword(chatId, lectureName, null);
             return;
         }
 
         sendText(chatId, "Команды: /ping — проверка бота и БД, /join <название или id лекции>");
+    }
+
+    private void tryJoinWithPassword(long chatId, String lectureName, String password) {
+        try {
+            Student student = lectureService.joinLecture(lectureName, chatId, password);
+            pendingPasswordJoin.remove(chatId);
+            sendText(chatId, "Вы подключились к лекции: " + student.getLecture().getName());
+        } catch (PasswordRequiredException e) {
+            pendingPasswordJoin.put(chatId, lectureName);
+            sendText(chatId,
+                    "🔒 Лекция «" + lectureName + "» защищена паролем.\n\n"
+                            + "Введите пароль следующим сообщением:");
+        } catch (WrongPasswordException e) {
+            pendingPasswordJoin.put(chatId, lectureName);
+            sendText(chatId,
+                    "❌ Неверный пароль. Попробуйте ещё раз\n"
+                            + "(или /join <другое название> для другой лекции):");
+        } catch (IllegalStateException e) {
+            sendText(chatId,
+                    "Лекция «" + lectureName + "» уже завершена (лектор нажал «Завершить») — к ней нельзя подключиться.\n\n"
+                            + "Чтобы снова открыть доступ, лектору нужно в веб-интерфейсе открыть настройки этой лекции и снова нажать «Начать лекцию» (статус станет ACTIVE).");
+        } catch (IllegalArgumentException e) {
+            sendText(chatId,
+                    "Лекция не найдена: " + lectureName + "\n\n"
+                            + "Проверьте название в разделе «Мои лекции» или список лекций в API (GET /lectures).\n"
+                            + "Можно подключиться по id: /join <число из URL …/settings/…>");
+        } catch (RuntimeException e) {
+            log.error("/join internal error chatId={} key={}", chatId, lectureName, e);
+            sendText(chatId,
+                    "Техническая ошибка при подключении (см. логи контейнера lecture_broadcasting_service).");
+        }
     }
 
     /**

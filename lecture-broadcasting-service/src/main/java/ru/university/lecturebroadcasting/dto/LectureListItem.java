@@ -8,5 +8,6 @@ public record LectureListItem(
         String name,
         String status,
         Integer currentSlide,
-        String sequenceId
+        String sequenceId,
+        String accessType
 ) {}

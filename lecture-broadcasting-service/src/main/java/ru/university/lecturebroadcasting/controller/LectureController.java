@@ -1,11 +1,14 @@
 package ru.university.lecturebroadcasting.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import ru.university.lecturebroadcasting.bot.LectureBroadcastingBot;
 import ru.university.lecturebroadcasting.dto.LectureListItem;
+import ru.university.lecturebroadcasting.entity.AccessType;
 import ru.university.lecturebroadcasting.entity.Lecture;
 import ru.university.lecturebroadcasting.service.LectureService;
 import ru.university.lecturebroadcasting.websocket.SlideUpdateMessage;
@@ -26,7 +29,9 @@ public class LectureController {
     public ResponseEntity<Lecture> createLecture(@RequestBody Map<String, String> body) {
         String seqString = body.get("sequenceId");
         java.util.UUID sequenceId = seqString != null ? java.util.UUID.fromString(seqString) : null;
-        Lecture lecture = lectureService.createLecture(body.get("name"), sequenceId);
+        AccessType accessType = parseAccessType(body.get("accessType"));
+        String password = body.get("password");
+        Lecture lecture = lectureService.createLecture(body.get("name"), sequenceId, accessType, password);
         return ResponseEntity.ok(lecture);
     }
 
@@ -41,7 +46,8 @@ public class LectureController {
                         l.getName(),
                         l.getStatus().name(),
                         l.getCurrentSlide(),
-                        l.getSequenceId() != null ? l.getSequenceId().toString() : null
+                        l.getSequenceId() != null ? l.getSequenceId().toString() : null,
+                        l.getAccessType() != null ? l.getAccessType().name() : "OPEN"
                 ))
                 .toList();
     }
@@ -68,7 +74,35 @@ public class LectureController {
             @PathVariable Long id,
             @RequestBody Map<String, String> body) {
         String name = body.get("name");
-        return ResponseEntity.ok(lectureService.updateLectureName(id, name));
+        AccessType accessType = parseAccessType(body.get("accessType"));
+        String password = body.get("password");
+        return ResponseEntity.ok(lectureService.updateLecture(id, name, accessType, password));
+    }
+
+    /**
+     * Принимает PNG-композит (слайд + рисунки) и рассылает его всем подключённым студентам.
+     * Вызывается фронтом когда на слайде есть аннотации.
+     */
+    @PostMapping(value = "/{id}/broadcast-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Void> broadcastCustomImage(
+            @PathVariable Long id,
+            @RequestPart("image") MultipartFile image) throws java.io.IOException {
+        Lecture lecture = lectureService.getLecture(id);
+        byte[] imageBytes = image.getBytes();
+        List<Long> chatIds = lectureService.getStudentChatIds(id);
+        for (Long chatId : chatIds) {
+            bot.sendSlideToStudent(chatId, imageBytes, lecture.getCurrentSlide());
+        }
+        return ResponseEntity.ok().build();
+    }
+
+    private static AccessType parseAccessType(String value) {
+        if (value == null) return null;
+        try {
+            return AccessType.valueOf(value.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     @PostMapping("/{id}/start")

@@ -16,7 +16,7 @@ import {
 	UserX,
 	X
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import {
@@ -24,9 +24,10 @@ import {
 	getLecture,
 	getSlideSequence,
 	BASE_URL,
-	stopLecture
+	stopLecture,
+	broadcastSlideImage
 } from '../app/api/client'
-import { DrawingOverlay } from '../features/DrawingOverlay'
+import { DrawingOverlay, DrawingOverlayHandle } from '../features/DrawingOverlay'
 
 const availableTests = [
 	{ id: 1, title: 'Тест: Основы алгоритмов', questions: 3 },
@@ -79,6 +80,9 @@ export function LivePresentationPage() {
 	const [satisfactionDraft, setSatisfactionDraft] = useState(satisfactionPreset)
 	const [drawingActive, setDrawingActive] = useState(false)
 	const [endingLecture, setEndingLecture] = useState(false)
+
+	const drawingRef = useRef<DrawingOverlayHandle>(null)
+	const broadcastChannelRef = useRef<BroadcastChannel | null>(null)
 
 	const [accessType, setAccessType] = useState<
 		'open' | 'password' | 'invitation'
@@ -171,6 +175,45 @@ export function LivePresentationPage() {
 		const timer = setInterval(() => setElapsed(p => p + 1), 1000)
 		return () => clearInterval(timer)
 	}, [])
+
+	useEffect(() => {
+		if (!lectureId) return
+		const channel = new BroadcastChannel(`lecture-${lectureId}`)
+		broadcastChannelRef.current = channel
+		return () => { channel.close(); broadcastChannelRef.current = null }
+	}, [lectureId])
+
+	const broadcastCompositeToProjector = useCallback(async (idx: number) => {
+		if (!drawingRef.current) return
+		const blob = await drawingRef.current.getAnnotationsBlob(idx)
+		if (blob) {
+			broadcastChannelRef.current?.postMessage({ type: 'annotations-update', slideIndex: idx, blob })
+		} else {
+			broadcastChannelRef.current?.postMessage({ type: 'slide-change', slideIndex: idx })
+		}
+	}, [])
+
+	const handleAnnotationsChange = useCallback((idx: number) => {
+		broadcastCompositeToProjector(idx)
+	}, [broadcastCompositeToProjector])
+
+	const handleSaveToStudents = useCallback(async (idx: number) => {
+		const slideData = slidesData[idx]
+		if (!slideData || !drawingRef.current) return
+		if (!drawingRef.current.hasAnnotations(idx)) { toast.info('Нет рисунков для отправки'); return }
+		// Telegram: full composite
+		const compositeBlob = await drawingRef.current.getCompositeBlob(idx, slideData.imageUrl)
+		if (compositeBlob) {
+			try {
+				await broadcastSlideImage(parseInt(lectureId!), compositeBlob)
+				toast.success('Слайд с рисунками отправлен студентам')
+			} catch {
+				toast.error('Ошибка при отправке слайда')
+			}
+		}
+		// Projector: annotations layer
+		broadcastCompositeToProjector(idx)
+	}, [slidesData, lectureId, broadcastCompositeToProjector])
 
 	useEffect(() => {
 		localStorage.setItem('lecture_slide', String(currentSlide))
@@ -270,18 +313,26 @@ export function LivePresentationPage() {
 		if (!newSlide) return
 
 		try {
-			// Call API to update current slide (slideNumber is 1-indexed)
+			// Update DB + WebSocket + Telegram (plain image)
 			await updateCurrentSlide(parseInt(lectureId), newSlide.index.toString())
 
-			// Update local state
 			setCurrentSlide(newSlideIndex)
-
-			// Save to localStorage
 			localStorage.setItem('lecture_slide', String(newSlideIndex))
+
+			// Broadcast to projector and Telegram if annotations exist
+			if (drawingRef.current?.hasAnnotations(newSlideIndex)) {
+				// Telegram: full composite (slide image + annotations)
+				drawingRef.current.getCompositeBlob(newSlideIndex, newSlide.imageUrl).then(blob => {
+					if (blob) broadcastSlideImage(parseInt(lectureId), blob).catch(e => console.error('broadcastSlideImage failed', e))
+				})
+				// Projector: annotations layer only (transparent PNG, overlaid on slide in projector)
+				broadcastCompositeToProjector(newSlideIndex)
+			} else {
+				broadcastChannelRef.current?.postMessage({ type: 'slide-change', slideIndex: newSlideIndex })
+			}
 		} catch (error) {
 			console.error('Failed to update slide:', error)
 			toast.error('Ошибка при переключении слайда')
-			// Still update local state even if API fails
 			setCurrentSlide(newSlideIndex)
 			localStorage.setItem('lecture_slide', String(newSlideIndex))
 		}
@@ -498,9 +549,12 @@ export function LivePresentationPage() {
 								/>
 							</div>
 							<DrawingOverlay
+								ref={drawingRef}
 								slideIndex={currentSlide}
 								active={drawingActive}
 								onToggle={() => setDrawingActive(!drawingActive)}
+								onAnnotationsChange={handleAnnotationsChange}
+								onSave={handleSaveToStudents}
 							/>
 						</div>
 
