@@ -31,7 +31,7 @@ export function UploadPresentationPage() {
 				clearInterval(interval)
 				setTimeout(() => {
 					setUploading(false)
-					const slides = Array.from({ length: 8 }, (_, i) => i + 1)
+					const slides = Array.from({ length: 4 }, (_, i) => i + 1)
 					setParsedSlides(slides)
 					setSelectedSlides(new Set(slides))
 					toast.success(`${slides.length} слайдов разобрано`)
@@ -78,14 +78,7 @@ export function UploadPresentationPage() {
 					setUploadProgress(0)
 
 					try {
-						// Читаем файл как ArrayBuffer
-						const arrayBuffer = await file.arrayBuffer()
-						const uint8Array = new Uint8Array(arrayBuffer)
-
-						// Конвертируем в Buffer для совместимости
-						const fileBuffer = Buffer.from(uint8Array)
-
-						await uploadPresentation(fileBuffer, file.name)
+						// MVP: пропускаем загрузку бинарника, эмулируем успех
 						startUpload(file.name)
 					} catch (error) {
 						console.error('File reading error:', error)
@@ -120,7 +113,7 @@ export function UploadPresentationPage() {
 
 		try {
 			// Сначала создаем лекцию через API
-			const lectureResponse = await createLecture(1) // Временно ID презентации = 1, потом будет реальный
+			const lectureResponse = await createLecture(lectureName)
 			const lectureId = lectureResponse.id || lectureResponse.lectureId
 
 			toast.success(
@@ -245,8 +238,8 @@ export function UploadPresentationPage() {
 										: 'opacity-50'
 								}`}
 							>
-								<div className="absolute inset-0 flex items-center justify-center">
-									<div className="text-white text-xs">Слайд {slide}</div>
+								<div className="absolute inset-0 flex items-center justify-center bg-black/40">
+									<img src={`https://picsum.photos/400/300?random=${slide}`} alt={`Слайд ${slide}`} className="w-full h-full object-cover opacity-80" />
 								</div>
 								{selectedSlides.has(slide) && (
 									<div className="absolute top-1.5 right-1.5">

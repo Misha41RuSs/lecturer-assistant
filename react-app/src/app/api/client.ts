@@ -33,13 +33,13 @@ export async function uploadPresentation(fileBuffer: Buffer, fileName: string) {
 	return res.json()
 }
 
-export async function createLecture(presentationId: number) {
+export async function createLecture(name: string) {
 	const res = await fetch(`${BASE_URL}/lectures`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json'
 		},
-		body: JSON.stringify({ presentationId })
+		body: JSON.stringify({ name })
 	})
 
 	if (!res.ok) {
