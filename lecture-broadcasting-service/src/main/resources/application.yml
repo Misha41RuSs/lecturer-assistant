@@ -27,3 +27,7 @@ content-service:
 
 analytics-service:
   url: ${ANALYTICS_SERVICE_URL:http://localhost:8084}
+
+logging:
+  level:
+    org.telegram: DEBUG
