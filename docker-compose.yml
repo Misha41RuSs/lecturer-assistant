@@ -1,0 +1,20 @@
+services:
+  content-db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: content_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+
+  content-service:
+    build: .
+    ports:
+      - "8080:8080"
+    depends_on:
+      - content-db
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://content-db:5432/content_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
