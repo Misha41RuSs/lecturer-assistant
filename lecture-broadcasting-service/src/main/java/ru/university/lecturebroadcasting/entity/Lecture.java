@@ -26,8 +26,12 @@ public class Lecture {
     @Column(name = "current_slide", nullable = false)
     private Integer currentSlide;
 
-    public Lecture(String name) {
+    @Column(name = "sequence_id", nullable = true)
+    private java.util.UUID sequenceId;
+
+    public Lecture(String name, java.util.UUID sequenceId) {
         this.name = name;
+        this.sequenceId = sequenceId;
         this.status = LectureStatus.CREATED;
         this.currentSlide = 1;
     }

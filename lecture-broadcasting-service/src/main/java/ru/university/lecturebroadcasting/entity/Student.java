@@ -19,7 +19,8 @@ public class Student {
     @Column(name = "chat_id", nullable = false, unique = true)
     private Long chatId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    /** EAGER: бот читает getLecture().getName() уже после commit транзакции join. */
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "lecture_id")
     private Lecture lecture;
 

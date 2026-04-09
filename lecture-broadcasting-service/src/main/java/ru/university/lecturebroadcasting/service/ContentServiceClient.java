@@ -15,9 +15,13 @@ public class ContentServiceClient {
         this.contentServiceUrl = contentServiceUrl;
     }
 
-    public byte[] getSlideImage(int slideNumber) {
+    public byte[] getSlideImage(java.util.UUID sequenceId, int slideNumber) {
         try {
-            String url = contentServiceUrl + "/slides/" + slideNumber;
+            if (sequenceId == null) {
+                System.err.println("SequenceId is null, cannot fetch slide");
+                return null;
+            }
+            String url = contentServiceUrl + "/slide-sequences/" + sequenceId + "/slide/" + slideNumber;
             return restTemplate.getForObject(url, byte[].class);
         } catch (Exception e) {
             System.err.println("content-service unavailable, slide image skipped: " + e.getMessage());

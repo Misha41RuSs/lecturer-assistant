@@ -23,9 +23,12 @@ public class TelegramBotConfig {
         try {
             TelegramBotsApi api = new TelegramBotsApi(DefaultBotSession.class);
             api.registerBot(bot);
-            log.info("Telegram bot '{}' registered successfully", bot.getBotUsername());
+            log.info("Telegram bot '@{}' зарегистрирован, long polling запущен", bot.getBotUsername());
         } catch (TelegramApiException e) {
-            log.error("Failed to register Telegram bot: {}", e.getMessage(), e);
+            log.error("КРИТИЧНО: не удалось зарегистрировать Telegram-бота (проверьте TELEGRAM_BOT_TOKEN): {}", e.getMessage(), e);
+            throw new IllegalStateException(
+                    "Telegram bot registration failed — без этого апдейты (/ping, /join) не приходят. Проверьте токен в .env и что нет второго процесса с тем же токеном.",
+                    e);
         }
     }
 }

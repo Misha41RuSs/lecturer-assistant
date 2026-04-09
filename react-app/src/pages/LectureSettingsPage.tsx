@@ -3,24 +3,24 @@ import {
 	Eye,
 	EyeOff,
 	Globe,
+	Loader2,
 	Lock,
 	Mail,
 	Play,
 	QrCode,
 	Save
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { startLecture } from '../app/api/lecture.api'
+import { getLecture, getSlideSequence, BASE_URL, updateLecture } from '../app/api/client'
 
 export function LectureSettingsPage() {
 	const navigate = useNavigate()
 	const { lectureId } = useParams<{ lectureId: string }>()
-	const [lectureName, setLectureName] = useState('Введение в алгоритмы')
-	const [description, setDescription] = useState(
-		'Обзор основных алгоритмов сортировки, поиска и анализа сложности.'
-	)
+	const [lectureName, setLectureName] = useState('')
+	const [description, setDescription] = useState('')
 	const [startSlide, setStartSlide] = useState('1')
 	const [accessType, setAccessType] = useState<
 		'open' | 'password' | 'invitation'
@@ -31,17 +31,39 @@ export function LectureSettingsPage() {
 	const [allowQuestions, setAllowQuestions] = useState(true)
 	const [showQR, setShowQR] = useState(false)
 
-	const slidePreview = [
-		{ id: 1, title: 'Введение', color: 'from-neutral-800 to-neutral-900' },
-		{ id: 2, title: 'Алгоритм анализа', color: 'from-blue-900 to-blue-950' },
-		{ id: 3, title: 'Нотация Big-O', color: 'from-blue-900 to-blue-950' },
-		{ id: 4, title: 'Итоги и вопросы', color: 'from-purple-800 to-purple-900' }
-	]
+	const [isLoading, setIsLoading] = useState(true)
+	const [slideCount, setSlideCount] = useState(0)
+	const [sequenceId, setSequenceId] = useState<string>('')
 
-	const lectureUrl = `https://lectureapp.ru/join/abc123`
+	useEffect(() => {
+		if (!lectureId) return
+
+		const loadData = async () => {
+			try {
+				setIsLoading(true)
+				const lecture = await getLecture(parseInt(lectureId))
+				setLectureName(lecture.name || '')
+				const seqId = lecture.sequenceId
+				if (seqId) {
+					setSequenceId(seqId)
+					const sequence = await getSlideSequence(seqId)
+					setSlideCount(sequence.slides?.length || 0)
+				}
+			} catch (error) {
+				console.error('Failed to load lecture data:', error)
+				toast.error('Ошибка при загрузке данных лекции')
+			} finally {
+				setIsLoading(false)
+			}
+		}
+
+		loadData()
+	}, [lectureId])
+
+	const lectureUrl = `https://lectureapp.ru/join/${lectureId}`
 	const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(lectureUrl)}`
 
-	const handleSave = () => {
+	const handleSave = async () => {
 		if (!lectureName.trim()) {
 			toast.error('Введите название лекции')
 			return
@@ -50,8 +72,18 @@ export function LectureSettingsPage() {
 			toast.error('Введите пароль')
 			return
 		}
-		toast.success('Настройки сохранены')
-		navigate('/my-lectures')
+		if (!lectureId) {
+			toast.error('ID лекции не найден')
+			return
+		}
+		try {
+			await updateLecture(parseInt(lectureId), { name: lectureName.trim() })
+			toast.success('Настройки сохранены')
+			navigate('/my-lectures')
+		} catch (e) {
+			console.error(e)
+			toast.error('Не удалось сохранить название лекции')
+		}
 	}
 
 	const handleStart = async () => {
@@ -70,6 +102,7 @@ export function LectureSettingsPage() {
 		}
 
 		try {
+			await updateLecture(parseInt(lectureId), { name: lectureName.trim() })
 			await startLecture(parseInt(lectureId))
 			toast.success('Лекция запущена!')
 			navigate(`/live/${lectureId}`)
@@ -99,6 +132,17 @@ export function LectureSettingsPage() {
 			/>
 		</button>
 	)
+
+	if (isLoading) {
+		return (
+			<div className="flex items-center justify-center h-[60vh]">
+				<div className="flex flex-col items-center gap-3">
+					<Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
+					<span className="text-neutral-500 text-sm">Загрузка данных лекции...</span>
+				</div>
+			</div>
+		)
+	}
 
 	return (
 		<div className="p-4 sm:p-6 lg:p-8">
@@ -145,6 +189,7 @@ export function LectureSettingsPage() {
 								value={description}
 								onChange={e => setDescription(e.target.value)}
 								rows={3}
+								placeholder="Обзор основных тем и целей лекции..."
 								className="w-full px-4 py-2.5 bg-neutral-50 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
 							/>
 						</div>
@@ -152,17 +197,30 @@ export function LectureSettingsPage() {
 
 					{/* Slide preview */}
 					<div className="bg-white rounded-xl p-5 border border-neutral-200">
-						<h3 className="text-sm mb-4">Слайды ({slidePreview.length})</h3>
-						<div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-							{slidePreview.map(s => (
-								<div
-									key={s.id}
-									className={`aspect-video bg-gradient-to-br ${s.color} rounded-lg p-3 flex flex-col justify-end`}
-								>
-									<div className="text-white text-xs">{s.title}</div>
-								</div>
-							))}
-						</div>
+						<h3 className="text-sm mb-4">Слайды ({slideCount})</h3>
+						{slideCount > 0 && sequenceId ? (
+							<div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+								{Array.from({ length: slideCount }, (_, i) => i + 1).map(slideIndex => (
+									<div
+										key={slideIndex}
+										className="aspect-video bg-neutral-100 rounded-lg overflow-hidden relative"
+									>
+										<img
+											src={`${BASE_URL}/slide-sequences/${sequenceId}/slide/${slideIndex}`}
+											alt={`Слайд ${slideIndex}`}
+											className="w-full h-full object-cover"
+										/>
+										<div className="absolute bottom-1 left-1.5 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
+											{slideIndex}
+										</div>
+									</div>
+								))}
+							</div>
+						) : (
+							<div className="text-neutral-500 text-sm text-center py-6">
+								Слайды не найдены
+							</div>
+						)}
 					</div>
 
 					{/* Access & QR */}
@@ -311,12 +369,9 @@ export function LectureSettingsPage() {
 								onChange={e => setStartSlide(e.target.value)}
 								className="w-full px-4 py-2.5 bg-neutral-50 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
 							>
-								{slidePreview.map(s => (
-									<option
-										key={s.id}
-										value={s.id}
-									>
-										Слайд {s.id} — {s.title}
+								{Array.from({ length: slideCount }, (_, i) => i + 1).map(n => (
+									<option key={n} value={n}>
+										Слайд {n}
 									</option>
 								))}
 							</select>

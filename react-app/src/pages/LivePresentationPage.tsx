@@ -4,7 +4,7 @@ import {
 	ClipboardList,
 	Clock,
 	Copy,
-	Edit2,
+	Loader2,
 	Lock,
 	MessageSquare,
 	Monitor,
@@ -17,63 +17,27 @@ import {
 	X
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
-import { updateCurrentSlide } from '../app/api/client'
+import {
+	updateCurrentSlide,
+	getLecture,
+	getSlideSequence,
+	BASE_URL,
+	stopLecture
+} from '../app/api/client'
 import { DrawingOverlay } from '../features/DrawingOverlay'
-
-const slidesData = [
-	{
-		id: 1,
-		title: 'Введение в алгоритмы',
-		color: 'from-neutral-800 to-neutral-900',
-		content: null,
-		comment: ''
-	},
-	{
-		id: 2,
-		title: 'Что такое алгоритмы?',
-		color: 'from-blue-900 to-blue-950',
-		content: [
-			'Сортировка и поиск',
-			'Теория графов',
-			'Динамическое программирование',
-			'Анализ сложности'
-		],
-		comment: 'Объяснить на примере сортировки массива'
-	},
-	{
-		id: 3,
-		title: 'Нотация большого О',
-		color: 'from-blue-900 to-blue-950',
-		content: [
-			'O(1) — константа',
-			'O(log n) — логарифмическая',
-			'O(n) — линейная',
-			'O(n²) — квадратичная'
-		],
-		comment: ''
-	},
-	{
-		id: 4,
-		title: 'Алгоритмы сортировки',
-		color: 'from-purple-800 to-purple-900',
-		content: ['Bubble Sort', 'Quick Sort', 'Merge Sort'],
-		comment: 'Показать анимацию bubble sort'
-	},
-	{
-		id: 5,
-		title: 'Основы теории графов',
-		color: 'from-green-800 to-green-900',
-		content: ['BFS — поиск в ширину', 'DFS — поиск в глубину'],
-		comment: ''
-	}
-]
 
 const availableTests = [
 	{ id: 1, title: 'Тест: Основы алгоритмов', questions: 3 },
 	{ id: 2, title: 'Опрос: Качество лекции', questions: 2 }
 ]
+
+interface SlideData {
+	id: string
+	index: number
+	imageUrl: string
+}
 
 interface Student {
 	id: number
@@ -91,18 +55,21 @@ interface Question {
 }
 
 export function LivePresentationPage() {
+	const navigate = useNavigate()
 	const { lectureId } = useParams<{ lectureId: string }>()
 	const [currentSlide, setCurrentSlide] = useState(0)
+	const [slidesData, setSlidesData] = useState<SlideData[]>([])
+	const [isLoading, setIsLoading] = useState(true)
+	const [lectureName, setLectureName] = useState('')
+	
 	const [quickMessage, setQuickMessage] = useState('')
-	const [activeTab, setActiveTab] = useState<'questions' | 'students'>(
-		'questions'
-	)
+	const [activeTab, setActiveTab] = useState<'questions' | 'students'>('questions')
 	const [sidebarOpen, setSidebarOpen] = useState(true)
 	const [elapsed, setElapsed] = useState(0)
 	const [showConfirmEnd, setShowConfirmEnd] = useState(false)
 	const [replyTo, setReplyTo] = useState<number | null>(null)
 	const [replyText, setReplyText] = useState('')
-	const [showTestModal, setShowTestModal] = useState<number | null>(null) // studentId or -1 for all
+	const [showTestModal, setShowTestModal] = useState<number | null>(null)
 	const [showAccessInfo, setShowAccessInfo] = useState(false)
 	const [showSatisfactionModal, setShowSatisfactionModal] = useState(false)
 	const [satisfactionPreset, setSatisfactionPreset] = useState(
@@ -111,12 +78,13 @@ export function LivePresentationPage() {
 	const [editingSatisfaction, setEditingSatisfaction] = useState(false)
 	const [satisfactionDraft, setSatisfactionDraft] = useState(satisfactionPreset)
 	const [drawingActive, setDrawingActive] = useState(false)
+	const [endingLecture, setEndingLecture] = useState(false)
 
 	const [accessType, setAccessType] = useState<
 		'open' | 'password' | 'invitation'
 	>('password')
 	const password = 'algo2026'
-	const lectureUrl = 'https://lectureapp.ru/join/abc123'
+	const lectureUrl = `https://lectureapp.ru/join/${lectureId}`
 	const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(lectureUrl)}`
 
 	const [questions, setQuestions] = useState<Question[]>([
@@ -161,6 +129,44 @@ export function LivePresentationPage() {
 		{ id: 12, name: 'Татьяна Попова', initials: 'ТП', connected: false }
 	])
 
+	// Load lecture data and slides from backend
+	useEffect(() => {
+		if (!lectureId) return
+
+		const loadLecture = async () => {
+			try {
+				setIsLoading(true)
+				const lecture = await getLecture(parseInt(lectureId))
+				setLectureName(lecture.name || 'Лекция')
+				
+				const seqId = lecture.sequenceId
+				if (seqId) {
+					const sequence = await getSlideSequence(seqId)
+					const slideIds: string[] = sequence.slides || []
+					
+					const slides: SlideData[] = slideIds.map((id: string, idx: number) => ({
+						id,
+						index: idx + 1,
+						imageUrl: `${BASE_URL}/slide-sequences/${seqId}/slide/${idx + 1}`
+					}))
+					
+					setSlidesData(slides)
+					
+					// Set current slide from lecture data
+					const currentSlideNum = lecture.currentSlide || 1
+					setCurrentSlide(Math.max(0, currentSlideNum - 1))
+				}
+			} catch (error) {
+				console.error('Failed to load lecture:', error)
+				toast.error('Ошибка при загрузке лекции')
+			} finally {
+				setIsLoading(false)
+			}
+		}
+
+		loadLecture()
+	}, [lectureId])
+
 	useEffect(() => {
 		const timer = setInterval(() => setElapsed(p => p + 1), 1000)
 		return () => clearInterval(timer)
@@ -186,7 +192,7 @@ export function LivePresentationPage() {
 		}
 		window.addEventListener('keydown', handler)
 		return () => window.removeEventListener('keydown', handler)
-	}, [currentSlide, lectureId])
+	}, [currentSlide, slidesData.length])
 
 	const formatTime = (s: number) =>
 		`${Math.floor(s / 60)
@@ -249,7 +255,7 @@ export function LivePresentationPage() {
 
 	const handleSendSatisfaction = () => {
 		toast.success(
-			`Satisfaction poll sent to ${connectedStudents.length} students`
+			`Опрос отправлен ${connectedStudents.length} студентам`
 		)
 		setShowSatisfactionModal(false)
 	}
@@ -264,8 +270,8 @@ export function LivePresentationPage() {
 		if (!newSlide) return
 
 		try {
-			// Call API to update current slide
-			await updateCurrentSlide(parseInt(lectureId), newSlide.id.toString())
+			// Call API to update current slide (slideNumber is 1-indexed)
+			await updateCurrentSlide(parseInt(lectureId), newSlide.index.toString())
 
 			// Update local state
 			setCurrentSlide(newSlideIndex)
@@ -274,7 +280,7 @@ export function LivePresentationPage() {
 			localStorage.setItem('lecture_slide', String(newSlideIndex))
 		} catch (error) {
 			console.error('Failed to update slide:', error)
-			toast.error('Failed to update slide on server')
+			toast.error('Ошибка при переключении слайда')
 			// Still update local state even if API fails
 			setCurrentSlide(newSlideIndex)
 			localStorage.setItem('lecture_slide', String(newSlideIndex))
@@ -282,9 +288,50 @@ export function LivePresentationPage() {
 	}
 
 	const openProjection = () => {
-		window.open(`/projection/1`, 'projection', 'width=1280,height=720')
+		window.open(`/projection/${lectureId}`, 'projection', 'width=1280,height=720')
 		toast.success(
-			'Projector window opened. Display it on second screen - only slide is shown there, without lecturer interface.'
+			'Окно проектора открыто. Переместите на второй экран.'
+		)
+	}
+
+	const handleConfirmEndLecture = async () => {
+		if (!lectureId) return
+		setEndingLecture(true)
+		try {
+			await stopLecture(parseInt(lectureId, 10))
+			setShowConfirmEnd(false)
+			toast.success('Лекция завершена, студенты отключены')
+			navigate('/')
+		} catch (e) {
+			console.error(e)
+			toast.error('Не удалось завершить лекцию на сервере')
+		} finally {
+			setEndingLecture(false)
+		}
+	}
+
+	if (isLoading) {
+		return (
+			<div className="h-screen bg-black flex items-center justify-center">
+				<div className="flex flex-col items-center gap-3">
+					<Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
+					<span className="text-neutral-400 text-sm">Загрузка лекции...</span>
+				</div>
+			</div>
+		)
+	}
+
+	if (!slide) {
+		return (
+			<div className="h-screen bg-black flex items-center justify-center">
+				<div className="text-neutral-400 text-center">
+					<p className="text-lg mb-2">Слайды не найдены</p>
+					<p className="text-sm">Убедитесь, что к лекции привязана презентация</p>
+					<Link to="/" className="mt-4 inline-block text-orange-500 hover:text-orange-400">
+						← На главную
+					</Link>
+				</div>
+			</div>
 		)
 	}
 
@@ -296,7 +343,7 @@ export function LivePresentationPage() {
 					<span className="text-orange-500 hidden sm:block text-sm">
 						LectureApp
 					</span>
-					<span className="text-white text-sm truncate">{slide.title}</span>
+					<span className="text-white text-sm truncate">{lectureName}</span>
 					<span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1 flex-shrink-0">
 						<span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />{' '}
 						LIVE
@@ -417,17 +464,21 @@ export function LivePresentationPage() {
 						</p>
 						<div className="flex gap-2">
 							<button
+								type="button"
+								disabled={endingLecture}
 								onClick={() => setShowConfirmEnd(false)}
 								className="flex-1 px-4 py-2 border border-neutral-300 rounded-lg text-sm"
 							>
 								Отмена
 							</button>
-							<Link
-								to="/"
-								className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg text-center text-sm hover:bg-red-700"
+							<button
+								type="button"
+								disabled={endingLecture}
+								onClick={handleConfirmEndLecture}
+								className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg text-center text-sm hover:bg-red-700 disabled:opacity-60"
 							>
-								Завершить
-							</Link>
+								{endingLecture ? 'Завершение…' : 'Завершить'}
+							</button>
 						</div>
 					</div>
 				</div>
@@ -439,27 +490,12 @@ export function LivePresentationPage() {
 					<div className="w-full max-w-5xl">
 						{/* Slide */}
 						<div className="relative">
-							<div
-								className={`aspect-video bg-gradient-to-br ${slide.color} rounded-lg shadow-2xl p-8 sm:p-12 lg:p-16 flex flex-col justify-center`}
-							>
-								<h1 className="text-white text-2xl sm:text-3xl lg:text-5xl mb-4">
-									{slide.title}
-								</h1>
-								<p className="text-white/60 text-sm sm:text-base mb-4">
-									Препод. Иван Петров — Весна 2026
-								</p>
-								{slide.content && (
-									<ul className="space-y-2 mt-2">
-										{slide.content.map((item, i) => (
-											<li
-												key={i}
-												className="text-white/90 text-sm sm:text-lg"
-											>
-												• {item}
-											</li>
-										))}
-									</ul>
-								)}
+							<div className="aspect-video bg-neutral-900 rounded-lg shadow-2xl overflow-hidden flex items-center justify-center">
+								<img
+									src={slide.imageUrl}
+									alt={`Слайд ${slide.index}`}
+									className="w-full h-full object-contain"
+								/>
 							</div>
 							<DrawingOverlay
 								slideIndex={currentSlide}
@@ -467,19 +503,6 @@ export function LivePresentationPage() {
 								onToggle={() => setDrawingActive(!drawingActive)}
 							/>
 						</div>
-
-						{/* Comment for presenter only */}
-						{slide.comment && (
-							<div className="mt-3 bg-orange-500/20 border border-orange-500/40 rounded-lg px-4 py-3 flex items-start gap-2">
-								<MessageSquare className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" />
-								<div>
-									<div className="text-orange-300 text-xs mb-0.5">
-										Ваш комментарий (только для вас, не виден на проекторе)
-									</div>
-									<div className="text-orange-100 text-sm">{slide.comment}</div>
-								</div>
-							</div>
-						)}
 
 						{/* Nav */}
 						<div className="flex items-center justify-between mt-4">
@@ -512,18 +535,20 @@ export function LivePresentationPage() {
 								<button
 									key={s.id}
 									onClick={() => handleSlideChange(i)}
-									className={`flex-shrink-0 w-20 aspect-video bg-gradient-to-br ${s.color} rounded border-2 transition-all relative ${
+									className={`flex-shrink-0 w-20 aspect-video bg-neutral-800 rounded border-2 transition-all relative overflow-hidden ${
 										i === currentSlide
 											? 'border-orange-500 scale-105'
 											: 'border-neutral-700 opacity-50 hover:opacity-80'
 									}`}
 								>
-									<div className="text-white text-[8px] p-1.5 truncate">
-										{s.title}
+									<img
+										src={s.imageUrl}
+										alt={`Слайд ${s.index}`}
+										className="w-full h-full object-cover"
+									/>
+									<div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[8px] py-0.5 text-center">
+										{s.index}
 									</div>
-									{s.comment && (
-										<div className="absolute top-0.5 right-0.5 w-2 h-2 bg-orange-500 rounded-full" />
-									)}
 								</button>
 							))}
 						</div>
@@ -799,7 +824,7 @@ export function LivePresentationPage() {
 										}}
 										className="flex items-center gap-1 text-xs text-orange-500 hover:text-orange-600"
 									>
-										<Edit2 className="w-3 h-3" /> Редактировать
+										<Pencil className="w-3 h-3" /> Редактировать
 									</button>
 								)}
 							</div>

@@ -19,9 +19,9 @@ export async function apiFetch(path: string, options?: RequestInit) {
 	return res.json()
 }
 
-export async function uploadPresentation(fileBuffer: Buffer, fileName: string) {
+export async function uploadPresentation(file: File) {
 	const formData = new FormData()
-	formData.append('file', new Blob([new Uint8Array(fileBuffer)]), fileName)
+	formData.append('file', file)
 
 	const res = await fetch(`${BASE_URL}/presentations/upload`, {
 		method: 'POST',
@@ -33,19 +33,49 @@ export async function uploadPresentation(fileBuffer: Buffer, fileName: string) {
 	return res.json()
 }
 
-export async function createLecture(name: string) {
+export async function createLecture(name: string, sequenceId: string) {
 	const res = await fetch(`${BASE_URL}/lectures`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json'
 		},
-		body: JSON.stringify({ name })
+		body: JSON.stringify({ name, sequenceId })
 	})
 
 	if (!res.ok) {
 		throw new Error(`Failed to create lecture: ${res.status}`)
 	}
 
+	return res.json()
+}
+
+export interface LectureListItem {
+	id: number
+	name: string
+	status: string
+	currentSlide: number
+	sequenceId: string | null
+}
+
+/** Все лекции из БД (сверка имён и id для /join в Telegram) */
+export async function listLectures(): Promise<LectureListItem[]> {
+	const res = await fetch(`${BASE_URL}/lectures`)
+	if (!res.ok) {
+		const t = await res.text()
+		throw new Error(`Failed to list lectures: ${res.status} ${t}`)
+	}
+	return res.json()
+}
+
+export async function getLecture(id: number) {
+	const res = await fetch(`${BASE_URL}/lectures/${id}`)
+	if (!res.ok) throw new Error('Failed to load lecture')
+	return res.json()
+}
+
+export async function getSlideSequence(sequenceId: string) {
+	const res = await fetch(`${BASE_URL}/slide-sequences/${sequenceId}`)
+	if (!res.ok) throw new Error('Failed to load sequence')
 	return res.json()
 }
 
@@ -64,17 +94,59 @@ export async function startLecture(lectureId: number) {
 	return res.json()
 }
 
+export async function stopLecture(lectureId: number) {
+	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/stop`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json'
+		}
+	})
+
+	if (!res.ok) {
+		const t = await res.text()
+		throw new Error(`Failed to stop lecture: ${res.status} ${t}`)
+	}
+
+	return res.json()
+}
+
 export async function updateCurrentSlide(lectureId: number, slideId: string) {
 	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/current-slide`, {
 		method: 'PUT',
 		headers: {
 			'Content-Type': 'application/json'
 		},
-		body: JSON.stringify({ slide_id: slideId })
+		body: JSON.stringify({ slideNumber: parseInt(slideId, 10) })
+	})
+
+	const text = await res.text()
+	if (!res.ok) {
+		throw new Error(`Failed to update slide: ${res.status} ${text}`)
+	}
+	// Backend returns 200 with empty body — res.json() would throw
+	if (!text.trim()) return null
+	try {
+		return JSON.parse(text) as unknown
+	} catch {
+		return null
+	}
+}
+
+export async function updateLecture(
+	lectureId: number,
+	body: { name: string }
+) {
+	const res = await fetch(`${BASE_URL}/lectures/${lectureId}`, {
+		method: 'PUT',
+		headers: {
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({ name: body.name.trim() })
 	})
 
 	if (!res.ok) {
-		throw new Error(`Failed to update slide: ${res.status}`)
+		const t = await res.text()
+		throw new Error(`Failed to update lecture: ${res.status} ${t}`)
 	}
 
 	return res.json()

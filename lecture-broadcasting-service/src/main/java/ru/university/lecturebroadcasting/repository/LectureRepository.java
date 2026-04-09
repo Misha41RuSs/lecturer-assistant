@@ -8,5 +8,6 @@ import java.util.List;
 import java.util.Optional;
 
 public interface LectureRepository extends JpaRepository<Lecture, Long> {
-    Optional<Lecture> findByNameAndStatusIn(String name, List<LectureStatus> statuses);
+
+    Optional<Lecture> findByIdAndStatusIn(Long id, List<LectureStatus> statuses);
 }

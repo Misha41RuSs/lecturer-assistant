@@ -1,8 +1,8 @@
 import { CheckCircle, FileText, Upload } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
-import { uploadPresentation } from '../app/api/client'
+import { uploadPresentation, BASE_URL } from '../app/api/client'
 import { createLecture } from '../app/api/lecture.api'
 
 export function UploadPresentationPage() {
@@ -14,31 +14,30 @@ export function UploadPresentationPage() {
 	const [parsedSlides, setParsedSlides] = useState<number[]>([])
 	const [dragOver, setDragOver] = useState(false)
 	const [selectedSlides, setSelectedSlides] = useState<Set<number>>(new Set())
+	const [sequenceId, setSequenceId] = useState<string>('')
 
-	const startUpload = useCallback((name: string) => {
+	const handleDroppedFile = async (file: File) => {
 		setUploading(true)
-		setFileName(name)
-		setParsedSlides([])
-		setUploadProgress(0)
+		setFileName(file.name)
+		setUploadProgress(25)
 
-		let progress = 0
-		const interval = setInterval(() => {
-			progress += Math.random() * 15 + 5
-			if (progress > 100) progress = 100
-			setUploadProgress(Math.round(progress))
-
-			if (progress >= 100) {
-				clearInterval(interval)
-				setTimeout(() => {
-					setUploading(false)
-					const slides = Array.from({ length: 4 }, (_, i) => i + 1)
-					setParsedSlides(slides)
-					setSelectedSlides(new Set(slides))
-					toast.success(`${slides.length} слайдов разобрано`)
-				}, 400)
-			}
-		}, 250)
-	}, [])
+		try {
+			const data = await uploadPresentation(file)
+			setSequenceId(data.sequenceId)
+			setUploadProgress(100)
+			setTimeout(() => {
+				setUploading(false)
+				const slides = Array.from({ length: data.slideCount || 0 }, (_, i) => i + 1)
+				setParsedSlides(slides)
+				setSelectedSlides(new Set(slides))
+				toast.success(`Презентация загружена: ${data.slideCount} слайдов`)
+			}, 400)
+		} catch (error) {
+			console.error('Drag-and-drop upload error:', error)
+			toast.error('Ошибка при загрузке и парсинге файла')
+			setUploading(false)
+		}
+	}
 
 	const handleFileSelect = async () => {
 		if (!lectureName.trim()) {
@@ -59,10 +58,19 @@ export function UploadPresentationPage() {
 
 				setUploading(true)
 				setFileName(fileNameFromPath)
-				setUploadProgress(0)
+				setUploadProgress(25)
 
-				await uploadPresentation(fileBuffer, fileNameFromPath)
-				startUpload(fileNameFromPath)
+				const file = new File([new Uint8Array(fileBuffer)], fileNameFromPath)
+				const data = await uploadPresentation(file)
+				setSequenceId(data.sequenceId)
+				setUploadProgress(100)
+				setTimeout(() => {
+					setUploading(false)
+					const slides = Array.from({ length: data.slideCount || 0 }, (_, i) => i + 1)
+					setParsedSlides(slides)
+					setSelectedSlides(new Set(slides))
+					toast.success(`Презентация загружена: ${data.slideCount} слайдов`)
+				}, 400)
 			} else {
 				// Веб-версия - используем HTML5 File API
 				const input = document.createElement('input')
@@ -75,14 +83,22 @@ export function UploadPresentationPage() {
 
 					setUploading(true)
 					setFileName(file.name)
-					setUploadProgress(0)
+					setUploadProgress(25)
 
 					try {
-						// MVP: пропускаем загрузку бинарника, эмулируем успех
-						startUpload(file.name)
+						const data = await uploadPresentation(file)
+						setSequenceId(data.sequenceId)
+						setUploadProgress(100)
+						setTimeout(() => {
+							setUploading(false)
+							const slides = Array.from({ length: data.slideCount || 0 }, (_, i) => i + 1)
+							setParsedSlides(slides)
+							setSelectedSlides(new Set(slides))
+							toast.success(`Презентация загружена: ${data.slideCount} слайдов`)
+						}, 400)
 					} catch (error) {
 						console.error('File reading error:', error)
-						toast.error('Ошибка при чтении файла')
+						toast.error('Ошибка при загрузке и парсинге файла')
 						setUploading(false)
 					}
 				}
@@ -113,7 +129,7 @@ export function UploadPresentationPage() {
 
 		try {
 			// Сначала создаем лекцию через API
-			const lectureResponse = await createLecture(lectureName)
+			const lectureResponse = await createLecture(lectureName, sequenceId)
 			const lectureId = lectureResponse.id || lectureResponse.lectureId
 
 			toast.success(
@@ -164,7 +180,10 @@ export function UploadPresentationPage() {
 							toast.error('Сначала введите название')
 							return
 						}
-						startUpload('uploaded_file.pptx')
+						const file = e.dataTransfer.files?.[0]
+						if (file) {
+							handleDroppedFile(file)
+						}
 					}}
 					className={`bg-white rounded-xl p-8 sm:p-12 border-2 border-dashed mb-6 text-center transition-colors ${
 						dragOver ? 'border-orange-500 bg-orange-50' : 'border-neutral-300'
@@ -239,7 +258,7 @@ export function UploadPresentationPage() {
 								}`}
 							>
 								<div className="absolute inset-0 flex items-center justify-center bg-black/40">
-									<img src={`https://picsum.photos/400/300?random=${slide}`} alt={`Слайд ${slide}`} className="w-full h-full object-cover opacity-80" />
+									<img src={`${BASE_URL}/slide-sequences/${sequenceId}/slide/${slide}`} alt={`Слайд ${slide}`} className="w-full h-full object-cover opacity-80" />
 								</div>
 								{selectedSlides.has(slide) && (
 									<div className="absolute top-1.5 right-1.5">

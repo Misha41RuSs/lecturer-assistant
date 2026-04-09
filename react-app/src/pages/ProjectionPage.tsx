@@ -1,17 +1,42 @@
 import { useState, useEffect } from "react";
-
-const slides = [
-  { id: 1, title: "Введение в алгоритмы", color: "from-neutral-800 to-neutral-900", content: null },
-  { id: 2, title: "Что такое алгоритмы?", color: "from-blue-900 to-blue-950", content: ["Сортировка и поиск", "Теория графов", "Динамическое программирование", "Анализ сложности"] },
-  { id: 3, title: "Нотация большого О", color: "from-blue-900 to-blue-950", content: ["O(1) — константа", "O(log n) — логарифмическая", "O(n) — линейная", "O(n²) — квадратичная"] },
-  { id: 4, title: "Алгоритмы сортировки", color: "from-purple-800 to-purple-900", content: ["Bubble Sort", "Quick Sort", "Merge Sort"] },
-  { id: 5, title: "Основы теории графов", color: "from-green-800 to-green-900", content: ["BFS — поиск в ширину", "DFS — поиск в глубину"] },
-];
+import { useParams } from "react-router";
+import { getLecture, getSlideSequence, BASE_URL } from "../app/api/client";
 
 export function ProjectionPage() {
+  const { lectureId } = useParams<{ lectureId: string }>();
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [slideCount, setSlideCount] = useState(0);
+  const [sequenceId, setSequenceId] = useState<string>("");
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Listen for messages from presenter window
+  // Load lecture data
+  useEffect(() => {
+    if (!lectureId) return;
+
+    const loadData = async () => {
+      try {
+        const lecture = await getLecture(parseInt(lectureId));
+        const seqId = lecture.sequenceId;
+        if (seqId) {
+          setSequenceId(seqId);
+          const sequence = await getSlideSequence(seqId);
+          setSlideCount(sequence.slides?.length || 0);
+          
+          // Set initial slide from lecture data
+          const currentSlideNum = lecture.currentSlide || 1;
+          setCurrentSlide(Math.max(0, currentSlideNum - 1));
+        }
+      } catch (error) {
+        console.error("Failed to load projection data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, [lectureId]);
+
+  // Listen for slide changes from presenter window via localStorage
   useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.key === "lecture_slide") {
@@ -28,23 +53,37 @@ export function ProjectionPage() {
     return () => window.removeEventListener("storage", handler);
   }, []);
 
-  const slide = slides[currentSlide] || slides[0];
+  if (isLoading) {
+    return (
+      <div className="h-screen w-screen bg-black flex items-center justify-center">
+        <div className="text-neutral-500 text-sm">Загрузка...</div>
+      </div>
+    );
+  }
+
+  if (!sequenceId || slideCount === 0) {
+    return (
+      <div className="h-screen w-screen bg-black flex items-center justify-center">
+        <div className="text-neutral-500 text-center">
+          <p className="text-lg">Слайды не найдены</p>
+          <p className="text-sm mt-1">Убедитесь, что к лекции привязана презентация</p>
+        </div>
+      </div>
+    );
+  }
+
+  const slideIndex = Math.min(currentSlide, slideCount - 1) + 1;
+  const slideUrl = `${BASE_URL}/slide-sequences/${sequenceId}/slide/${slideIndex}`;
 
   return (
-    <div className="h-screen w-screen bg-black flex items-center justify-center">
-      <div className={`w-full h-full bg-gradient-to-br ${slide.color} flex flex-col justify-center px-[8%] py-[6%]`}>
-        <h1 className="text-white text-4xl sm:text-5xl lg:text-7xl mb-6">{slide.title}</h1>
-        <p className="text-white/50 text-lg sm:text-xl mb-8">Препод. Иван Петров — Весна 2026</p>
-        {slide.content && (
-          <ul className="space-y-3">
-            {slide.content.map((item, i) => (
-              <li key={i} className="text-white/90 text-xl sm:text-2xl lg:text-3xl">• {item}</li>
-            ))}
-          </ul>
-        )}
-        <div className="absolute bottom-4 right-6 text-white/30 text-sm">
-          {currentSlide + 1} / {slides.length}
-        </div>
+    <div className="h-screen w-screen bg-black flex items-center justify-center relative">
+      <img
+        src={slideUrl}
+        alt={`Слайд ${slideIndex}`}
+        className="w-full h-full object-contain"
+      />
+      <div className="absolute bottom-4 right-6 text-white/30 text-sm">
+        {slideIndex} / {slideCount}
       </div>
     </div>
   );
