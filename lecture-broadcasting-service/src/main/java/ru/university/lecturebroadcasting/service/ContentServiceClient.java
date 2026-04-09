@@ -16,7 +16,12 @@ public class ContentServiceClient {
     }
 
     public byte[] getSlideImage(int slideNumber) {
-        String url = contentServiceUrl + "/slides/" + slideNumber;
-        return restTemplate.getForObject(url, byte[].class);
+        try {
+            String url = contentServiceUrl + "/slides/" + slideNumber;
+            return restTemplate.getForObject(url, byte[].class);
+        } catch (Exception e) {
+            System.err.println("content-service unavailable, slide image skipped: " + e.getMessage());
+            return null;
+        }
     }
 }
