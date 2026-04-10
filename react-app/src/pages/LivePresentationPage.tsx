@@ -13,7 +13,6 @@ import {
 	Send,
 	Star,
 	Users,
-	UserX,
 	X
 } from 'lucide-react'
 import { useEffect, useRef, useState, useCallback } from 'react'
@@ -27,12 +26,9 @@ import {
 	stopLecture,
 	broadcastSlideImage
 } from '../app/api/client'
+import { getQuestions, answerQuestion, createQuiz } from '../app/api/quiz.api'
+import { sendLectureEvent, getLectureDashboard } from '../app/api/analytics.api'
 import { DrawingOverlay, DrawingOverlayHandle } from '../features/DrawingOverlay'
-
-const availableTests = [
-	{ id: 1, title: 'Тест: Основы алгоритмов', questions: 3 },
-	{ id: 2, title: 'Опрос: Качество лекции', questions: 2 }
-]
 
 interface SlideData {
 	id: string
@@ -40,19 +36,57 @@ interface SlideData {
 	imageUrl: string
 }
 
-interface Student {
-	id: number
-	name: string
-	initials: string
-	connected: boolean
-}
 interface Question {
-	id: number
+	id: string
 	student: string
 	initials: string
 	time: string
 	text: string
 	isNew: boolean
+}
+
+function QuizLaunchForm({
+	studentsCount,
+	onLaunch,
+}: {
+	studentsCount: number
+	onLaunch: (title: string) => void
+}) {
+	const [title, setTitle] = useState('')
+	return (
+		<div className="space-y-3 mb-4">
+			<input
+				type="text"
+				value={title}
+				onChange={e => setTitle(e.target.value)}
+				placeholder="Название квиза..."
+				className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+			/>
+			<button
+				onClick={() => { if (title.trim()) onLaunch(title.trim()) }}
+				disabled={!title.trim()}
+				className="w-full px-4 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 disabled:opacity-40"
+			>
+				Запустить для всех ({studentsCount})
+			</button>
+		</div>
+	)
+}
+
+function mapApiQuestion(q: any): Question {
+	const created = new Date(q.createdAt)
+	const mins = Math.round((Date.now() - created.getTime()) / 60000)
+	const time = mins < 1 ? 'только что' : `${mins} мин.`
+	const label = q.userId ? `Студент ${q.userId}` : 'Студент'
+	const initials = q.userId ? `С${q.userId}` : 'СТ'
+	return {
+		id: q.id,
+		student: label,
+		initials,
+		time,
+		text: q.text,
+		isNew: !q.answered && mins < 2,
+	}
 }
 
 export function LivePresentationPage() {
@@ -68,7 +102,7 @@ export function LivePresentationPage() {
 	const [sidebarOpen, setSidebarOpen] = useState(true)
 	const [elapsed, setElapsed] = useState(0)
 	const [showConfirmEnd, setShowConfirmEnd] = useState(false)
-	const [replyTo, setReplyTo] = useState<number | null>(null)
+	const [replyTo, setReplyTo] = useState<string | null>(null)
 	const [replyText, setReplyText] = useState('')
 	const [showTestModal, setShowTestModal] = useState<number | null>(null)
 	const [showAccessInfo, setShowAccessInfo] = useState(false)
@@ -91,47 +125,8 @@ export function LivePresentationPage() {
 	const lectureUrl = `https://lectureapp.ru/join/${lectureId}`
 	const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(lectureUrl)}`
 
-	const [questions, setQuestions] = useState<Question[]>([
-		{
-			id: 1,
-			student: 'Алексей Петров',
-			initials: 'АП',
-			time: '2 мин.',
-			text: 'Можете объяснить разницу в быстрой сортировке?',
-			isNew: true
-		},
-		{
-			id: 2,
-			student: 'Мария Смирнова',
-			initials: 'МС',
-			time: '8 мин.',
-			text: 'Какова сложность бинарного поиска?',
-			isNew: false
-		},
-		{
-			id: 3,
-			student: 'Дмитрий Волков',
-			initials: 'ДВ',
-			time: '12 мин.',
-			text: 'В чём разница между BFS и DFS?',
-			isNew: true
-		}
-	])
-
-	const [students, setStudents] = useState<Student[]>([
-		{ id: 1, name: 'Алексей Петров', initials: 'АП', connected: true },
-		{ id: 2, name: 'Мария Смирнова', initials: 'МС', connected: true },
-		{ id: 3, name: 'Иван Козлов', initials: 'ИК', connected: true },
-		{ id: 4, name: 'Ольга Новикова', initials: 'ОН', connected: true },
-		{ id: 5, name: 'Дмитрий Волков', initials: 'ДВ', connected: true },
-		{ id: 6, name: 'Екатерина Лебедева', initials: 'ЕЛ', connected: true },
-		{ id: 7, name: 'Андрей Соколов', initials: 'АС', connected: true },
-		{ id: 8, name: 'Наталья Морозова', initials: 'НМ', connected: true },
-		{ id: 9, name: 'Сергей Новиков', initials: 'СН', connected: true },
-		{ id: 10, name: 'Анна Кузнецова', initials: 'АК', connected: true },
-		{ id: 11, name: 'Павел Иванов', initials: 'ПИ', connected: true },
-		{ id: 12, name: 'Татьяна Попова', initials: 'ТП', connected: false }
-	])
+	const [questions, setQuestions] = useState<Question[]>([])
+	const [studentsCount, setStudentsCount] = useState(0)
 
 	// Load lecture data and slides from backend
 	useEffect(() => {
@@ -169,6 +164,32 @@ export function LivePresentationPage() {
 		}
 
 		loadLecture()
+	}, [lectureId])
+
+	// Polling вопросов студентов каждые 15 секунд
+	useEffect(() => {
+		if (!lectureId) return
+		const load = () => {
+			getQuestions(lectureId)
+				.then((list: any[]) => setQuestions(list.filter((q: any) => !q.answered).map(mapApiQuestion)))
+				.catch(() => {/* тихо игнорируем ошибки сети */})
+		}
+		load()
+		const interval = setInterval(load, 15000)
+		return () => clearInterval(interval)
+	}, [lectureId])
+
+	// Число студентов из аналитики (обновляется раз в 30 сек)
+	useEffect(() => {
+		if (!lectureId) return
+		const load = () => {
+			getLectureDashboard(lectureId)
+				.then((d: any) => setStudentsCount(d.studentsJoined ?? 0))
+				.catch(() => {})
+		}
+		load()
+		const interval = setInterval(load, 30000)
+		return () => clearInterval(interval)
 	}, [lectureId])
 
 	useEffect(() => {
@@ -241,7 +262,6 @@ export function LivePresentationPage() {
 		`${Math.floor(s / 60)
 			.toString()
 			.padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`
-	const connectedStudents = students.filter(s => s.connected)
 	const slide = slidesData[currentSlide]
 
 	const handleSendMessage = () => {
@@ -250,56 +270,59 @@ export function LivePresentationPage() {
 		setQuickMessage('')
 	}
 
-	const handleReplyToStudent = (qId: number) => {
+	const handleReplyToStudent = async (qId: string) => {
 		if (!replyText.trim()) return
 		const q = questions.find(x => x.id === qId)
-		toast.success(`Ответ отправлен лично: ${q?.student}`)
+		try {
+			await answerQuestion(qId, replyText)
+			toast.success(`Ответ отправлен: ${q?.student}`)
+		} catch {
+			toast.error('Не удалось сохранить ответ')
+		}
 		setQuestions(questions.filter(x => x.id !== qId))
 		setReplyTo(null)
 		setReplyText('')
 	}
 
-	const handleAnswerBroadcast = (qId: number) => {
+	const handleAnswerBroadcast = async (qId: string) => {
 		if (!replyText.trim()) return
 		const q = questions.find(x => x.id === qId)
-		toast.success(`Ответ на "${q?.text}" отправлен всем`)
+		try {
+			await answerQuestion(qId, replyText)
+			toast.success(`Ответ на "${q?.text}" сохранён`)
+		} catch {
+			toast.error('Не удалось сохранить ответ')
+		}
 		setQuestions(questions.filter(x => x.id !== qId))
 		setReplyTo(null)
 		setReplyText('')
 	}
 
-	const handleDismissQuestion = (qId: number) => {
+	const handleDismissQuestion = (qId: string) => {
 		setQuestions(questions.filter(x => x.id !== qId))
 		setReplyTo(null)
 		toast.info('Вопрос отклонён')
 	}
 
-	const handleDisconnectStudent = (id: number) => {
-		setStudents(
-			students.map(s => (s.id === id ? { ...s, connected: false } : s))
-		)
-		toast.success(`${students.find(s => s.id === id)?.name} отключён`)
-	}
-
-	const handleAssignTest = (studentId: number, testId: number) => {
-		const st = students.find(s => s.id === studentId)
-		const t = availableTests.find(x => x.id === testId)
-		toast.success(`Тест "${t?.title}" выдан ${st?.name}`)
+	const handleAssignTestAll = async (title: string) => {
+		if (!lectureId) return
+		try {
+			await createQuiz(lectureId, title)
+			toast.success(`Квиз "${title}" запущен для студентов (${studentsCount})`)
+		} catch {
+			toast.error('Не удалось запустить квиз')
+		}
 		setShowTestModal(null)
 	}
 
-	const handleAssignTestAll = (testId: number) => {
-		const t = availableTests.find(x => x.id === testId)
-		toast.success(
-			`Тест "${t?.title}" выдан всем студентам (${connectedStudents.length})`
-		)
-		setShowTestModal(null)
-	}
-
-	const handleSendSatisfaction = () => {
-		toast.success(
-			`Опрос отправлен ${connectedStudents.length} студентам`
-		)
+	const handleSendSatisfaction = async () => {
+		if (!lectureId) return
+		try {
+			await createQuiz(lectureId, satisfactionPreset)
+			toast.success(`Опрос запущен для студентов (${studentsCount})`)
+		} catch {
+			toast.error('Не удалось запустить опрос')
+		}
 		setShowSatisfactionModal(false)
 	}
 
@@ -315,6 +338,13 @@ export function LivePresentationPage() {
 		try {
 			// Update DB + WebSocket + Telegram (plain image)
 			await updateCurrentSlide(parseInt(lectureId), newSlide.index.toString())
+
+			// Событие аналитики
+			sendLectureEvent({
+				lectureId,
+				actionType: 'slide_changed',
+				payload: JSON.stringify({ slideNumber: newSlide.index }),
+			}).catch(() => {})
 
 			setCurrentSlide(newSlideIndex)
 			localStorage.setItem('lecture_slide', String(newSlideIndex))
@@ -407,7 +437,7 @@ export function LivePresentationPage() {
 					</span>
 					<span className="flex items-center gap-1.5 text-neutral-400 text-sm">
 						<Users className="w-3.5 h-3.5" />
-						{connectedStudents.length}
+						{studentsCount}
 					</span>
 
 					{(accessType === 'password' || accessType === 'invitation') && (
@@ -625,7 +655,7 @@ export function LivePresentationPage() {
 								>
 									{tab === 'questions'
 										? `Вопросы (${questions.length})`
-										: `Студенты (${connectedStudents.length})`}
+										: `Студенты (${studentsCount})`}
 									{activeTab === tab && (
 										<div className="absolute bottom-0 left-0 right-0 h-0.5 bg-orange-500" />
 									)}
@@ -728,39 +758,34 @@ export function LivePresentationPage() {
 								)
 							) : (
 								<div className="flex flex-col h-full">
-									<div className="flex-1 overflow-y-auto space-y-1 max-h-[calc(100vh-320px)]">
-										{students.map(s => (
-											<div
-												key={s.id}
-												className={`flex items-center gap-2.5 px-3 py-2 rounded-lg ${s.connected ? 'hover:bg-neutral-800' : 'opacity-40'}`}
-											>
-												<div className="w-7 h-7 rounded-full bg-neutral-700 flex items-center justify-center text-xs text-white flex-shrink-0">
-													{s.initials}
-												</div>
-												<span className="text-white text-sm flex-1 truncate">
-													{s.name}
-												</span>
-												<span
-													className={`w-2 h-2 rounded-full flex-shrink-0 ${s.connected ? 'bg-green-500' : 'bg-neutral-600'}`}
-												/>
-												{s.connected && (
-													<div className="flex gap-1">
-														<button
-															onClick={() => setShowTestModal(s.id)}
-															title="Выдать тест"
-															className="p-1 text-neutral-500 hover:text-orange-400"
-														>
-															<ClipboardList className="w-3.5 h-3.5" />
-														</button>
-														<button
-															onClick={() => handleDisconnectStudent(s.id)}
-															title="Отключить"
-															className="p-1 text-neutral-500 hover:text-red-400"
-														>
-															<UserX className="w-3.5 h-3.5" />
-														</button>
-													</div>
-												)}
+									<div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-4 py-8">
+										<Users className="w-10 h-10 text-neutral-600" />
+										<div>
+											<div className="text-3xl text-white mb-1">{studentsCount}</div>
+											<div className="text-neutral-400 text-sm">студентов подключилось</div>
+										</div>
+										<p className="text-neutral-500 text-xs mt-2">
+											Студенты подключены через Telegram-бот. Индивидуальный список недоступен.
+										</p>
+									</div>
+
+									{/* Action buttons */}
+									<div className="pt-3 border-t border-neutral-800 space-y-2">
+										<button
+											onClick={() => setShowTestModal(-1)}
+											className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm"
+										>
+											<ClipboardList className="w-4 h-4" /> Запустить квиз
+										</button>
+										<button
+											onClick={() => setShowSatisfactionModal(true)}
+											className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-neutral-800 text-neutral-300 rounded-lg hover:bg-neutral-700 text-sm"
+										>
+											<Star className="w-4 h-4" /> Узнать мнение
+										</button>
+									</div>
+								</div>
+							)}
 											</div>
 										))}
 									</div>
@@ -814,36 +839,11 @@ export function LivePresentationPage() {
 			{showTestModal !== null && (
 				<div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
 					<div className="bg-white rounded-xl p-6 max-w-sm w-full max-h-[80vh] flex flex-col">
-						<h3 className="mb-1">Выдать тест</h3>
+						<h3 className="mb-1">Запустить квиз</h3>
 						<p className="text-sm text-neutral-500 mb-4">
-							{showTestModal === -1
-								? `Выберите тест для всех студентов (${connectedStudents.length})`
-								: `Выберите тест для ${students.find(s => s.id === showTestModal)?.name}`}
+							Введите название квиза — студенты получат его через Telegram-бот и смогут ответить.
 						</p>
-						{availableTests.length === 0 ? (
-							<p className="text-sm text-neutral-500 text-center py-4">
-								Нет доступных тестов. Создайте тест в разделе «Тесты».
-							</p>
-						) : (
-							<div className="space-y-2 mb-4 overflow-y-auto max-h-60">
-								{availableTests.map(t => (
-									<button
-										key={t.id}
-										onClick={() =>
-											showTestModal === -1
-												? handleAssignTestAll(t.id)
-												: handleAssignTest(showTestModal, t.id)
-										}
-										className="w-full text-left p-3 border border-neutral-200 rounded-lg hover:border-orange-500 hover:bg-orange-50 transition-colors"
-									>
-										<div className="text-sm">{t.title}</div>
-										<div className="text-xs text-neutral-500">
-											{t.questions} вопросов
-										</div>
-									</button>
-								))}
-							</div>
-						)}
+						<QuizLaunchForm studentsCount={studentsCount} onLaunch={handleAssignTestAll} />
 						<button
 							onClick={() => setShowTestModal(null)}
 							className="w-full px-4 py-2 border border-neutral-300 rounded-lg text-sm mt-auto"
@@ -942,7 +942,7 @@ export function LivePresentationPage() {
 								onClick={handleSendSatisfaction}
 								className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm"
 							>
-								Отправить ({connectedStudents.length})
+								Отправить ({studentsCount})
 							</button>
 						</div>
 					</div>
