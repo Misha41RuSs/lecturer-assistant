@@ -59,3 +59,52 @@ export function rateSlide(slideId: string, userId: number | null, score: number)
 export function getSlideRatings(slideId: string) {
   return apiFetch(`/slides/${slideId}/ratings`);
 }
+
+// Полноценные тесты (Exam)
+export function createExam(dto: {
+  lectureId: string;
+  title: string;
+  totalTimeSec?: number | null;
+  questions: {
+    text: string;
+    type: "MULTIPLE" | "OPEN";
+    timeLimitSec?: number | null;
+    options?: { text: string; correct: boolean }[];
+  }[];
+}) {
+  return apiFetch("/exams", { method: "POST", body: JSON.stringify(dto) });
+}
+
+export function getExam(examId: string) {
+  return apiFetch(`/exams/${examId}`);
+}
+
+export function getExamsByLecture(lectureId: string) {
+  return apiFetch(`/lectures/${lectureId}/exams`);
+}
+
+export function launchExam(examId: string) {
+  return apiFetch(`/exams/${examId}/launch`, { method: "POST" });
+}
+
+export function closeExam(examId: string) {
+  return apiFetch(`/exams/${examId}/close`, { method: "POST" });
+}
+
+export function getExamSubmissions(examId: string) {
+  return apiFetch(`/exams/${examId}/submissions`);
+}
+
+export function gradeAnswer(answerId: string, score: number) {
+  return apiFetch(`/answers/${answerId}/grade`, {
+    method: "PUT",
+    body: JSON.stringify({ score }),
+  });
+}
+
+export function broadcastExam(examId: string, lectureId: string) {
+  return apiFetch(`/api/exams/launch`, {
+    method: "POST",
+    body: JSON.stringify({ examId, lectureId }),
+  });
+}

@@ -20,6 +20,21 @@ spring:
               - OPTIONS
             allowedHeaders: "*"
       routes:
+        - id: exam-launch-route
+          uri: ${LECTURE_BROADCASTING_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/exams/**
+
+        - id: quiz-service-slide-questions-route
+          uri: ${QUIZ_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/slides/*/questions,/slides/*/questions/**,/slides/*/ratings,/slides/*/ratings/**
+
+        - id: quiz-service-lecture-extras-route
+          uri: ${QUIZ_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/lectures/*/questions,/lectures/*/exams
+
         - id: content-service-route
           uri: ${CONTENT_SERVICE_URL:http://localhost:8081}
           predicates:
@@ -33,7 +48,7 @@ spring:
         - id: quiz-service-route
           uri: ${QUIZ_SERVICE_URL:http://localhost:8083}
           predicates:
-            - Path=/quizzes/**,/questions/**
+            - Path=/quizzes/**,/questions/**,/exams/**
 
         - id: analytics-service-route
           uri: ${ANALYTICS_SERVICE_URL:http://localhost:8084}
