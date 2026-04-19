@@ -20,8 +20,7 @@ import ru.university.lecturebroadcasting.service.QuizServiceClient;
 import ru.university.lecturebroadcasting.service.QuizServiceClient.ExamDetail.Question;
 import ru.university.lecturebroadcasting.service.WrongPasswordException;
 
-import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageMedia;
-import org.telegram.telegrambots.meta.api.objects.media.InputMediaPhoto;
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
 import org.telegram.telegrambots.meta.api.objects.Message;
 
 import java.io.ByteArrayInputStream;
@@ -39,6 +38,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final ConcurrentHashMap<Long, String> pendingPasswordJoin = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, ExamSession> examSessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Integer> lastSlideMessageId = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Integer> studentCurrentSlide = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Boolean> pendingGoToSlide = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Timer> questionTimers = new ConcurrentHashMap<>();
 
@@ -174,7 +174,8 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 sendText(chatId, "Вы не подключены к лекции. Используйте /join.");
                 return;
             }
-            int prev = student.getLecture().getCurrentSlide() - 1;
+            int current = studentCurrentSlide.getOrDefault(chatId, student.getLecture().getCurrentSlide());
+            int prev = current - 1;
             if (prev < 1) { sendText(chatId, "Вы уже на первом слайде."); return; }
             try {
                 byte[] img = lectureService.getSlideImage(student.getLecture(), prev);
@@ -318,35 +319,24 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     }
 
     public void sendSlideToStudent(long chatId, byte[] imageBytes, int slideNumber) {
+        studentCurrentSlide.put(chatId, slideNumber);
+
+        // Удаляем предыдущее сообщение со слайдом
+        Integer prevMsgId = lastSlideMessageId.remove(chatId);
+        if (prevMsgId != null) {
+            try {
+                execute(DeleteMessage.builder().chatId(chatId).messageId(prevMsgId).build());
+            } catch (TelegramApiException e) {
+                log.debug("deleteMessage failed chatId={} msgId={}: {}", chatId, prevMsgId, e.getMessage());
+            }
+        }
+
         InlineKeyboardMarkup markup = InlineKeyboardMarkup.builder()
                 .keyboardRow(List.of(
                         InlineKeyboardButton.builder().text("◀ Предыдущий").callbackData(CB_PREV_SLIDE).build(),
                         InlineKeyboardButton.builder().text("🔢 Слайд №…").callbackData(CB_GOTO_SLIDE).build()
                 ))
                 .build();
-
-        Integer prevMsgId = lastSlideMessageId.get(chatId);
-        if (prevMsgId != null) {
-            try {
-                InputMediaPhoto media = InputMediaPhoto.builder()
-                        .media("attach://slide.jpg")
-                        .mediaName("slide.jpg")
-                        .newMediaStream(new ByteArrayInputStream(imageBytes))
-                        .caption("Слайд " + slideNumber)
-                        .build();
-                EditMessageMedia edit = EditMessageMedia.builder()
-                        .chatId(chatId)
-                        .messageId(prevMsgId)
-                        .media(media)
-                        .replyMarkup(markup)
-                        .build();
-                execute(edit);
-                return;
-            } catch (TelegramApiException e) {
-                log.warn("editMessageMedia failed for chatId={}, sending new: {}", chatId, e.getMessage());
-                lastSlideMessageId.remove(chatId);
-            }
-        }
 
         SendPhoto photo = SendPhoto.builder()
                 .chatId(chatId)
