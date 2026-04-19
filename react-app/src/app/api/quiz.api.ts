@@ -65,6 +65,7 @@ export function createExam(dto: {
   lectureId: string;
   title: string;
   totalTimeSec?: number | null;
+  examType?: "EXAM" | "SURVEY";
   questions: {
     text: string;
     type: "MULTIPLE" | "OPEN";
@@ -100,6 +101,10 @@ export function gradeAnswer(answerId: string, score: number) {
     method: "PUT",
     body: JSON.stringify({ score }),
   });
+}
+
+export function duplicateExam(examId: string) {
+  return apiFetch(`/exams/${examId}/duplicate`, { method: "POST" });
 }
 
 export function broadcastExam(examId: string, lectureId: string) {

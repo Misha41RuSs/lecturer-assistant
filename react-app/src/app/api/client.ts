@@ -156,6 +156,12 @@ export async function updateLecture(
 	return res.json()
 }
 
+export async function getLectureStudents(lectureId: string): Promise<number[]> {
+	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/students`)
+	if (!res.ok) throw new Error('Failed to load students')
+	return res.json()
+}
+
 export async function broadcastSlideImage(lectureId: number, imageBlob: Blob): Promise<void> {
 	const formData = new FormData()
 	formData.append('image', imageBlob, 'slide.png')

@@ -8,5 +8,6 @@ public record ExamSummaryDto(
         String title,
         Integer totalTimeSec,
         String status,
+        String examType,
         int questionCount
 ) {}

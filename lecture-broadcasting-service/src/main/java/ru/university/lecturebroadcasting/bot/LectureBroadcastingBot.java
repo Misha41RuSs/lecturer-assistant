@@ -20,6 +20,10 @@ import ru.university.lecturebroadcasting.service.QuizServiceClient;
 import ru.university.lecturebroadcasting.service.QuizServiceClient.ExamDetail.Question;
 import ru.university.lecturebroadcasting.service.WrongPasswordException;
 
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageMedia;
+import org.telegram.telegrambots.meta.api.objects.media.InputMediaPhoto;
+import org.telegram.telegrambots.meta.api.objects.Message;
+
 import java.io.ByteArrayInputStream;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,10 +33,14 @@ import java.util.concurrent.ConcurrentHashMap;
 public class LectureBroadcastingBot extends TelegramLongPollingBot {
 
     private static final String CB_PREV_SLIDE = "prev_slide";
-    private static final String CB_EXAM_OPT = "exam_opt:"; // exam_opt:<optionId>
+    private static final String CB_GOTO_SLIDE = "goto_slide";
+    private static final String CB_EXAM_OPT = "exam_opt:";
 
     private final ConcurrentHashMap<Long, String> pendingPasswordJoin = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, ExamSession> examSessions = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Integer> lastSlideMessageId = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Boolean> pendingGoToSlide = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Timer> questionTimers = new ConcurrentHashMap<>();
 
     private final String botUsername;
     private final StudentRepository studentRepository;
@@ -81,6 +89,12 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         log.info("Telegram message: chatId={} cmd='{}'", chatId, cmd);
 
         if ("/start".equals(cmd)) {
+            String[] parts = text.split("\\s+", 2);
+            if (parts.length > 1 && parts[1].startsWith("join_")) {
+                String lectureKey = parts[1].substring(5);
+                tryJoinWithPassword(chatId, lectureKey, null);
+                return;
+            }
             sendText(chatId,
                     "Привет! Я бот для лекций.\n\n" +
                     "/join <название или id> — подключиться к лекции\n" +
@@ -101,6 +115,11 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         if (pendingPasswordJoin.containsKey(chatId) && !cmd.startsWith("/")) {
             String lectureName = pendingPasswordJoin.remove(chatId);
             tryJoinWithPassword(chatId, lectureName, text.trim());
+            return;
+        }
+
+        if (pendingGoToSlide.remove(chatId) != null && !cmd.startsWith("/")) {
+            handleGoToSlideByNumber(chatId, text.trim());
             return;
         }
 
@@ -137,6 +156,12 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
 
+        if (CB_GOTO_SLIDE.equals(data)) {
+            pendingGoToSlide.put(chatId, true);
+            sendText(chatId, "Введите номер слайда:");
+            return;
+        }
+
         if (data.startsWith(CB_EXAM_OPT)) {
             String optionId = data.substring(CB_EXAM_OPT.length());
             handleMultipleChoiceAnswer(chatId, optionId);
@@ -160,9 +185,35 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         }, () -> sendText(chatId, "Вы не подключены. Используйте /join."));
     }
 
+    private void cancelQuestionTimer(long chatId) {
+        Timer t = questionTimers.remove(chatId);
+        if (t != null) t.cancel();
+    }
+
+    private void scheduleQuestionTimer(long chatId, ExamSession session, Question q) {
+        if (q.timeLimitSec() == null) return;
+        Timer t = new Timer(true);
+        questionTimers.put(chatId, t);
+        int qIdx = session.currentIndex();
+        t.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                ExamSession cur = examSessions.get(chatId);
+                if (cur == null || cur.currentIndex() != qIdx) return;
+                cancelQuestionTimer(chatId);
+                quizServiceClient.submitAnswer(cur.getExamId(), chatId,
+                        UUID.fromString(q.id()), null, null);
+                cur.advance();
+                sendText(chatId, "⏰ Время вышло! Ответ на вопрос не засчитан.");
+                sendNextQuestion(chatId, cur);
+            }
+        }, q.timeLimitSec() * 1000L);
+    }
+
     private void handleMultipleChoiceAnswer(long chatId, String optionId) {
         ExamSession session = examSessions.get(chatId);
         if (session == null) return;
+        cancelQuestionTimer(chatId);
 
         Question q = session.currentQuestion();
         quizServiceClient.submitAnswer(
@@ -177,6 +228,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private void handleOpenAnswer(long chatId, String text) {
         ExamSession session = examSessions.get(chatId);
         if (session == null) return;
+        cancelQuestionTimer(chatId);
 
         Question q = session.currentQuestion();
         quizServiceClient.submitAnswer(
@@ -191,39 +243,34 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private void sendNextQuestion(long chatId, ExamSession session) {
         if (!session.hasMore()) {
             examSessions.remove(chatId);
+            cancelQuestionTimer(chatId);
             sendText(chatId, "Тест завершён! Ваши ответы записаны. Результаты сообщит преподаватель.");
             return;
         }
 
         Question q = session.currentQuestion();
         String header = String.format("Вопрос %d/%d", session.currentIndex() + 1, session.total());
-        String timeHint = q.timeLimitSec() != null ? " (" + q.timeLimitSec() + " с)" : "";
+        String timeHint = q.timeLimitSec() != null ? " ⏱ " + q.timeLimitSec() + " с" : "";
 
         if (session.isMultiple()) {
-            StringBuilder sb = new StringBuilder();
-            sb.append(header).append(timeHint).append("\n\n").append(q.text()).append("\n\nВыберите ответ:");
-
-            List<InlineKeyboardButton> row = q.options().stream()
-                    .map(opt -> InlineKeyboardButton.builder()
+            List<List<InlineKeyboardButton>> keyboard = q.options().stream()
+                    .map(opt -> List.of(InlineKeyboardButton.builder()
                             .text(opt.text())
                             .callbackData(CB_EXAM_OPT + opt.id())
-                            .build())
+                            .build()))
                     .toList();
-
-            // По одной кнопке в строку для читаемости
-            List<List<InlineKeyboardButton>> keyboard = row.stream()
-                    .map(btn -> List.of(btn))
-                    .toList();
-
+            String text = header + timeHint + "\n\n" + q.text() + "\n\nВыберите ответ:";
             SendMessage msg = SendMessage.builder()
                     .chatId(chatId)
-                    .text(sb.toString())
+                    .text(text)
                     .replyMarkup(InlineKeyboardMarkup.builder().keyboard(keyboard).build())
                     .build();
             try { execute(msg); } catch (TelegramApiException e) { log.error("sendQuestion failed", e); }
         } else {
             sendText(chatId, header + timeHint + "\n\n" + q.text() + "\n\nНапишите ответ:");
         }
+
+        scheduleQuestionTimer(chatId, session, q);
     }
 
     public void sendExamToStudent(long chatId, UUID examId) {
@@ -271,17 +318,70 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     }
 
     public void sendSlideToStudent(long chatId, byte[] imageBytes, int slideNumber) {
-        InlineKeyboardButton prevBtn = InlineKeyboardButton.builder()
-                .text("Показать предыдущий слайд")
-                .callbackData(CB_PREV_SLIDE)
+        InlineKeyboardMarkup markup = InlineKeyboardMarkup.builder()
+                .keyboardRow(List.of(
+                        InlineKeyboardButton.builder().text("◀ Предыдущий").callbackData(CB_PREV_SLIDE).build(),
+                        InlineKeyboardButton.builder().text("🔢 Слайд №…").callbackData(CB_GOTO_SLIDE).build()
+                ))
                 .build();
+
+        Integer prevMsgId = lastSlideMessageId.get(chatId);
+        if (prevMsgId != null) {
+            try {
+                InputMediaPhoto media = InputMediaPhoto.builder()
+                        .media("attach://slide.jpg")
+                        .mediaName("slide.jpg")
+                        .newMediaStream(new ByteArrayInputStream(imageBytes))
+                        .caption("Слайд " + slideNumber)
+                        .build();
+                EditMessageMedia edit = EditMessageMedia.builder()
+                        .chatId(chatId)
+                        .messageId(prevMsgId)
+                        .media(media)
+                        .replyMarkup(markup)
+                        .build();
+                execute(edit);
+                return;
+            } catch (TelegramApiException e) {
+                log.warn("editMessageMedia failed for chatId={}, sending new: {}", chatId, e.getMessage());
+                lastSlideMessageId.remove(chatId);
+            }
+        }
+
         SendPhoto photo = SendPhoto.builder()
                 .chatId(chatId)
-                .photo(new InputFile(new ByteArrayInputStream(imageBytes), "slide_" + slideNumber + ".jpg"))
+                .photo(new InputFile(new ByteArrayInputStream(imageBytes), "slide.jpg"))
                 .caption("Слайд " + slideNumber)
-                .replyMarkup(InlineKeyboardMarkup.builder().keyboardRow(List.of(prevBtn)).build())
+                .replyMarkup(markup)
                 .build();
-        try { execute(photo); } catch (TelegramApiException e) { log.error("sendSlide failed", e); }
+        try {
+            Message sent = execute(photo);
+            lastSlideMessageId.put(chatId, sent.getMessageId());
+        } catch (TelegramApiException e) {
+            log.error("sendSlide failed chatId={}", chatId, e);
+        }
+    }
+
+    private void handleGoToSlideByNumber(long chatId, String input) {
+        int slideNum;
+        try {
+            slideNum = Integer.parseInt(input.trim());
+        } catch (NumberFormatException e) {
+            sendText(chatId, "Введите число — номер слайда.");
+            return;
+        }
+        studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
+            if (student.getLecture() == null) {
+                sendText(chatId, "Вы не подключены к лекции.");
+                return;
+            }
+            try {
+                byte[] img = lectureService.getSlideImage(student.getLecture(), slideNum);
+                sendSlideToStudent(chatId, img, slideNum);
+            } catch (Exception e) {
+                sendText(chatId, "Слайд " + slideNum + " не найден.");
+            }
+        }, () -> sendText(chatId, "Вы не подключены. Используйте /join."));
     }
 
     private void sendText(long chatId, String text) {

@@ -36,6 +36,12 @@ public class ExamController {
         return examService.listByLecture(lectureId);
     }
 
+    @PostMapping("/exams/{examId}/duplicate")
+    public ResponseEntity<ExamDetailDto> duplicate(@PathVariable UUID examId) {
+        Exam copy = examService.duplicateExam(examId);
+        return ResponseEntity.ok(examService.getExamDetail(copy.getId()));
+    }
+
     @PostMapping("/exams/{examId}/launch")
     public ResponseEntity<ExamDetailDto> launch(@PathVariable UUID examId) {
         examService.launchExam(examId);

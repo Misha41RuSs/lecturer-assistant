@@ -7,6 +7,7 @@ public record CreateExamDto(
         String lectureId,
         String title,
         Integer totalTimeSec,
+        String examType,
         List<QuestionDto> questions
 ) {
     public record QuestionDto(

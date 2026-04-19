@@ -27,8 +27,15 @@ public class Exam {
     @Column(nullable = false)
     private ExamStatus status = ExamStatus.DRAFT;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "exam_type", nullable = false)
+    private ExamType examType = ExamType.EXAM;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
+
+    @Column(name = "activated_at")
+    private Instant activatedAt;
 
     @OneToMany(mappedBy = "exam", cascade = CascadeType.ALL, orphanRemoval = true,
                fetch = FetchType.LAZY)
@@ -44,6 +51,10 @@ public class Exam {
     public void setTotalTimeSec(Integer totalTimeSec) { this.totalTimeSec = totalTimeSec; }
     public ExamStatus getStatus() { return status; }
     public void setStatus(ExamStatus status) { this.status = status; }
+    public ExamType getExamType() { return examType; }
+    public void setExamType(ExamType examType) { this.examType = examType; }
     public Instant getCreatedAt() { return createdAt; }
+    public Instant getActivatedAt() { return activatedAt; }
+    public void setActivatedAt(Instant activatedAt) { this.activatedAt = activatedAt; }
     public List<ExamQuestion> getQuestions() { return questions; }
 }

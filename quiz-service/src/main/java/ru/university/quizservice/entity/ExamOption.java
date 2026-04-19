@@ -15,6 +15,9 @@ public class ExamOption {
     @JoinColumn(name = "question_id", nullable = false)
     private ExamQuestion question;
 
+    @Column(name = "order_index", nullable = false)
+    private int orderIndex;
+
     @Column(nullable = false, columnDefinition = "TEXT")
     private String text;
 
@@ -24,6 +27,8 @@ public class ExamOption {
     public UUID getId() { return id; }
     public ExamQuestion getQuestion() { return question; }
     public void setQuestion(ExamQuestion question) { this.question = question; }
+    public int getOrderIndex() { return orderIndex; }
+    public void setOrderIndex(int orderIndex) { this.orderIndex = orderIndex; }
     public String getText() { return text; }
     public void setText(String text) { this.text = text; }
     public boolean isCorrect() { return correct; }

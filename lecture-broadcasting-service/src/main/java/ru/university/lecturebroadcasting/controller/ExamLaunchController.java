@@ -10,6 +10,8 @@ import ru.university.lecturebroadcasting.service.QuizServiceClient;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.UUID;
 
 @Slf4j
@@ -40,6 +42,19 @@ public class ExamLaunchController {
 
         UUID examId = UUID.fromString(examIdStr);
         long lectureId = Long.parseLong(lectureIdStr);
+
+        QuizServiceClient.ExamDetail examDetail = quizServiceClient.getExam(examId);
+        quizServiceClient.launchExam(examId);
+
+        if (examDetail != null && examDetail.totalTimeSec() != null) {
+            long delayMs = examDetail.totalTimeSec() * 1000L;
+            new Timer(true).schedule(new TimerTask() {
+                @Override public void run() {
+                    log.info("Auto-closing exam {} after {} sec", examId, examDetail.totalTimeSec());
+                    quizServiceClient.closeExam(examId);
+                }
+            }, delayMs);
+        }
 
         List<Long> chatIds = lectureService.getStudentChatIds(lectureId);
         log.info("Launching exam {} for lecture {} → {} students", examId, lectureId, chatIds.size());

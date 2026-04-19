@@ -1,132 +1,138 @@
 import { useEffect, useState } from "react";
-import { Users, HelpCircle, CheckCircle, Target, Download, ChevronUp, ChevronDown, Search } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { Users, ClipboardList, CheckCircle, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import { listLectures, LectureListItem } from "../app/api/client";
 import { getLectureDashboard } from "../app/api/analytics.api";
+import { getExamsByLecture, getExamSubmissions } from "../app/api/quiz.api";
 
-interface SlideActivity { slideNumber: number; count: number }
-
-interface DashboardData {
-  lectureId: string;
-  totalEvents: number;
-  slideChanges: number;
-  studentsJoined: number;
-  eventsByType: Record<string, number>;
-  slideActivity: SlideActivity[];
+interface StudentRow { chatId: number }
+interface ExamRow {
+  id: string
+  title: string
+  status: string
+  examType: string
+  submissionCount: number
+  avgScore: number | null
+  maxScore: number | null
+  submissions: SubmRow[]
+  expanded: boolean
 }
-
-// Цвета для pie-чарта типов событий
-const EVENT_COLORS = ["#f97316", "#22c55e", "#3b82f6", "#a855f7", "#ef4444", "#eab308"];
+interface SubmRow {
+  chatId: number
+  totalScore: number
+  maxScore: number
+  hasUngraded: boolean
+}
 
 export function StatisticsPage() {
   const [lectures, setLectures] = useState<LectureListItem[]>([]);
   const [selectedLectureId, setSelectedLectureId] = useState<number>(0);
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-  const [loadingDashboard, setLoadingDashboard] = useState(false);
+  const [students, setStudents] = useState<StudentRow[]>([]);
+  const [exams, setExams] = useState<ExamRow[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"slideNumber" | "count">("slideNumber");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const [page, setPage] = useState(0);
-  const perPage = 5;
-
-  // Загружаем список лекций
   useEffect(() => {
     listLectures()
       .then(setLectures)
       .catch(() => toast.error("Не удалось загрузить список лекций"));
   }, []);
 
-  // Загружаем дашборд при выборе лекции
   useEffect(() => {
-    if (!selectedLectureId) { setDashboard(null); return; }
-    const lec = lectures.find(l => l.id === selectedLectureId);
-    if (!lec) return;
-    setLoadingDashboard(true);
-    getLectureDashboard(String(selectedLectureId))
-      .then((d: DashboardData) => setDashboard(d))
-      .catch(() => toast.error("Не удалось загрузить аналитику"))
-      .finally(() => setLoadingDashboard(false));
-  }, [selectedLectureId, lectures]);
+    if (!selectedLectureId) { setStudents([]); setExams([]); return; }
+    setLoading(true);
 
-  const slideData: SlideActivity[] = dashboard?.slideActivity ?? [];
+    Promise.all([
+      getLectureDashboard(String(selectedLectureId)).catch(() => null),
+      getExamsByLecture(String(selectedLectureId)).catch(() => []),
+    ]).then(async ([dashboard, examList]: [any, any[]]) => {
+      // Студенты из аналитики
+      const ids: number[] = dashboard?.studentIds ?? [];
+      setStudents(ids.map(chatId => ({ chatId })));
 
-  const filtered = slideData
-    .filter(s => String(s.slideNumber).includes(search))
-    .sort((a, b) => {
-      const mul = sortDir === "asc" ? 1 : -1;
-      return mul * (a[sortBy] - b[sortBy]);
-    });
-  const paged = filtered.slice(page * perPage, (page + 1) * perPage);
-  const totalPages = Math.ceil(filtered.length / perPage);
+      // Тесты с результатами
+      const rows: ExamRow[] = await Promise.all(
+        examList.map(async (exam: any) => {
+          let submissions: SubmRow[] = [];
+          if (exam.status !== 'DRAFT') {
+            try {
+              const subs: any[] = await getExamSubmissions(exam.id);
+              submissions = subs.map(s => ({
+                chatId: s.chatId,
+                totalScore: s.totalScore,
+                maxScore: s.maxScore,
+                hasUngraded: s.hasUngraded,
+              }));
+            } catch { /* ignore */ }
+          }
+          const gradedSubs = submissions.filter(s => s.maxScore > 0);
+          const avgScore = gradedSubs.length > 0
+            ? gradedSubs.reduce((sum, s) => sum + (s.totalScore / s.maxScore) * 100, 0) / gradedSubs.length
+            : null;
+          return {
+            id: exam.id,
+            title: exam.title,
+            status: exam.status,
+            examType: exam.examType ?? 'EXAM',
+            submissionCount: submissions.length,
+            avgScore,
+            maxScore: gradedSubs[0]?.maxScore ?? null,
+            submissions,
+            expanded: false,
+          };
+        })
+      );
+      setExams(rows);
+    }).finally(() => setLoading(false));
+  }, [selectedLectureId]);
 
-  const handleSort = (col: "slideNumber" | "count") => {
-    if (sortBy === col) setSortDir(sortDir === "asc" ? "desc" : "asc");
-    else { setSortBy(col); setSortDir("desc"); }
+  const toggleExam = (id: string) => {
+    setExams(prev => prev.map(e => e.id === id ? { ...e, expanded: !e.expanded } : e));
   };
-  const SortIcon = ({ col }: { col: string }) => {
-    if (sortBy !== col) return null;
-    return sortDir === "asc" ? <ChevronUp className="w-3 h-3 inline" /> : <ChevronDown className="w-3 h-3 inline" />;
-  };
 
-  // Pie: распределение типов событий
-  const eventPieData = dashboard
-    ? Object.entries(dashboard.eventsByType).map(([name, value], i) => ({
-        name,
-        value,
-        color: EVENT_COLORS[i % EVENT_COLORS.length],
-      }))
-    : [];
+  const conductedExams = exams.filter(e => e.status !== 'DRAFT');
+  const allAvg = conductedExams.filter(e => e.avgScore !== null);
+  const overallAvg = allAvg.length > 0
+    ? Math.round(allAvg.reduce((s, e) => s + e.avgScore!, 0) / allAvg.length)
+    : null;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-          <h1 className="mb-1">Статистика</h1>
-          <p className="text-sm text-neutral-500">Аналитика по лекциям из analytics-service</p>
-        </div>
-        <button
-          onClick={() => toast.success("CSV экспортирован")}
-          className="flex items-center gap-2 px-4 py-2 border border-neutral-300 rounded-lg hover:bg-neutral-50 text-sm self-start sm:self-auto"
-        >
-          <Download className="w-4 h-4" /> Экспорт CSV
-        </button>
+      <div className="mb-6">
+        <h1 className="mb-1">Статистика</h1>
+        <p className="text-sm text-neutral-500">Студенты и результаты тестов по лекции</p>
       </div>
 
-      {/* Фильтр лекции */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+      <div className="mb-6">
         <select
           value={selectedLectureId}
-          onChange={e => { setSelectedLectureId(Number(e.target.value)); setPage(0); }}
+          onChange={e => setSelectedLectureId(Number(e.target.value))}
           className="px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
         >
           <option value={0}>Выберите лекцию</option>
           {lectures.map(l => (
-            <option key={l.id} value={l.id}>{l.name}</option>
+            <option key={l.id} value={l.id}>{l.name} ({l.status})</option>
           ))}
         </select>
       </div>
 
       {!selectedLectureId && (
         <div className="bg-white rounded-xl p-12 border border-neutral-200 text-center text-neutral-400 text-sm">
-          Выберите лекцию для просмотра аналитики
+          Выберите лекцию для просмотра статистики
         </div>
       )}
 
-      {selectedLectureId > 0 && loadingDashboard && (
-        <div className="text-center py-12 text-neutral-400 text-sm">Загрузка аналитики...</div>
+      {selectedLectureId > 0 && loading && (
+        <div className="text-center py-12 text-neutral-400 text-sm">Загрузка...</div>
       )}
 
-      {selectedLectureId > 0 && !loadingDashboard && dashboard && (
+      {selectedLectureId > 0 && !loading && (
         <>
-          {/* Карточки */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          {/* Сводные карточки */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
             {[
-              { icon: Users, color: "bg-orange-100 text-orange-600", val: String(dashboard.studentsJoined), label: "Студентов зашло" },
-              { icon: HelpCircle, color: "bg-orange-100 text-orange-600", val: String(dashboard.totalEvents), label: "Всего событий" },
-              { icon: CheckCircle, color: "bg-green-100 text-green-600", val: String(dashboard.slideChanges), label: "Смен слайдов" },
-              { icon: Target, color: "bg-green-100 text-green-600", val: String(slideData.length), label: "Активных слайдов" },
+              { icon: Users, color: "bg-orange-100 text-orange-600", val: String(students.length), label: "Уникальных студентов" },
+              { icon: ClipboardList, color: "bg-blue-100 text-blue-600", val: String(conductedExams.length), label: "Проведено тестов" },
+              { icon: CheckCircle, color: "bg-green-100 text-green-600", val: overallAvg !== null ? `${overallAvg}%` : "—", label: "Средний балл" },
             ].map((s, i) => (
               <div key={i} className="bg-white rounded-xl p-4 border border-neutral-200">
                 <div className="flex items-center gap-3">
@@ -134,7 +140,7 @@ export function StatisticsPage() {
                     <s.icon className="w-4 h-4" />
                   </div>
                   <div>
-                    <div className="text-xl">{s.val}</div>
+                    <div className="text-xl font-semibold">{s.val}</div>
                     <div className="text-xs text-neutral-500">{s.label}</div>
                   </div>
                 </div>
@@ -142,115 +148,104 @@ export function StatisticsPage() {
             ))}
           </div>
 
-          {/* Графики */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <div className="bg-white rounded-xl p-5 border border-neutral-200">
-              <h3 className="text-sm mb-4">Активность по слайдам</h3>
-              {slideData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={slideData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
-                    <XAxis dataKey="slideNumber" tick={{ fontSize: 12 }} label={{ value: 'Слайд', position: 'insideBottom', offset: -5, fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 12 }} />
-                    <Tooltip formatter={(v) => [v, 'Событий']} labelFormatter={(l) => `Слайд ${l}`} />
-                    <Bar dataKey="count" fill="#f97316" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-[250px] text-neutral-400 text-sm">Нет данных</div>
-              )}
-            </div>
-
-            <div className="bg-white rounded-xl p-5 border border-neutral-200">
-              <h3 className="text-sm mb-4">Распределение событий</h3>
-              {eventPieData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={250}>
-                  <PieChart>
-                    <Pie data={eventPieData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} dataKey="value"
-                      label={({ name, value }) => `${name}: ${value}`}>
-                      {eventPieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-[250px] text-neutral-400 text-sm">Нет данных</div>
-              )}
-            </div>
+          {/* Список студентов */}
+          <div className="bg-white rounded-xl p-5 border border-neutral-200 mb-6">
+            <h3 className="text-sm font-medium mb-3">Студенты ({students.length})</h3>
+            {students.length === 0 ? (
+              <p className="text-sm text-neutral-400">Нет данных о студентах</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-neutral-200">
+                      <th className="text-left py-2 px-3 text-xs text-neutral-500">#</th>
+                      <th className="text-left py-2 px-3 text-xs text-neutral-500">Telegram Chat ID</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {students.map((s, i) => (
+                      <tr key={s.chatId} className="border-b border-neutral-100 hover:bg-neutral-50">
+                        <td className="py-2 px-3 text-sm text-neutral-400">{i + 1}</td>
+                        <td className="py-2 px-3 text-sm font-mono">{s.chatId}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
-          {/* Таблица активности слайдов */}
+          {/* Тесты */}
           <div className="bg-white rounded-xl p-5 border border-neutral-200">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-              <h3 className="text-sm">Активность по слайдам</h3>
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-                <input
-                  type="text" value={search}
-                  onChange={e => { setSearch(e.target.value); setPage(0); }}
-                  placeholder="Поиск по номеру..."
-                  className="pl-9 pr-4 py-2 bg-neutral-50 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 w-full sm:w-48"
-                />
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-neutral-200">
-                    <th
-                      onClick={() => handleSort("slideNumber")}
-                      className="text-left py-2.5 px-3 text-sm text-neutral-600 cursor-pointer hover:text-neutral-900"
+            <h3 className="text-sm font-medium mb-3">Тесты и опросы ({exams.length})</h3>
+            {exams.length === 0 ? (
+              <p className="text-sm text-neutral-400">Нет тестов для этой лекции</p>
+            ) : (
+              <div className="space-y-2">
+                {exams.map(exam => (
+                  <div key={exam.id} className="border border-neutral-200 rounded-lg overflow-hidden">
+                    <button
+                      onClick={() => toggleExam(exam.id)}
+                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-neutral-50 text-left"
                     >
-                      Слайд <SortIcon col="slideNumber" />
-                    </th>
-                    <th
-                      onClick={() => handleSort("count")}
-                      className="text-left py-2.5 px-3 text-sm text-neutral-600 cursor-pointer hover:text-neutral-900"
-                    >
-                      Событий <SortIcon col="count" />
-                    </th>
-                    <th className="text-left py-2.5 px-3 text-sm text-neutral-600">Доля</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paged.map((s, i) => {
-                    const total = slideData.reduce((acc, x) => acc + x.count, 0);
-                    const pct = total > 0 ? Math.round(s.count / total * 100) : 0;
-                    return (
-                      <tr key={i} className="border-b border-neutral-100 hover:bg-neutral-50">
-                        <td className="py-2.5 px-3 text-sm">Слайд {s.slideNumber}</td>
-                        <td className="py-2.5 px-3 text-sm">{s.count}</td>
-                        <td className="py-2.5 px-3 text-sm">
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 bg-neutral-100 rounded-full h-1.5 max-w-[120px]">
-                              <div className="bg-orange-500 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
-                            </div>
-                            <span className="text-neutral-500 text-xs">{pct}%</span>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          exam.status === 'ACTIVE' ? 'bg-green-100 text-green-700' :
+                          exam.status === 'CLOSED' ? 'bg-neutral-100 text-neutral-600' :
+                          'bg-yellow-100 text-yellow-700'
+                        }`}>{exam.status}</span>
+                        <span className="text-sm font-medium">{exam.title}</span>
+                        {exam.examType === 'SURVEY' && (
+                          <span className="text-xs text-neutral-400">(опрос)</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-sm text-neutral-500">{exam.submissionCount} ответов</span>
+                        {exam.avgScore !== null && (
+                          <span className="text-sm font-medium text-orange-600">{Math.round(exam.avgScore)}%</span>
+                        )}
+                        {exam.expanded ? <ChevronUp className="w-4 h-4 text-neutral-400" /> : <ChevronDown className="w-4 h-4 text-neutral-400" />}
+                      </div>
+                    </button>
 
-            {filtered.length === 0 && (
-              <div className="text-center py-8 text-neutral-500 text-sm">Нет данных по активности слайдов</div>
-            )}
-
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between mt-3">
-                <div className="text-sm text-neutral-500">
-                  {page * perPage + 1}–{Math.min((page + 1) * perPage, filtered.length)} из {filtered.length}
-                </div>
-                <div className="flex gap-1">
-                  <button onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0}
-                    className="px-3 py-1 border border-neutral-300 rounded text-sm hover:bg-neutral-50 disabled:opacity-40">Назад</button>
-                  <button onClick={() => setPage(Math.min(totalPages - 1, page + 1))} disabled={page >= totalPages - 1}
-                    className="px-3 py-1 border border-neutral-300 rounded text-sm hover:bg-neutral-50 disabled:opacity-40">Вперёд</button>
-                </div>
+                    {exam.expanded && exam.submissions.length > 0 && (
+                      <div className="border-t border-neutral-200 px-4 py-3">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b border-neutral-100">
+                              <th className="text-left py-1.5 text-xs text-neutral-500">Chat ID</th>
+                              <th className="text-left py-1.5 text-xs text-neutral-500">Баллы</th>
+                              <th className="text-left py-1.5 text-xs text-neutral-500">Результат</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {exam.submissions.map((sub, i) => {
+                              const pct = sub.maxScore > 0 ? Math.round(sub.totalScore / sub.maxScore * 100) : 0;
+                              return (
+                                <tr key={i} className="border-b border-neutral-50">
+                                  <td className="py-1.5 text-sm font-mono">{sub.chatId}</td>
+                                  <td className="py-1.5 text-sm">{sub.totalScore}/{sub.maxScore}</td>
+                                  <td className="py-1.5 text-sm">
+                                    {sub.hasUngraded ? (
+                                      <span className="text-yellow-600">Не проверено</span>
+                                    ) : (
+                                      <span className={pct >= 60 ? 'text-green-600' : 'text-red-500'}>{pct}%</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {exam.expanded && exam.submissions.length === 0 && (
+                      <div className="border-t border-neutral-200 px-4 py-3 text-sm text-neutral-400">
+                        Нет ответов
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>

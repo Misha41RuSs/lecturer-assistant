@@ -11,6 +11,7 @@ import ru.university.lecturebroadcasting.dto.LectureListItem;
 import ru.university.lecturebroadcasting.entity.AccessType;
 import ru.university.lecturebroadcasting.entity.Lecture;
 import ru.university.lecturebroadcasting.service.LectureService;
+import ru.university.lecturebroadcasting.service.QuizServiceClient;
 import ru.university.lecturebroadcasting.websocket.SlideUpdateMessage;
 
 import java.util.List;
@@ -24,6 +25,7 @@ public class LectureController {
     private final LectureService lectureService;
     private final LectureBroadcastingBot bot;
     private final SimpMessagingTemplate messagingTemplate;
+    private final QuizServiceClient quizServiceClient;
 
     @PostMapping
     public ResponseEntity<Lecture> createLecture(@RequestBody Map<String, String> body) {
@@ -112,9 +114,15 @@ public class LectureController {
 
     @PostMapping("/{id}/stop")
     public ResponseEntity<Lecture> stopLecture(@PathVariable Long id) {
+        quizServiceClient.closeAllExamsForLecture(id);
         LectureService.StopLectureResult result = lectureService.stopLecture(id);
         bot.notifyLectureEndedToStudents(result.lecture().getName(), result.disconnectedChatIds());
         return ResponseEntity.ok(result.lecture());
+    }
+
+    @GetMapping("/{id}/students")
+    public ResponseEntity<List<Long>> getStudents(@PathVariable Long id) {
+        return ResponseEntity.ok(lectureService.getStudentChatIds(id));
     }
 
     @PutMapping("/{id}/current-slide")

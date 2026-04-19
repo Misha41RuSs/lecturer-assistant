@@ -31,7 +31,7 @@ public class QuizServiceClient {
         }
     }
 
-    public List<ExamSummary> getExamsByLecture(UUID lectureId) {
+    public List<ExamSummary> getExamsByLecture(Long lectureId) {
         try {
             ResponseEntity<List<ExamSummary>> resp = restTemplate.exchange(
                     baseUrl + "/lectures/" + lectureId + "/exams",
@@ -41,6 +41,36 @@ public class QuizServiceClient {
         } catch (Exception e) {
             log.error("getExamsByLecture failed: {}", e.getMessage());
             return List.of();
+        }
+    }
+
+    public void closeAllExamsForLecture(Long lectureId) {
+        try {
+            List<ExamSummary> exams = getExamsByLecture(lectureId);
+            for (ExamSummary exam : exams) {
+                if ("ACTIVE".equals(exam.status())) {
+                    restTemplate.postForObject(baseUrl + "/exams/" + exam.id() + "/close", null, Object.class);
+                    log.info("Closed exam {} for lecture {}", exam.id(), lectureId);
+                }
+            }
+        } catch (Exception e) {
+            log.error("closeAllExamsForLecture failed lectureId={}: {}", lectureId, e.getMessage());
+        }
+    }
+
+    public void closeExam(UUID examId) {
+        try {
+            restTemplate.postForObject(baseUrl + "/exams/" + examId + "/close", null, Object.class);
+        } catch (Exception e) {
+            log.error("closeExam failed examId={}: {}", examId, e.getMessage());
+        }
+    }
+
+    public void launchExam(UUID examId) {
+        try {
+            restTemplate.postForObject(baseUrl + "/exams/" + examId + "/launch", null, Object.class);
+        } catch (Exception e) {
+            log.error("launchExam failed examId={}: {}", examId, e.getMessage());
         }
     }
 

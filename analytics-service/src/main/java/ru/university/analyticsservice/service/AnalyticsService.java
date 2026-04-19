@@ -9,6 +9,7 @@ import ru.university.analyticsservice.repository.ActivityLogRepository;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.Objects;
 
 @Service
 public class AnalyticsService {
@@ -36,7 +37,13 @@ public class AnalyticsService {
                 .collect(Collectors.groupingBy(ActivityLog::getActionType, Collectors.counting()));
 
         long slideChanges = byType.getOrDefault("slide_changed", 0L);
-        long studentsJoined = byType.getOrDefault("student_joined", 0L);
+        List<Long> studentIds = logs.stream()
+                .filter(l -> "student_joined".equals(l.getActionType()))
+                .map(ActivityLog::getUserId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        long studentsJoined = studentIds.size();
 
         Map<String, Long> slideEvents = logs.stream()
                 .filter(l -> l.getPayload() != null && l.getPayload().matches(".*\"slideNumber\":\\s*\\d+.*"))
@@ -48,7 +55,7 @@ public class AnalyticsService {
                 .sorted(Comparator.comparingInt(SlideActivityDto::slideNumber))
                 .toList();
 
-        return new DashboardDto(lectureId, logs.size(), slideChanges, studentsJoined, byType, slideActivity);
+        return new DashboardDto(lectureId, logs.size(), slideChanges, studentsJoined, byType, slideActivity, studentIds);
     }
 
     public Map<String, Object> getAggregations(Long lectureId) {

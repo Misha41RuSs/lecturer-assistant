@@ -31,6 +31,9 @@ public class ExamService {
         exam.setLectureId(Long.parseLong(dto.lectureId()));
         exam.setTitle(dto.title());
         exam.setTotalTimeSec(dto.totalTimeSec());
+        if (dto.examType() != null) {
+            exam.setExamType(ExamType.valueOf(dto.examType()));
+        }
 
         int idx = 0;
         for (CreateExamDto.QuestionDto qDto : dto.questions()) {
@@ -42,9 +45,11 @@ public class ExamService {
             q.setTimeLimitSec(qDto.timeLimitSec());
 
             if (qDto.options() != null) {
+                int optIdx = 0;
                 for (CreateExamDto.OptionDto oDto : qDto.options()) {
                     ExamOption opt = new ExamOption();
                     opt.setQuestion(q);
+                    opt.setOrderIndex(optIdx++);
                     opt.setText(oDto.text());
                     opt.setCorrect(oDto.correct());
                     q.getOptions().add(opt);
@@ -53,6 +58,37 @@ public class ExamService {
             exam.getQuestions().add(q);
         }
         return examRepository.save(exam);
+    }
+
+    @Transactional
+    public Exam duplicateExam(UUID examId) {
+        Exam src = examRepository.findById(examId)
+                .orElseThrow(() -> new IllegalArgumentException("Exam not found: " + examId));
+        Exam copy = new Exam();
+        copy.setLectureId(src.getLectureId());
+        copy.setTitle(src.getTitle() + " (копия)");
+        copy.setTotalTimeSec(src.getTotalTimeSec());
+        copy.setExamType(src.getExamType());
+        int idx = 0;
+        for (ExamQuestion srcQ : src.getQuestions()) {
+            ExamQuestion q = new ExamQuestion();
+            q.setExam(copy);
+            q.setOrderIndex(idx++);
+            q.setText(srcQ.getText());
+            q.setType(srcQ.getType());
+            q.setTimeLimitSec(srcQ.getTimeLimitSec());
+            int optIdx = 0;
+            for (ExamOption srcO : srcQ.getOptions()) {
+                ExamOption opt = new ExamOption();
+                opt.setQuestion(q);
+                opt.setOrderIndex(optIdx++);
+                opt.setText(srcO.getText());
+                opt.setCorrect(srcO.isCorrect());
+                q.getOptions().add(opt);
+            }
+            copy.getQuestions().add(q);
+        }
+        return examRepository.save(copy);
     }
 
     public Exam getExam(UUID examId) {
@@ -69,7 +105,7 @@ public class ExamService {
                 .stream()
                 .map(e -> new ExamSummaryDto(
                         e.getId(), e.getTitle(), e.getTotalTimeSec(),
-                        e.getStatus().name(), e.getQuestions().size()))
+                        e.getStatus().name(), e.getExamType().name(), e.getQuestions().size()))
                 .toList();
     }
 
@@ -77,6 +113,7 @@ public class ExamService {
     public Exam launchExam(UUID examId) {
         Exam exam = getExam(examId);
         exam.setStatus(ExamStatus.ACTIVE);
+        exam.setActivatedAt(Instant.now());
         return examRepository.save(exam);
     }
 
@@ -109,6 +146,15 @@ public class ExamService {
                 .orElseThrow(() -> new IllegalArgumentException("No active submission for chatId=" + chatId));
 
         Exam exam = sub.getExam();
+        if (exam.getStatus() != ExamStatus.ACTIVE) {
+            throw new IllegalStateException("Exam is already closed");
+        }
+        if (exam.getTotalTimeSec() != null && exam.getActivatedAt() != null) {
+            long elapsed = Instant.now().getEpochSecond() - exam.getActivatedAt().getEpochSecond();
+            if (elapsed > exam.getTotalTimeSec()) {
+                throw new IllegalStateException("Exam time limit exceeded");
+            }
+        }
         UUID questionId = UUID.fromString(dto.questionId());
 
         ExamQuestion question = exam.getQuestions().stream()
@@ -120,12 +166,16 @@ public class ExamService {
         answer.setSubmission(sub);
         answer.setQuestion(question);
 
-        if (question.getType() == QuestionType.MULTIPLE && dto.selectedOptionId() != null) {
-            UUID optId = UUID.fromString(dto.selectedOptionId());
-            answer.setSelectedOptionId(optId);
-            boolean correct = question.getOptions().stream()
-                    .anyMatch(o -> o.getId().equals(optId) && o.isCorrect());
-            answer.setScore(correct ? answer.getMaxScore() : 0);
+        if (question.getType() == QuestionType.MULTIPLE) {
+            if (dto.selectedOptionId() != null) {
+                UUID optId = UUID.fromString(dto.selectedOptionId());
+                answer.setSelectedOptionId(optId);
+                boolean correct = question.getOptions().stream()
+                        .anyMatch(o -> o.getId().equals(optId) && o.isCorrect());
+                answer.setScore(correct ? answer.getMaxScore() : 0);
+            } else {
+                answer.setScore(0); // тайм-аут или пропуск — 0 баллов
+            }
         } else {
             answer.setOpenText(dto.openText());
         }
@@ -219,7 +269,7 @@ public class ExamService {
 
         return new ExamDetailDto(
                 exam.getId(), exam.getLectureId(), exam.getTitle(),
-                exam.getTotalTimeSec(), exam.getStatus().name(), questions
+                exam.getTotalTimeSec(), exam.getStatus().name(), exam.getExamType().name(), questions
         );
     }
 }

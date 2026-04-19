@@ -10,6 +10,7 @@ public record ExamDetailDto(
         String title,
         Integer totalTimeSec,
         String status,
+        String examType,
         List<QuestionDto> questions
 ) {
     public record QuestionDto(

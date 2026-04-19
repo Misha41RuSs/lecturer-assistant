@@ -9,5 +9,6 @@ public record DashboardDto(
         long slideChanges,
         long studentsJoined,
         Map<String, Long> eventsByType,
-        List<SlideActivityDto> slideActivity
+        List<SlideActivityDto> slideActivity,
+        List<Long> studentIds
 ) {}

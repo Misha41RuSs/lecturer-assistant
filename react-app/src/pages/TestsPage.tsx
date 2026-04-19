@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2, Clock, Check, BarChart3, ChevronDown, ChevronRight, ChevronLeft, Eye, Edit2, Star, Send } from "lucide-react";
+import { Plus, Trash2, Clock, Check, BarChart3, ChevronDown, ChevronRight, ChevronLeft, Eye, Edit2, Star, Send, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { listLectures, LectureListItem } from "../app/api/client";
 import {
   createExam, getExamsByLecture, getExam, getExamSubmissions,
-  launchExam, closeExam, gradeAnswer, broadcastExam,
+  launchExam, closeExam, gradeAnswer, broadcastExam, duplicateExam,
 } from "../app/api/quiz.api";
 
 interface ApiOption { id: string; text: string }
@@ -15,6 +15,7 @@ interface ApiQuestion {
 interface ApiExam {
   id: string; lectureId: string; title: string;
   totalTimeSec: number | null; status: "DRAFT" | "ACTIVE" | "CLOSED";
+  examType?: "EXAM" | "SURVEY";
   questionCount?: number; questions: ApiQuestion[];
 }
 interface ApiAnswer {
@@ -167,6 +168,16 @@ export function TestsPage() {
     }
   };
 
+  const handleDuplicate = async (examId: string) => {
+    try {
+      await duplicateExam(examId);
+      toast.success("Тест скопирован как DRAFT");
+      reloadExams();
+    } catch {
+      toast.error("Не удалось дублировать тест");
+    }
+  };
+
   const handleClose = async (examId: string) => {
     try {
       await closeExam(examId);
@@ -180,11 +191,12 @@ export function TestsPage() {
   const handleGrade = async (answerId: string, score: number) => {
     try {
       await gradeAnswer(answerId, score);
-      // Обновляем локально без перезагрузки
-      setSubmissions(subs => subs.map(s => ({
-        ...s,
-        answers: s.answers.map(a => a.answerId === answerId ? { ...a, score } : a),
-      })));
+      setSubmissions(subs => subs.map(s => {
+        const newAnswers = s.answers.map(a => a.answerId === answerId ? { ...a, score } : a);
+        const hasUngraded = newAnswers.some(a => a.score == null);
+        const totalScore = newAnswers.reduce((sum, a) => sum + (a.score ?? 0), 0);
+        return { ...s, answers: newAnswers, hasUngraded, totalScore };
+      }));
       toast.success("Оценка сохранена");
     } catch {
       toast.error("Не удалось сохранить оценку");
@@ -303,6 +315,61 @@ export function TestsPage() {
 
   // Stats view
   if (view === "stats" && examDetail) {
+    const isSurvey = examDetail.examType === "SURVEY";
+
+    if (isSurvey) {
+      // Survey: show rating distribution
+      const ratingCounts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+      submissions.forEach(r => {
+        r.answers.forEach(a => {
+          const match = a.selectedOptionText?.match(/^(\d)/);
+          if (match) ratingCounts[parseInt(match[1])] = (ratingCounts[parseInt(match[1])] || 0) + 1;
+        });
+      });
+      const total = submissions.length;
+      const avgRating = total > 0
+        ? (Object.entries(ratingCounts).reduce((s, [k, v]) => s + parseInt(k) * v, 0) / total).toFixed(1)
+        : "—";
+
+      return (
+        <div className="p-4 sm:p-6 lg:p-8">
+          <Breadcrumbs items={[{ label: "Тесты", onClick: () => setView("list") }, { label: examDetail.title }]} />
+          <h1 className="mb-1">{examDetail.title}</h1>
+          <p className="text-sm text-neutral-500 mb-6">{total} ответов · {getStatusLabel(examDetail.status).text}</p>
+
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            <div className="bg-white rounded-xl p-4 border border-neutral-200">
+              <div className="text-3xl mb-1 text-orange-500">{avgRating}</div>
+              <div className="text-sm text-neutral-500">Средняя оценка</div>
+            </div>
+            <div className="bg-white rounded-xl p-4 border border-neutral-200">
+              <div className="text-3xl mb-1">{total}</div>
+              <div className="text-sm text-neutral-500">Ответили</div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl p-5 border border-neutral-200">
+            <h3 className="text-sm mb-4">Распределение оценок</h3>
+            <div className="space-y-3">
+              {[5, 4, 3, 2, 1].map(star => {
+                const count = ratingCounts[star] || 0;
+                const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                return (
+                  <div key={star} className="flex items-center gap-3">
+                    <span className="text-sm w-16 flex-shrink-0">{"⭐".repeat(star)}</span>
+                    <div className="flex-1 bg-neutral-100 rounded-full h-4 overflow-hidden">
+                      <div className="h-full bg-orange-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-sm text-neutral-500 w-16 text-right flex-shrink-0">{count} ({pct}%)</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     const avg = submissions.length > 0
       ? Math.round(submissions.reduce((s, r) => s + r.totalScore, 0) / submissions.length) : 0;
     const maxPossible = submissions[0]?.maxScore ?? 0;
@@ -579,6 +646,10 @@ export function TestsPage() {
                       <button onClick={() => openStats(exam.id)}
                         className="flex items-center gap-1 px-3 py-1.5 border border-neutral-300 rounded-lg text-sm hover:bg-neutral-50">
                         <BarChart3 className="w-3.5 h-3.5" /> Результаты
+                      </button>
+                      <button onClick={() => handleDuplicate(exam.id)}
+                        className="flex items-center gap-1 px-3 py-1.5 border border-neutral-300 rounded-lg text-sm hover:bg-neutral-50">
+                        <Copy className="w-3.5 h-3.5" /> Дублировать
                       </button>
                       {exam.status === "DRAFT" && (
                         <button onClick={() => handleLaunch(exam.id)}

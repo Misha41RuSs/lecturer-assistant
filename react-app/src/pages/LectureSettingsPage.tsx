@@ -82,7 +82,7 @@ export function LectureSettingsPage() {
 	}, [lectureId])
 
 	// Студенты подключаются через Telegram-бота командой /join
-	const BOT_USERNAME = 'lecturer-assistant'
+	const BOT_USERNAME = 'lecturer_assistant_bot'
 	const telegramLink = `https://t.me/${BOT_USERNAME}?start=join_${lectureId}`
 	const joinCommand = `/join ${lectureName || lectureId}`
 	const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(telegramLink)}`

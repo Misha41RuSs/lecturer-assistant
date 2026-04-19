@@ -24,16 +24,18 @@ import {
 	getSlideSequence,
 	BASE_URL,
 	stopLecture,
-	broadcastSlideImage
+	broadcastSlideImage,
+	getLectureStudents
 } from '../app/api/client'
-import { getQuestions, answerQuestion, createExam, broadcastExam } from '../app/api/quiz.api'
-import { sendLectureEvent, getLectureDashboard } from '../app/api/analytics.api'
+import { getQuestions, answerQuestion, createExam, broadcastExam, getExamsByLecture } from '../app/api/quiz.api'
+import { sendLectureEvent } from '../app/api/analytics.api'
 import { DrawingOverlay, DrawingOverlayHandle } from '../features/DrawingOverlay'
 
 interface SlideData {
 	id: string
 	index: number
 	imageUrl: string
+	isQrSlide?: boolean
 }
 
 interface Question {
@@ -46,25 +48,46 @@ interface Question {
 }
 
 function QuizLaunchForm({
+	lectureId,
 	studentsCount,
 	onLaunch,
 }: {
+	lectureId: string
 	studentsCount: number
-	onLaunch: (title: string) => void
+	onLaunch: (examId: string) => void
 }) {
-	const [title, setTitle] = useState('')
+	const [exams, setExams] = useState<{ id: string; title: string }[]>([])
+	const [selectedId, setSelectedId] = useState('')
+
+	useEffect(() => {
+		getExamsByLecture(lectureId)
+			.then((list: any[]) => {
+				setExams(list)
+				if (list.length > 0) setSelectedId(list[0].id)
+			})
+			.catch(() => {})
+	}, [lectureId])
+
 	return (
 		<div className="space-y-3 mb-4">
-			<input
-				type="text"
-				value={title}
-				onChange={e => setTitle(e.target.value)}
-				placeholder="Название квиза..."
-				className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-			/>
+			{exams.length === 0 ? (
+				<p className="text-sm text-neutral-500">Нет тестов. Создайте тест в разделе «Тесты».</p>
+			) : (
+				<select
+					value={selectedId}
+					onChange={e => setSelectedId(e.target.value)}
+					className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+				>
+					{exams.map((e: any) => (
+						<option key={e.id} value={e.id}>
+							{e.title} [{e.status}]
+						</option>
+					))}
+				</select>
+			)}
 			<button
-				onClick={() => { if (title.trim()) onLaunch(title.trim()) }}
-				disabled={!title.trim()}
+				onClick={() => { if (selectedId) onLaunch(selectedId) }}
+				disabled={!selectedId}
 				className="w-full px-4 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 disabled:opacity-40"
 			>
 				Запустить для всех ({studentsCount})
@@ -140,6 +163,9 @@ export function LivePresentationPage() {
 				if (lecture.accessType === 'PASSWORD') {
 					setAccessType('password')
 					setPassword(lecture.password || '')
+				} else if (lecture.accessType === 'INVITATION') {
+					setAccessType('invitation')
+					setPassword('')
 				} else {
 					setAccessType('open')
 					setPassword('')
@@ -149,18 +175,27 @@ export function LivePresentationPage() {
 				if (seqId) {
 					const sequence = await getSlideSequence(seqId)
 					const slideIds: string[] = sequence.slides || []
-					
-					const slides: SlideData[] = slideIds.map((id: string, idx: number) => ({
+
+					const realSlides: SlideData[] = slideIds.map((id: string, idx: number) => ({
 						id,
 						index: idx + 1,
 						imageUrl: `${BASE_URL}/slide-sequences/${seqId}/slide/${idx + 1}`
 					}))
-					
+
+					const isInvitation = lecture.accessType === 'INVITATION'
+					const slides: SlideData[] = isInvitation
+						? [{ id: 'qr-slide', index: 0, imageUrl: '', isQrSlide: true }, ...realSlides]
+						: realSlides
+
 					setSlidesData(slides)
-					
-					// Set current slide from lecture data
-					const currentSlideNum = lecture.currentSlide || 1
-					setCurrentSlide(Math.max(0, currentSlideNum - 1))
+
+					// QR slide starts at 0; for INVITATION always begin there on load
+					if (isInvitation) {
+						setCurrentSlide(0)
+					} else {
+						const currentSlideNum = lecture.currentSlide || 1
+						setCurrentSlide(Math.max(0, currentSlideNum - 1))
+					}
 				}
 			} catch (error) {
 				console.error('Failed to load lecture:', error)
@@ -186,16 +221,16 @@ export function LivePresentationPage() {
 		return () => clearInterval(interval)
 	}, [lectureId])
 
-	// Число студентов из аналитики (обновляется раз в 30 сек)
+	// Реальное число студентов из lecture-broadcasting-service
 	useEffect(() => {
 		if (!lectureId) return
 		const load = () => {
-			getLectureDashboard(lectureId)
-				.then((d: any) => setStudentsCount(d.studentsJoined ?? 0))
+			getLectureStudents(lectureId)
+				.then((ids: number[]) => setStudentsCount(ids.length))
 				.catch(() => {})
 		}
 		load()
-		const interval = setInterval(load, 30000)
+		const interval = setInterval(load, 10000)
 		return () => clearInterval(interval)
 	}, [lectureId])
 
@@ -311,18 +346,13 @@ export function LivePresentationPage() {
 		toast.info('Вопрос отклонён')
 	}
 
-	const handleAssignTestAll = async (title: string) => {
+	const handleAssignTestAll = async (examId: string) => {
 		if (!lectureId) return
 		try {
-			const exam = await createExam({
-				lectureId,
-				title,
-				questions: [{ text: title, type: 'OPEN' }],
-			})
-			await broadcastExam(exam.id, lectureId)
-			toast.success(`Квиз "${title}" запущен для студентов (${studentsCount})`)
+			await broadcastExam(examId, lectureId)
+			toast.success(`Тест запущен для студентов (${studentsCount})`)
 		} catch {
-			toast.error('Не удалось запустить квиз')
+			toast.error('Не удалось запустить тест')
 		}
 		setShowTestModal(null)
 	}
@@ -333,6 +363,7 @@ export function LivePresentationPage() {
 			const exam = await createExam({
 				lectureId,
 				title: 'Опрос об удовлетворённости',
+				examType: 'SURVEY',
 				questions: [{
 					text: satisfactionPreset,
 					type: 'MULTIPLE',
@@ -361,6 +392,11 @@ export function LivePresentationPage() {
 
 		const newSlide = slidesData[newSlideIndex]
 		if (!newSlide) return
+
+		if (newSlide.isQrSlide) {
+			setCurrentSlide(newSlideIndex)
+			return
+		}
 
 		try {
 			// Update DB + WebSocket + Telegram (plain image)
@@ -599,20 +635,36 @@ export function LivePresentationPage() {
 						{/* Slide */}
 						<div className="relative">
 							<div className="aspect-video bg-neutral-900 rounded-lg shadow-2xl overflow-hidden flex items-center justify-center">
-								<img
-									src={slide.imageUrl}
-									alt={`Слайд ${slide.index}`}
-									className="w-full h-full object-contain"
-								/>
+								{slide.isQrSlide ? (
+									<div className="flex flex-col items-center justify-center gap-4 text-white p-8">
+										<div className="bg-white rounded-2xl p-4">
+											<img
+												src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(`https://t.me/lecturer_assistant_bot?start=join_${lectureId}`)}`}
+												alt="QR для подключения"
+												className="w-48 h-48"
+											/>
+										</div>
+										<p className="text-lg font-medium">Отсканируйте для подключения</p>
+										<p className="text-sm text-neutral-400">или напишите боту: <span className="font-mono text-orange-400">/join {lectureId}</span></p>
+									</div>
+								) : (
+									<img
+										src={slide.imageUrl}
+										alt={`Слайд ${slide.index}`}
+										className="w-full h-full object-contain"
+									/>
+								)}
 							</div>
-							<DrawingOverlay
-								ref={drawingRef}
-								slideIndex={currentSlide}
-								active={drawingActive}
-								onToggle={() => setDrawingActive(!drawingActive)}
-								onAnnotationsChange={handleAnnotationsChange}
-								onSave={handleSaveToStudents}
-							/>
+							{!slide.isQrSlide && (
+								<DrawingOverlay
+									ref={drawingRef}
+									slideIndex={currentSlide}
+									active={drawingActive}
+									onToggle={() => setDrawingActive(!drawingActive)}
+									onAnnotationsChange={handleAnnotationsChange}
+									onSave={handleSaveToStudents}
+								/>
+							)}
 						</div>
 
 						{/* Nav */}
@@ -652,13 +704,19 @@ export function LivePresentationPage() {
 											: 'border-neutral-700 opacity-50 hover:opacity-80'
 									}`}
 								>
-									<img
-										src={s.imageUrl}
-										alt={`Слайд ${s.index}`}
-										className="w-full h-full object-cover"
-									/>
+									{s.isQrSlide ? (
+										<div className="w-full h-full flex items-center justify-center bg-neutral-700">
+											<QrCode className="w-5 h-5 text-white opacity-60" />
+										</div>
+									) : (
+										<img
+											src={s.imageUrl}
+											alt={`Слайд ${s.index}`}
+											className="w-full h-full object-cover"
+										/>
+									)}
 									<div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[8px] py-0.5 text-center">
-										{s.index}
+										{s.isQrSlide ? 'QR' : s.index}
 									</div>
 								</button>
 							))}
@@ -849,7 +907,7 @@ export function LivePresentationPage() {
 						<p className="text-sm text-neutral-500 mb-4">
 							Введите название квиза — студенты получат его через Telegram-бот и смогут ответить.
 						</p>
-						<QuizLaunchForm studentsCount={studentsCount} onLaunch={handleAssignTestAll} />
+						<QuizLaunchForm lectureId={lectureId!} studentsCount={studentsCount} onLaunch={handleAssignTestAll} />
 						<button
 							onClick={() => setShowTestModal(null)}
 							className="w-full px-4 py-2 border border-neutral-300 rounded-lg text-sm mt-auto"

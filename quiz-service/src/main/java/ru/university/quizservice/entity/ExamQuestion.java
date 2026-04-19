@@ -32,7 +32,7 @@ public class ExamQuestion {
 
     @OneToMany(mappedBy = "question", cascade = CascadeType.ALL, orphanRemoval = true,
                fetch = FetchType.LAZY)
-    @OrderBy("id ASC")
+    @OrderBy("orderIndex ASC")
     private List<ExamOption> options = new ArrayList<>();
 
     public UUID getId() { return id; }

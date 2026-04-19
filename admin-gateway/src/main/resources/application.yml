@@ -48,7 +48,7 @@ spring:
         - id: quiz-service-route
           uri: ${QUIZ_SERVICE_URL:http://localhost:8083}
           predicates:
-            - Path=/quizzes/**,/questions/**,/exams/**
+            - Path=/quizzes/**,/questions/**,/exams/**,/answers/**
 
         - id: analytics-service-route
           uri: ${ANALYTICS_SERVICE_URL:http://localhost:8084}
