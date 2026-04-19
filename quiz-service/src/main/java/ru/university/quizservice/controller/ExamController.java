@@ -2,11 +2,14 @@ package ru.university.quizservice.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import ru.university.quizservice.dto.*;
 import ru.university.quizservice.entity.Exam;
 import ru.university.quizservice.entity.ExamAnswer;
 import ru.university.quizservice.service.ExamService;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -72,6 +75,40 @@ public class ExamController {
     @GetMapping("/exams/{examId}/submissions")
     public List<SubmissionResultDto> getSubmissions(@PathVariable UUID examId) {
         return examService.getSubmissions(examId);
+    }
+
+    @PostMapping("/exams/import/gift")
+    public ResponseEntity<ExamDetailDto> importGift(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("lectureId") Long lectureId,
+            @RequestParam(value = "title", required = false) String title) throws IOException {
+        String content = new String(file.getBytes(), StandardCharsets.UTF_8);
+        if (title == null || title.isBlank()) {
+            String filename = file.getOriginalFilename();
+            title = (filename != null && filename.contains("."))
+                    ? filename.substring(0, filename.lastIndexOf('.'))
+                    : (filename != null ? filename : "Импорт из GIFT");
+        }
+        Exam exam = examService.importFromGift(lectureId, title, content);
+        return ResponseEntity.ok(examService.getExamDetail(exam.getId()));
+    }
+
+    @GetMapping(value = "/exams/{examId}/export/gift", produces = "text/plain;charset=UTF-8")
+    public ResponseEntity<String> exportGift(@PathVariable UUID examId) {
+        String giftText = examService.exportToGift(examId);
+        Exam exam = examService.getExam(examId);
+        String filename = exam.getTitle().replaceAll("[^a-zA-Zа-яА-Я0-9_\\-]", "_") + ".gift";
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename*=UTF-8''" + encodeFilename(filename))
+                .body(giftText);
+    }
+
+    private String encodeFilename(String filename) {
+        try {
+            return java.net.URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
+        } catch (Exception e) {
+            return "exam.gift";
+        }
     }
 
     @PutMapping("/answers/{answerId}/grade")

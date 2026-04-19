@@ -18,6 +18,7 @@ import ru.university.lecturebroadcasting.service.LectureService;
 import ru.university.lecturebroadcasting.service.PasswordRequiredException;
 import ru.university.lecturebroadcasting.service.QuizServiceClient;
 import ru.university.lecturebroadcasting.service.QuizServiceClient.ExamDetail.Question;
+import ru.university.lecturebroadcasting.service.StudentQuestionService;
 import ru.university.lecturebroadcasting.service.WrongPasswordException;
 
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
@@ -47,6 +48,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final LectureService lectureService;
     private final QuizServiceClient quizServiceClient;
     private final AnalyticsServiceClient analyticsServiceClient;
+    private final StudentQuestionService studentQuestionService;
 
     public LectureBroadcastingBot(
             @Value("${telegram.bot.token}") String botToken,
@@ -54,13 +56,15 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             StudentRepository studentRepository,
             LectureService lectureService,
             QuizServiceClient quizServiceClient,
-            AnalyticsServiceClient analyticsServiceClient) {
+            AnalyticsServiceClient analyticsServiceClient,
+            StudentQuestionService studentQuestionService) {
         super(botToken);
         this.botUsername = botUsername;
         this.studentRepository = studentRepository;
         this.lectureService = lectureService;
         this.quizServiceClient = quizServiceClient;
         this.analyticsServiceClient = analyticsServiceClient;
+        this.studentQuestionService = studentQuestionService;
     }
 
     @Override
@@ -98,6 +102,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             sendText(chatId,
                     "Привет! Я бот для лекций.\n\n" +
                     "/join <название или id> — подключиться к лекции\n" +
+                    "/question <текст> — задать вопрос преподавателю\n" +
                     "/ping — проверка связи\n\n" +
                     "Когда преподаватель запустит тест, вопросы придут автоматически.");
             return;
@@ -109,6 +114,24 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             } catch (Exception e) {
                 sendText(chatId, "Ошибка БД: " + e.getMessage());
             }
+            return;
+        }
+
+        if ("/question".equals(cmd)) {
+            String[] parts = text.split("\\s+", 2);
+            if (parts.length < 2 || parts[1].isBlank()) {
+                sendText(chatId, "Используйте: /question <текст вашего вопроса>");
+                return;
+            }
+            String questionText = parts[1].trim();
+            studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
+                if (student.getLecture() == null) {
+                    sendText(chatId, "Вы не подключены к лекции. Используйте /join.");
+                    return;
+                }
+                studentQuestionService.add(student.getLecture().getId(), chatId, questionText);
+                sendText(chatId, "✅ Ваш вопрос отправлен преподавателю.");
+            }, () -> sendText(chatId, "Вы не подключены. Используйте /join."));
             return;
         }
 
@@ -294,7 +317,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             Student student = lectureService.joinLecture(lectureName, chatId, password);
             pendingPasswordJoin.remove(chatId);
             sendText(chatId, "Вы подключились к лекции: " + student.getLecture().getName());
-            analyticsServiceClient.sendStudentJoinedEvent(student.getLecture().getId());
+            analyticsServiceClient.sendStudentJoinedEvent(student.getLecture().getId(), chatId);
         } catch (PasswordRequiredException e) {
             pendingPasswordJoin.put(chatId, lectureName);
             sendText(chatId, "🔒 Лекция защищена паролем. Введите пароль:");
@@ -372,6 +395,10 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 sendText(chatId, "Слайд " + slideNum + " не найден.");
             }
         }, () -> sendText(chatId, "Вы не подключены. Используйте /join."));
+    }
+
+    public void sendTextMessage(long chatId, String text) {
+        sendText(chatId, text);
     }
 
     private void sendText(long chatId, String text) {

@@ -113,3 +113,29 @@ export function broadcastExam(examId: string, lectureId: string) {
     body: JSON.stringify({ examId, lectureId }),
   });
 }
+
+export async function importGift(lectureId: string, title: string, file: File): Promise<any> {
+  const { BASE_URL } = await import("./client");
+  const formData = new FormData();
+  formData.append("file", file);
+  const url = `${BASE_URL}/exams/import/gift?lectureId=${encodeURIComponent(lectureId)}&title=${encodeURIComponent(title)}`;
+  const res = await fetch(url, { method: "POST", body: formData });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Import failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+export async function exportGift(examId: string, examTitle: string): Promise<void> {
+  const { BASE_URL } = await import("./client");
+  const res = await fetch(`${BASE_URL}/exams/${examId}/export/gift`);
+  if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${examTitle}.gift`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

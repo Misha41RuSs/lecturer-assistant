@@ -246,6 +246,22 @@ public class ExamService {
     }
 
     @Transactional
+    public Exam importFromGift(Long lectureId, String title, String content) {
+        GiftParser parser = new GiftParser();
+        List<CreateExamDto.QuestionDto> questions = parser.parse(content);
+        if (questions.isEmpty()) throw new IllegalArgumentException("No questions found in GIFT file");
+        CreateExamDto dto = new CreateExamDto(String.valueOf(lectureId), title, null, "EXAM", questions);
+        return createExam(dto);
+    }
+
+    @Transactional(readOnly = true)
+    public String exportToGift(UUID examId) {
+        Exam exam = getExam(examId);
+        exam.getQuestions().forEach(q -> q.getOptions().size()); // init lazy collections
+        return new GiftExporter().export(exam);
+    }
+
+    @Transactional
     public ExamAnswer gradeAnswer(UUID answerId, int score) {
         ExamAnswer answer = answerRepository.findById(answerId)
                 .orElseThrow(() -> new IllegalArgumentException("Answer not found: " + answerId));

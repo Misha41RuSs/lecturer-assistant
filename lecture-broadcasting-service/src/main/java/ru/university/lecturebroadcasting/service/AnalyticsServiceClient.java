@@ -34,12 +34,13 @@ public class AnalyticsServiceClient {
     }
 
     @Async
-    public void sendStudentJoinedEvent(Long lectureId) {
+    public void sendStudentJoinedEvent(Long lectureId, Long chatId) {
         try {
             String url = analyticsServiceUrl + "/analytics/events/lecture";
             Map<String, String> body = new HashMap<>();
             body.put("lectureId", String.valueOf(lectureId));
             body.put("actionType", "student_joined");
+            body.put("userId", String.valueOf(chatId));
             restTemplate.postForObject(url, body, Void.class);
         } catch (Exception e) {
             System.err.println("Failed to send student_joined event to analytics: " + e.getMessage());

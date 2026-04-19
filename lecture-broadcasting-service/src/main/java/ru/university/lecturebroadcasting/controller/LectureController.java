@@ -12,6 +12,7 @@ import ru.university.lecturebroadcasting.entity.AccessType;
 import ru.university.lecturebroadcasting.entity.Lecture;
 import ru.university.lecturebroadcasting.service.LectureService;
 import ru.university.lecturebroadcasting.service.QuizServiceClient;
+import ru.university.lecturebroadcasting.service.StudentQuestionService;
 import ru.university.lecturebroadcasting.websocket.SlideUpdateMessage;
 
 import java.util.List;
@@ -26,6 +27,7 @@ public class LectureController {
     private final LectureBroadcastingBot bot;
     private final SimpMessagingTemplate messagingTemplate;
     private final QuizServiceClient quizServiceClient;
+    private final StudentQuestionService studentQuestionService;
 
     @PostMapping
     public ResponseEntity<Lecture> createLecture(@RequestBody Map<String, String> body) {
@@ -116,8 +118,20 @@ public class LectureController {
     public ResponseEntity<Lecture> stopLecture(@PathVariable Long id) {
         quizServiceClient.closeAllExamsForLecture(id);
         LectureService.StopLectureResult result = lectureService.stopLecture(id);
+        studentQuestionService.clearByLecture(id);
         bot.notifyLectureEndedToStudents(result.lecture().getName(), result.disconnectedChatIds());
         return ResponseEntity.ok(result.lecture());
+    }
+
+    @PostMapping("/{id}/broadcast-message")
+    public ResponseEntity<Void> broadcastMessage(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        String text = body.get("text");
+        if (text == null || text.isBlank()) return ResponseEntity.badRequest().build();
+        List<Long> chatIds = lectureService.getStudentChatIds(id);
+        for (Long chatId : chatIds) bot.sendTextMessage(chatId, "📢 " + text);
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/{id}/students")

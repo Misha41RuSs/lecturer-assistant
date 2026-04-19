@@ -162,6 +162,48 @@ export async function getLectureStudents(lectureId: string): Promise<number[]> {
 	return res.json()
 }
 
+export async function broadcastMessage(lectureId: string, text: string): Promise<void> {
+	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/broadcast-message`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ text })
+	})
+	if (!res.ok) {
+		const t = await res.text()
+		throw new Error(`Failed to broadcast message: ${res.status} ${t}`)
+	}
+}
+
+export async function getStudentQuestions(lectureId: string): Promise<{ id: string; text: string; createdAt: string }[]> {
+	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/student-questions`)
+	if (!res.ok) throw new Error('Failed to load questions')
+	return res.json()
+}
+
+export async function sendPrivateReply(lectureId: string, questionId: string, text: string): Promise<void> {
+	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/student-questions/${questionId}/private-reply`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ text })
+	})
+	if (!res.ok) {
+		const t = await res.text()
+		throw new Error(`Failed to send private reply: ${res.status} ${t}`)
+	}
+}
+
+export async function sendBroadcastReply(lectureId: string, questionId: string, text: string): Promise<void> {
+	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/student-questions/${questionId}/broadcast-reply`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ text })
+	})
+	if (!res.ok) {
+		const t = await res.text()
+		throw new Error(`Failed to send broadcast reply: ${res.status} ${t}`)
+	}
+}
+
 export async function broadcastSlideImage(lectureId: number, imageBlob: Blob): Promise<void> {
 	const formData = new FormData()
 	formData.append('image', imageBlob, 'slide.png')

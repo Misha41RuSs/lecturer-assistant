@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Users, ClipboardList, CheckCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { Users, ClipboardList, CheckCircle, ChevronDown, ChevronUp, Star } from "lucide-react";
 import { toast } from "sonner";
 import { listLectures, LectureListItem } from "../app/api/client";
 import { getLectureDashboard } from "../app/api/analytics.api";
@@ -10,12 +10,18 @@ interface ExamRow {
   id: string
   title: string
   status: string
-  examType: string
   submissionCount: number
   avgScore: number | null
   maxScore: number | null
   submissions: SubmRow[]
   expanded: boolean
+}
+interface SurveyRow {
+  id: string
+  title: string
+  status: string
+  responseCount: number
+  avgRating: number | null
 }
 interface SubmRow {
   chatId: number
@@ -29,6 +35,7 @@ export function StatisticsPage() {
   const [selectedLectureId, setSelectedLectureId] = useState<number>(0);
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [exams, setExams] = useState<ExamRow[]>([]);
+  const [surveys, setSurveys] = useState<SurveyRow[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -38,50 +45,48 @@ export function StatisticsPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedLectureId) { setStudents([]); setExams([]); return; }
+    if (!selectedLectureId) { setStudents([]); setExams([]); setSurveys([]); return; }
     setLoading(true);
 
     Promise.all([
-      getLectureDashboard(String(selectedLectureId)).catch(() => null),
+      getLectureStudents(String(selectedLectureId)).catch(() => []),
       getExamsByLecture(String(selectedLectureId)).catch(() => []),
-    ]).then(async ([dashboard, examList]: [any, any[]]) => {
-      // Студенты из аналитики
-      const ids: number[] = dashboard?.studentIds ?? [];
-      setStudents(ids.map(chatId => ({ chatId })));
+    ]).then(async ([studentIds, examList]: [number[], any[]]) => {
+      setStudents(studentIds.map(chatId => ({ chatId })));
 
-      // Тесты с результатами
-      const rows: ExamRow[] = await Promise.all(
-        examList.map(async (exam: any) => {
-          let submissions: SubmRow[] = [];
-          if (exam.status !== 'DRAFT') {
-            try {
-              const subs: any[] = await getExamSubmissions(exam.id);
-              submissions = subs.map(s => ({
-                chatId: s.chatId,
-                totalScore: s.totalScore,
-                maxScore: s.maxScore,
-                hasUngraded: s.hasUngraded,
-              }));
-            } catch { /* ignore */ }
-          }
+      const examRows: ExamRow[] = [];
+      const surveyRows: SurveyRow[] = [];
+
+      await Promise.all(examList.map(async (exam: any) => {
+        if (exam.status === 'DRAFT') {
+          if (exam.examType === 'SURVEY') return;
+          examRows.push({ id: exam.id, title: exam.title, status: exam.status, submissionCount: 0, avgScore: null, maxScore: null, submissions: [], expanded: false });
+          return;
+        }
+
+        const subs: any[] = await getExamSubmissions(exam.id).catch(() => []);
+
+        if (exam.examType === 'SURVEY') {
+          const ratings = subs
+            .flatMap((s: any) => s.answers ?? [])
+            .map((a: any) => parseInt(a.selectedOptionText))
+            .filter((n: number) => !isNaN(n) && n >= 1 && n <= 5);
+          const avgRating = ratings.length > 0
+            ? ratings.reduce((s: number, r: number) => s + r, 0) / ratings.length
+            : null;
+          surveyRows.push({ id: exam.id, title: exam.title, status: exam.status, responseCount: subs.length, avgRating });
+        } else {
+          const submissions: SubmRow[] = subs.map((s: any) => ({ chatId: s.chatId, totalScore: s.totalScore, maxScore: s.maxScore, hasUngraded: s.hasUngraded }));
           const gradedSubs = submissions.filter(s => s.maxScore > 0);
           const avgScore = gradedSubs.length > 0
             ? gradedSubs.reduce((sum, s) => sum + (s.totalScore / s.maxScore) * 100, 0) / gradedSubs.length
             : null;
-          return {
-            id: exam.id,
-            title: exam.title,
-            status: exam.status,
-            examType: exam.examType ?? 'EXAM',
-            submissionCount: submissions.length,
-            avgScore,
-            maxScore: gradedSubs[0]?.maxScore ?? null,
-            submissions,
-            expanded: false,
-          };
-        })
-      );
-      setExams(rows);
+          examRows.push({ id: exam.id, title: exam.title, status: exam.status, submissionCount: submissions.length, avgScore, maxScore: gradedSubs[0]?.maxScore ?? null, submissions, expanded: false });
+        }
+      }));
+
+      setExams(examRows);
+      setSurveys(surveyRows);
     }).finally(() => setLoading(false));
   }, [selectedLectureId]);
 
@@ -93,6 +98,10 @@ export function StatisticsPage() {
   const allAvg = conductedExams.filter(e => e.avgScore !== null);
   const overallAvg = allAvg.length > 0
     ? Math.round(allAvg.reduce((s, e) => s + e.avgScore!, 0) / allAvg.length)
+    : null;
+  const satisfactionSurveys = surveys.filter(s => s.avgRating !== null);
+  const overallSatisfaction = satisfactionSurveys.length > 0
+    ? satisfactionSurveys.reduce((s, sr) => s + sr.avgRating!, 0) / satisfactionSurveys.length
     : null;
 
   return (
@@ -128,11 +137,12 @@ export function StatisticsPage() {
       {selectedLectureId > 0 && !loading && (
         <>
           {/* Сводные карточки */}
-          <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             {[
-              { icon: Users, color: "bg-orange-100 text-orange-600", val: String(students.length), label: "Уникальных студентов" },
-              { icon: ClipboardList, color: "bg-blue-100 text-blue-600", val: String(conductedExams.length), label: "Проведено тестов" },
+              { icon: Users, color: "bg-orange-100 text-orange-600", val: String(students.length), label: "Студентов" },
+              { icon: ClipboardList, color: "bg-blue-100 text-blue-600", val: String(conductedExams.length), label: "Тестов проведено" },
               { icon: CheckCircle, color: "bg-green-100 text-green-600", val: overallAvg !== null ? `${overallAvg}%` : "—", label: "Средний балл" },
+              { icon: Star, color: "bg-yellow-100 text-yellow-600", val: overallSatisfaction !== null ? overallSatisfaction.toFixed(1) + " ⭐" : "—", label: "Удовлетворённость" },
             ].map((s, i) => (
               <div key={i} className="bg-white rounded-xl p-4 border border-neutral-200">
                 <div className="flex items-center gap-3">
@@ -175,9 +185,33 @@ export function StatisticsPage() {
             )}
           </div>
 
+          {/* Опросы удовлетворённости */}
+          {surveys.length > 0 && (
+            <div className="bg-white rounded-xl p-5 border border-neutral-200 mb-6">
+              <h3 className="text-sm font-medium mb-3">Удовлетворённость ({surveys.length})</h3>
+              <div className="space-y-2">
+                {surveys.map(s => (
+                  <div key={s.id} className="flex items-center justify-between px-4 py-3 border border-neutral-200 rounded-lg">
+                    <div>
+                      <div className="text-sm font-medium">{s.title}</div>
+                      <div className="text-xs text-neutral-400 mt-0.5">{s.responseCount} ответов</div>
+                    </div>
+                    <div className="text-right">
+                      {s.avgRating !== null ? (
+                        <div className="text-lg font-semibold text-yellow-600">{s.avgRating.toFixed(1)} ⭐</div>
+                      ) : (
+                        <div className="text-sm text-neutral-400">Нет ответов</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Тесты */}
           <div className="bg-white rounded-xl p-5 border border-neutral-200">
-            <h3 className="text-sm font-medium mb-3">Тесты и опросы ({exams.length})</h3>
+            <h3 className="text-sm font-medium mb-3">Тесты ({exams.length})</h3>
             {exams.length === 0 ? (
               <p className="text-sm text-neutral-400">Нет тестов для этой лекции</p>
             ) : (
@@ -195,9 +229,6 @@ export function StatisticsPage() {
                           'bg-yellow-100 text-yellow-700'
                         }`}>{exam.status}</span>
                         <span className="text-sm font-medium">{exam.title}</span>
-                        {exam.examType === 'SURVEY' && (
-                          <span className="text-xs text-neutral-400">(опрос)</span>
-                        )}
                       </div>
                       <div className="flex items-center gap-4">
                         <span className="text-sm text-neutral-500">{exam.submissionCount} ответов</span>

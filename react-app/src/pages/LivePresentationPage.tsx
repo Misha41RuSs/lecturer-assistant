@@ -25,9 +25,13 @@ import {
 	BASE_URL,
 	stopLecture,
 	broadcastSlideImage,
-	getLectureStudents
+	getLectureStudents,
+	broadcastMessage,
+	getStudentQuestions,
+	sendPrivateReply,
+	sendBroadcastReply,
 } from '../app/api/client'
-import { getQuestions, answerQuestion, createExam, broadcastExam, getExamsByLecture } from '../app/api/quiz.api'
+import { createExam, broadcastExam, getExamsByLecture } from '../app/api/quiz.api'
 import { sendLectureEvent } from '../app/api/analytics.api'
 import { DrawingOverlay, DrawingOverlayHandle } from '../features/DrawingOverlay'
 
@@ -45,6 +49,7 @@ interface Question {
 	time: string
 	text: string
 	isNew: boolean
+	index: number
 }
 
 function QuizLaunchForm({
@@ -96,19 +101,19 @@ function QuizLaunchForm({
 	)
 }
 
-function mapApiQuestion(q: any): Question {
+function mapStudentQuestion(q: { id: string; text: string; createdAt: string }, idx: number): Question {
 	const created = new Date(q.createdAt)
 	const mins = Math.round((Date.now() - created.getTime()) / 60000)
 	const time = mins < 1 ? 'только что' : `${mins} мин.`
-	const label = q.userId ? `Студент ${q.userId}` : 'Студент'
-	const initials = q.userId ? `С${q.userId}` : 'СТ'
+	const num = idx + 1
 	return {
 		id: q.id,
-		student: label,
-		initials,
+		student: `Студент #${num}`,
+		initials: `С${num}`,
 		time,
 		text: q.text,
-		isNew: !q.answered && mins < 2,
+		isNew: mins < 2,
+		index: num,
 	}
 }
 
@@ -208,16 +213,16 @@ export function LivePresentationPage() {
 		loadLecture()
 	}, [lectureId])
 
-	// Polling вопросов студентов каждые 15 секунд
+	// Polling вопросов студентов из бота каждые 10 секунд
 	useEffect(() => {
 		if (!lectureId) return
 		const load = () => {
-			getQuestions(lectureId)
-				.then((list: any[]) => setQuestions(list.filter((q: any) => !q.answered).map(mapApiQuestion)))
-				.catch(() => {/* тихо игнорируем ошибки сети */})
+			getStudentQuestions(lectureId)
+				.then(list => setQuestions(list.map(mapStudentQuestion)))
+				.catch(() => {})
 		}
 		load()
-		const interval = setInterval(load, 15000)
+		const interval = setInterval(load, 10000)
 		return () => clearInterval(interval)
 	}, [lectureId])
 
@@ -306,20 +311,25 @@ export function LivePresentationPage() {
 			.padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`
 	const slide = slidesData[currentSlide]
 
-	const handleSendMessage = () => {
-		if (!quickMessage.trim()) return
-		toast.success('Сообщение отправлено всем студентам')
-		setQuickMessage('')
+	const handleSendMessage = async () => {
+		if (!quickMessage.trim() || !lectureId) return
+		try {
+			await broadcastMessage(lectureId, quickMessage.trim())
+			toast.success('Сообщение отправлено всем студентам')
+			setQuickMessage('')
+		} catch {
+			toast.error('Не удалось отправить сообщение')
+		}
 	}
 
 	const handleReplyToStudent = async (qId: string) => {
-		if (!replyText.trim()) return
+		if (!replyText.trim() || !lectureId) return
 		const q = questions.find(x => x.id === qId)
 		try {
-			await answerQuestion(qId, replyText)
-			toast.success(`Ответ отправлен: ${q?.student}`)
+			await sendPrivateReply(lectureId, qId, replyText)
+			toast.success(`Ответ отправлен в Telegram: ${q?.student}`)
 		} catch {
-			toast.error('Не удалось сохранить ответ')
+			toast.error('Не удалось отправить ответ')
 		}
 		setQuestions(questions.filter(x => x.id !== qId))
 		setReplyTo(null)
@@ -327,13 +337,13 @@ export function LivePresentationPage() {
 	}
 
 	const handleAnswerBroadcast = async (qId: string) => {
-		if (!replyText.trim()) return
+		if (!replyText.trim() || !lectureId) return
 		const q = questions.find(x => x.id === qId)
 		try {
-			await answerQuestion(qId, replyText)
-			toast.success(`Ответ на "${q?.text}" сохранён`)
+			await sendBroadcastReply(lectureId, qId, replyText)
+			toast.success(`Ответ на "${q?.text}" отправлен всем студентам`)
 		} catch {
-			toast.error('Не удалось сохранить ответ')
+			toast.error('Не удалось отправить ответ')
 		}
 		setQuestions(questions.filter(x => x.id !== qId))
 		setReplyTo(null)

@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
-import { Plus, Trash2, Clock, Check, BarChart3, ChevronDown, ChevronRight, ChevronLeft, Eye, Edit2, Star, Send, Copy } from "lucide-react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
+import { Plus, Trash2, Clock, Check, BarChart3, ChevronDown, ChevronRight, ChevronLeft, Eye, Edit2, Star, Send, Copy, Upload, Download } from "lucide-react";
 import { toast } from "sonner";
 import { listLectures, LectureListItem } from "../app/api/client";
 import {
   createExam, getExamsByLecture, getExam, getExamSubmissions,
   launchExam, closeExam, gradeAnswer, broadcastExam, duplicateExam,
+  importGift, exportGift,
 } from "../app/api/quiz.api";
 
 interface ApiOption { id: string; text: string }
@@ -67,6 +68,8 @@ export function TestsPage() {
   ]);
   const [draftQuestions, setDraftQuestions] = useState<DraftQuestion[]>([]);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const giftInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     listLectures().then(setLectures).catch(() => toast.error("Не удалось загрузить лекции"));
@@ -76,7 +79,7 @@ export function TestsPage() {
     if (!selectedLectureId) { setExams([]); return; }
     setLoadingExams(true);
     getExamsByLecture(String(selectedLectureId))
-      .then((list: any[]) => setExams(list.map(e => ({ ...e, questions: [] }))))
+      .then((list: any[]) => setExams(list.filter((e: any) => e.examType !== 'SURVEY').map(e => ({ ...e, questions: [] }))))
       .catch(() => toast.error("Не удалось загрузить тесты"))
       .finally(() => setLoadingExams(false));
   }, [selectedLectureId]);
@@ -84,7 +87,7 @@ export function TestsPage() {
   const reloadExams = () => {
     if (!selectedLectureId) return;
     getExamsByLecture(String(selectedLectureId))
-      .then((list: any[]) => setExams(list.map(e => ({ ...e, questions: [] }))))
+      .then((list: any[]) => setExams(list.filter((e: any) => e.examType !== 'SURVEY').map(e => ({ ...e, questions: [] }))))
       .catch(() => {});
   };
 
@@ -185,6 +188,31 @@ export function TestsPage() {
       reloadExams();
     } catch {
       toast.error("Не удалось закрыть тест");
+    }
+  };
+
+  const handleImportGift = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedLectureId) return;
+    e.target.value = "";
+    const title = file.name.replace(/\.[^.]+$/, "");
+    setImporting(true);
+    try {
+      await importGift(String(selectedLectureId), title, file);
+      toast.success("Тест импортирован из GIFT");
+      reloadExams();
+    } catch {
+      toast.error("Не удалось импортировать GIFT-файл");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleExportGift = async (examId: string, examTitle: string) => {
+    try {
+      await exportGift(examId, examTitle);
+    } catch {
+      toast.error("Не удалось экспортировать тест");
     }
   };
 
@@ -579,10 +607,17 @@ export function TestsPage() {
           <h1 className="mb-1">Тесты</h1>
           <p className="text-sm text-neutral-500">Создавайте и управляйте тестами для лекций</p>
         </div>
-        <button onClick={startCreate} disabled={!selectedLectureId}
-          className="flex items-center gap-2 bg-orange-500 text-white px-5 py-2.5 rounded-full hover:bg-orange-600 text-sm disabled:opacity-40 self-start sm:self-auto">
-          <Plus className="w-4 h-4" /> Создать тест
-        </button>
+        <div className="flex gap-2 self-start sm:self-auto">
+          <button onClick={startCreate} disabled={!selectedLectureId}
+            className="flex items-center gap-2 bg-orange-500 text-white px-5 py-2.5 rounded-full hover:bg-orange-600 text-sm disabled:opacity-40">
+            <Plus className="w-4 h-4" /> Создать тест
+          </button>
+          <button onClick={() => giftInputRef.current?.click()} disabled={!selectedLectureId || importing}
+            className="flex items-center gap-2 border border-neutral-300 px-4 py-2.5 rounded-full text-sm hover:bg-neutral-50 disabled:opacity-40">
+            <Upload className="w-4 h-4" /> {importing ? "Импорт..." : "Импорт GIFT"}
+          </button>
+          <input ref={giftInputRef} type="file" accept=".gift,.txt" className="hidden" onChange={handleImportGift} />
+        </div>
       </div>
 
       <div className="mb-6">
@@ -650,6 +685,10 @@ export function TestsPage() {
                       <button onClick={() => handleDuplicate(exam.id)}
                         className="flex items-center gap-1 px-3 py-1.5 border border-neutral-300 rounded-lg text-sm hover:bg-neutral-50">
                         <Copy className="w-3.5 h-3.5" /> Дублировать
+                      </button>
+                      <button onClick={() => handleExportGift(exam.id, exam.title)}
+                        className="flex items-center gap-1 px-3 py-1.5 border border-neutral-300 rounded-lg text-sm hover:bg-neutral-50">
+                        <Download className="w-3.5 h-3.5" /> Экспорт GIFT
                       </button>
                       {exam.status === "DRAFT" && (
                         <button onClick={() => handleLaunch(exam.id)}
