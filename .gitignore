@@ -1,3 +1,19 @@
 *.docx
 *.bkp
 .env
+
+# Maven build output
+target/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Logs
+*.log
