@@ -6,7 +6,7 @@ import java.util.UUID;
 /** Полное описание теста (для фронта и бота) */
 public record ExamDetailDto(
         UUID id,
-        UUID lectureId,
+        Long lectureId,
         String title,
         Integer totalTimeSec,
         String status,

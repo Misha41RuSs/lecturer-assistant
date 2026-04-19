@@ -13,6 +13,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.university.lecturebroadcasting.entity.Student;
 import ru.university.lecturebroadcasting.repository.StudentRepository;
+import ru.university.lecturebroadcasting.service.AnalyticsServiceClient;
 import ru.university.lecturebroadcasting.service.LectureService;
 import ru.university.lecturebroadcasting.service.PasswordRequiredException;
 import ru.university.lecturebroadcasting.service.QuizServiceClient;
@@ -37,18 +38,21 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final StudentRepository studentRepository;
     private final LectureService lectureService;
     private final QuizServiceClient quizServiceClient;
+    private final AnalyticsServiceClient analyticsServiceClient;
 
     public LectureBroadcastingBot(
             @Value("${telegram.bot.token}") String botToken,
             @Value("${telegram.bot.username}") String botUsername,
             StudentRepository studentRepository,
             LectureService lectureService,
-            QuizServiceClient quizServiceClient) {
+            QuizServiceClient quizServiceClient,
+            AnalyticsServiceClient analyticsServiceClient) {
         super(botToken);
         this.botUsername = botUsername;
         this.studentRepository = studentRepository;
         this.lectureService = lectureService;
         this.quizServiceClient = quizServiceClient;
+        this.analyticsServiceClient = analyticsServiceClient;
     }
 
     @Override
@@ -242,6 +246,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             Student student = lectureService.joinLecture(lectureName, chatId, password);
             pendingPasswordJoin.remove(chatId);
             sendText(chatId, "Вы подключились к лекции: " + student.getLecture().getName());
+            analyticsServiceClient.sendStudentJoinedEvent(student.getLecture().getId());
         } catch (PasswordRequiredException e) {
             pendingPasswordJoin.put(chatId, lectureName);
             sendText(chatId, "🔒 Лекция защищена паролем. Введите пароль:");

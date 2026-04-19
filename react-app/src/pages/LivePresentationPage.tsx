@@ -26,7 +26,7 @@ import {
 	stopLecture,
 	broadcastSlideImage
 } from '../app/api/client'
-import { getQuestions, answerQuestion, createQuiz } from '../app/api/quiz.api'
+import { getQuestions, answerQuestion, createExam, broadcastExam } from '../app/api/quiz.api'
 import { sendLectureEvent, getLectureDashboard } from '../app/api/analytics.api'
 import { DrawingOverlay, DrawingOverlayHandle } from '../features/DrawingOverlay'
 
@@ -120,8 +120,8 @@ export function LivePresentationPage() {
 
 	const [accessType, setAccessType] = useState<
 		'open' | 'password' | 'invitation'
-	>('password')
-	const password = 'algo2026'
+	>('open')
+	const [password, setPassword] = useState('')
 	const lectureUrl = `https://lectureapp.ru/join/${lectureId}`
 	const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(lectureUrl)}`
 
@@ -137,6 +137,13 @@ export function LivePresentationPage() {
 				setIsLoading(true)
 				const lecture = await getLecture(parseInt(lectureId))
 				setLectureName(lecture.name || 'Лекция')
+				if (lecture.accessType === 'PASSWORD') {
+					setAccessType('password')
+					setPassword(lecture.password || '')
+				} else {
+					setAccessType('open')
+					setPassword('')
+				}
 				
 				const seqId = lecture.sequenceId
 				if (seqId) {
@@ -307,7 +314,12 @@ export function LivePresentationPage() {
 	const handleAssignTestAll = async (title: string) => {
 		if (!lectureId) return
 		try {
-			await createQuiz(lectureId, title)
+			const exam = await createExam({
+				lectureId,
+				title,
+				questions: [{ text: title, type: 'OPEN' }],
+			})
+			await broadcastExam(exam.id, lectureId)
 			toast.success(`Квиз "${title}" запущен для студентов (${studentsCount})`)
 		} catch {
 			toast.error('Не удалось запустить квиз')
@@ -318,7 +330,22 @@ export function LivePresentationPage() {
 	const handleSendSatisfaction = async () => {
 		if (!lectureId) return
 		try {
-			await createQuiz(lectureId, satisfactionPreset)
+			const exam = await createExam({
+				lectureId,
+				title: 'Опрос об удовлетворённости',
+				questions: [{
+					text: satisfactionPreset,
+					type: 'MULTIPLE',
+					options: [
+						{ text: '1 ⭐', correct: false },
+						{ text: '2 ⭐⭐', correct: false },
+						{ text: '3 ⭐⭐⭐', correct: false },
+						{ text: '4 ⭐⭐⭐⭐', correct: false },
+						{ text: '5 ⭐⭐⭐⭐⭐', correct: false },
+					],
+				}],
+			})
+			await broadcastExam(exam.id, lectureId)
 			toast.success(`Опрос запущен для студентов (${studentsCount})`)
 		} catch {
 			toast.error('Не удалось запустить опрос')
@@ -776,27 +803,6 @@ export function LivePresentationPage() {
 											className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm"
 										>
 											<ClipboardList className="w-4 h-4" /> Запустить квиз
-										</button>
-										<button
-											onClick={() => setShowSatisfactionModal(true)}
-											className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-neutral-800 text-neutral-300 rounded-lg hover:bg-neutral-700 text-sm"
-										>
-											<Star className="w-4 h-4" /> Узнать мнение
-										</button>
-									</div>
-								</div>
-							)}
-											</div>
-										))}
-									</div>
-
-									{/* Action buttons */}
-									<div className="mt-3 pt-3 border-t border-neutral-800 space-y-2">
-										<button
-											onClick={() => setShowTestModal(-1)}
-											className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm"
-										>
-											<ClipboardList className="w-4 h-4" /> Опросить всех
 										</button>
 										<button
 											onClick={() => setShowSatisfactionModal(true)}

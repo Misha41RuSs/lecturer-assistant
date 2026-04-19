@@ -32,7 +32,7 @@ public class ExamController {
     }
 
     @GetMapping("/lectures/{lectureId}/exams")
-    public List<ExamSummaryDto> listByLecture(@PathVariable UUID lectureId) {
+    public List<ExamSummaryDto> listByLecture(@PathVariable Long lectureId) {
         return examService.listByLecture(lectureId);
     }
 

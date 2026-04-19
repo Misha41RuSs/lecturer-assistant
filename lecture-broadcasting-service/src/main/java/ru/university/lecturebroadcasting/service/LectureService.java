@@ -108,8 +108,16 @@ public class LectureService {
             throw new IllegalArgumentException("Lecture name or id is empty");
         }
 
+        // Ищем сначала по имени — это основной путь (работает и для "123", и для "Алгебра")
+        Optional<Long> joinableByName = findJoinableLectureIdByNameNative(key);
         Lecture lecture;
-        if (key.chars().allMatch(Character::isDigit)) {
+        if (joinableByName.isPresent()) {
+            lecture = lectureRepository.findById(joinableByName.get())
+                    .orElseThrow(() -> new IllegalStateException("Inconsistent DB for lecture id"));
+        } else if (findAnyLectureIdByNameNative(key).isPresent()) {
+            throw new IllegalStateException("Lecture has ended (STOPPED): " + key);
+        } else if (key.chars().allMatch(Character::isDigit)) {
+            // Имя не нашли — пробуем как числовой id (запасной путь)
             long id = Long.parseLong(key);
             var joinableById = lectureRepository.findByIdAndStatusIn(
                     id, List.of(LectureStatus.CREATED, LectureStatus.ACTIVE));
@@ -118,22 +126,12 @@ public class LectureService {
             } else if (lectureRepository.findById(id).isPresent()) {
                 throw new IllegalStateException("Lecture has ended (STOPPED) for id: " + id);
             } else {
-                throw new IllegalArgumentException("Active lecture not found for id: " + id);
-            }
-        } else {
-            // Через EntityManager: Spring Data native Optional<Long> с PostgreSQL часто даёт пустой результат
-            Optional<Long> joinableId = findJoinableLectureIdByNameNative(key);
-            if (joinableId.isPresent()) {
-                lecture = lectureRepository.findById(joinableId.get())
-                        .orElseThrow(() -> new IllegalStateException("Inconsistent DB for lecture id"));
-            } else if (findAnyLectureIdByNameNative(key).isPresent()) {
-                throw new IllegalStateException("Lecture has ended (STOPPED): " + key);
-            } else {
-                log.warn("Join by name failed: key='{}' (len={}). Rows in lectures table: {}. " +
-                                "Проверьте, что бот и API смотрят в одну БД (docker: SPRING_DATASOURCE_URL → broadcasting_db).",
-                        key, key.length(), lectureRepository.count());
                 throw new IllegalArgumentException("Active lecture not found: " + key);
             }
+        } else {
+            log.warn("Join by name failed: key='{}' (len={}). Rows in lectures table: {}.",
+                    key, key.length(), lectureRepository.count());
+            throw new IllegalArgumentException("Active lecture not found: " + key);
         }
 
         // Проверка пароля

@@ -20,7 +20,7 @@ public class AnalyticsService {
     }
 
     @Transactional
-    public ActivityLog recordEvent(UUID lectureId, Long userId, String actionType, String payload) {
+    public ActivityLog recordEvent(Long lectureId, Long userId, String actionType, String payload) {
         ActivityLog log = new ActivityLog();
         log.setLectureId(lectureId);
         log.setUserId(userId);
@@ -29,7 +29,7 @@ public class AnalyticsService {
         return logRepository.save(log);
     }
 
-    public DashboardDto getDashboard(UUID lectureId) {
+    public DashboardDto getDashboard(Long lectureId) {
         List<ActivityLog> logs = logRepository.findByLectureIdOrderByTimestampAsc(lectureId);
 
         Map<String, Long> byType = logs.stream()
@@ -51,7 +51,7 @@ public class AnalyticsService {
         return new DashboardDto(lectureId, logs.size(), slideChanges, studentsJoined, byType, slideActivity);
     }
 
-    public Map<String, Object> getAggregations(UUID lectureId) {
+    public Map<String, Object> getAggregations(Long lectureId) {
         List<ActivityLog> logs = logRepository.findByLectureIdOrderByTimestampAsc(lectureId);
         Map<String, Long> byType = logs.stream()
                 .collect(Collectors.groupingBy(ActivityLog::getActionType, Collectors.counting()));
@@ -62,7 +62,7 @@ public class AnalyticsService {
         );
     }
 
-    public Map<String, Object> getReport(UUID lectureId) {
+    public Map<String, Object> getReport(Long lectureId) {
         DashboardDto dashboard = getDashboard(lectureId);
         return Map.of(
                 "lectureId", lectureId,

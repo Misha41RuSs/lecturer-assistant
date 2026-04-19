@@ -2,10 +2,9 @@ package ru.university.analyticsservice.dto;
 
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 public record DashboardDto(
-        UUID lectureId,
+        Long lectureId,
         long totalEvents,
         long slideChanges,
         long studentsJoined,

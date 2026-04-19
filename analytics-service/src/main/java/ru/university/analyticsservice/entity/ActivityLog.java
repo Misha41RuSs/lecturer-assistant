@@ -13,7 +13,7 @@ public class ActivityLog {
     private UUID id;
 
     @Column(name = "lecture_id", nullable = false)
-    private UUID lectureId;
+    private Long lectureId;
 
     @Column(name = "user_id")
     private Long userId;
@@ -28,8 +28,8 @@ public class ActivityLog {
     private Instant timestamp = Instant.now();
 
     public UUID getId() { return id; }
-    public UUID getLectureId() { return lectureId; }
-    public void setLectureId(UUID lectureId) { this.lectureId = lectureId; }
+    public Long getLectureId() { return lectureId; }
+    public void setLectureId(Long lectureId) { this.lectureId = lectureId; }
     public Long getUserId() { return userId; }
     public void setUserId(Long userId) { this.userId = userId; }
     public String getActionType() { return actionType; }

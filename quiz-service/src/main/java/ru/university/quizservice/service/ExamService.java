@@ -28,7 +28,7 @@ public class ExamService {
     @Transactional
     public Exam createExam(CreateExamDto dto) {
         Exam exam = new Exam();
-        exam.setLectureId(UUID.fromString(dto.lectureId()));
+        exam.setLectureId(Long.parseLong(dto.lectureId()));
         exam.setTitle(dto.title());
         exam.setTotalTimeSec(dto.totalTimeSec());
 
@@ -64,7 +64,7 @@ public class ExamService {
         return toDetail(getExam(examId));
     }
 
-    public List<ExamSummaryDto> listByLecture(UUID lectureId) {
+    public List<ExamSummaryDto> listByLecture(Long lectureId) {
         return examRepository.findByLectureIdOrderByCreatedAtDesc(lectureId)
                 .stream()
                 .map(e -> new ExamSummaryDto(

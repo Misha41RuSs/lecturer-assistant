@@ -15,7 +15,7 @@ public class Exam {
     private UUID id;
 
     @Column(name = "lecture_id", nullable = false)
-    private UUID lectureId;
+    private Long lectureId;
 
     @Column(nullable = false)
     private String title;
@@ -36,8 +36,8 @@ public class Exam {
     private List<ExamQuestion> questions = new ArrayList<>();
 
     public UUID getId() { return id; }
-    public UUID getLectureId() { return lectureId; }
-    public void setLectureId(UUID lectureId) { this.lectureId = lectureId; }
+    public Long getLectureId() { return lectureId; }
+    public void setLectureId(Long lectureId) { this.lectureId = lectureId; }
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
     public Integer getTotalTimeSec() { return totalTimeSec; }
