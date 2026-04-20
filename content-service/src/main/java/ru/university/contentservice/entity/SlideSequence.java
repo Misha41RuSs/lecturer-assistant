@@ -1,4 +1,4 @@
-//package com.example.contentservice.entity;
+//package ru.university.contentservice.entity;
 //
 //import jakarta.persistence.ElementCollection;
 //import jakarta.persistence.Entity;
@@ -21,7 +21,7 @@
 //    private List<UUID> slides;
 //}
 
-package com.example.contentservice.entity;
+package ru.university.contentservice.entity;
 
 import jakarta.persistence.*;
 import lombok.*;

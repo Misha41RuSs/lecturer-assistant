@@ -1,8 +1,8 @@
-package com.example.contentservice.controller;
+package ru.university.contentservice.controller;
 
-import com.example.contentservice.entity.SlideSequence;
-import com.example.contentservice.service.ContentService;
-import com.example.contentservice.service.ContentUploadService;
+import ru.university.contentservice.entity.SlideSequence;
+import ru.university.contentservice.service.ContentService;
+import ru.university.contentservice.service.ContentUploadService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;

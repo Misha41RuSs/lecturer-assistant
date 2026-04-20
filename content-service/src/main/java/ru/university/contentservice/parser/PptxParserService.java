@@ -1,4 +1,4 @@
-package com.example.contentservice.parser;
+package ru.university.contentservice.parser;
 
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xslf.usermodel.XSLFSlide;

@@ -1,4 +1,4 @@
-package com.example.contentservice.storage;
+package ru.university.contentservice.storage;
 
 import org.springframework.stereotype.Service;
 

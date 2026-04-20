@@ -1,6 +1,6 @@
-package com.example.contentservice.repository;
+package ru.university.contentservice.repository;
 
-import com.example.contentservice.entity.SlideSequence;
+import ru.university.contentservice.entity.SlideSequence;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

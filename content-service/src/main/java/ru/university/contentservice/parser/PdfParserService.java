@@ -1,4 +1,4 @@
-package com.example.contentservice.parser;
+package ru.university.contentservice.parser;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;

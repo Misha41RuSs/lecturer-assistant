@@ -1,12 +1,12 @@
-package com.example.contentservice.service;
+package ru.university.contentservice.service;
 
-import com.example.contentservice.entity.Slide;
-import com.example.contentservice.entity.SlideSequence;
-import com.example.contentservice.parser.PdfParserService;
-import com.example.contentservice.parser.PptxParserService;
-import com.example.contentservice.repository.SlideRepository;
-import com.example.contentservice.repository.SlideSequenceRepository;
-import com.example.contentservice.storage.FileStorageService;
+import ru.university.contentservice.entity.Slide;
+import ru.university.contentservice.entity.SlideSequence;
+import ru.university.contentservice.parser.PdfParserService;
+import ru.university.contentservice.parser.PptxParserService;
+import ru.university.contentservice.repository.SlideRepository;
+import ru.university.contentservice.repository.SlideSequenceRepository;
+import ru.university.contentservice.storage.FileStorageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;

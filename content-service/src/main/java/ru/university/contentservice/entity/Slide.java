@@ -1,4 +1,4 @@
-//package com.example.contentservice.entity;
+//package ru.university.contentservice.entity;
 //
 //import jakarta.persistence.*;
 //import lombok.*;
@@ -33,7 +33,7 @@
 //    private LocalDateTime createdAt;
 //}
 
-package com.example.contentservice.entity;
+package ru.university.contentservice.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
