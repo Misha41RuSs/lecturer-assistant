@@ -11,7 +11,7 @@ import {
 	AlertCircle
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { listLectures, type LectureListItem, BASE_URL } from '../app/api/client'
+import { listLectures, stopLecture, type LectureListItem, BASE_URL } from '../app/api/client'
 
 export function MyLecturesPage() {
 	const [search, setSearch] = useState('')
@@ -19,6 +19,7 @@ export function MyLecturesPage() {
 	const [lectures, setLectures] = useState<LectureListItem[]>([])
 	const [loading, setLoading] = useState(true)
 	const [loadError, setLoadError] = useState<string | null>(null)
+	const [stoppingId, setStoppingId] = useState<number | null>(null)
 
 	useEffect(() => {
 		let cancelled = false
@@ -48,6 +49,19 @@ export function MyLecturesPage() {
 
 	const copyText = (label: string, text: string) => {
 		navigator.clipboard.writeText(text).then(() => toast.success(label))
+	}
+
+	const handleStop = async (id: number) => {
+		setStoppingId(id)
+		try {
+			await stopLecture(id)
+			setLectures(ls => ls.map(l => l.id === id ? { ...l, status: 'STOPPED' } : l))
+			toast.success('Лекция завершена')
+		} catch {
+			toast.error('Не удалось завершить лекцию')
+		} finally {
+			setStoppingId(null)
+		}
 	}
 
 	const statusLabel = (s: string) => {
@@ -173,7 +187,7 @@ export function MyLecturesPage() {
 									слайд {l.currentSlide}
 								</span>
 							</div>
-							<div className="flex gap-2">
+							<div className="flex gap-2 flex-wrap">
 								<button
 									type="button"
 									onClick={() =>
@@ -183,6 +197,16 @@ export function MyLecturesPage() {
 								>
 									Копировать /join
 								</button>
+								{isRunning(l.status) && (
+									<button
+										type="button"
+										disabled={stoppingId === l.id}
+										onClick={() => handleStop(l.id)}
+										className="flex-1 text-center px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-xs disabled:opacity-60"
+									>
+										{stoppingId === l.id ? 'Завершение…' : 'Завершить'}
+									</button>
+								)}
 								<Link
 									to={`/settings/${l.id}`}
 									className="flex-1 text-center px-3 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm"
@@ -229,7 +253,17 @@ export function MyLecturesPage() {
 										<td className="py-3 px-4 text-sm text-neutral-600">
 											{statusLabel(l.status)}
 										</td>
-										<td className="py-3 px-4">
+										<td className="py-3 px-4 flex items-center gap-3">
+											{isRunning(l.status) && (
+												<button
+													type="button"
+													disabled={stoppingId === l.id}
+													onClick={() => handleStop(l.id)}
+													className="text-red-600 hover:text-red-700 text-sm disabled:opacity-60"
+												>
+													{stoppingId === l.id ? 'Завершение…' : 'Завершить'}
+												</button>
+											)}
 											<Link
 												to={`/settings/${l.id}`}
 												className="text-orange-500 hover:text-orange-600 text-sm"

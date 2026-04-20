@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.university.lecturebroadcasting.entity.AccessType;
 import ru.university.lecturebroadcasting.entity.Lecture;
 import ru.university.lecturebroadcasting.entity.LectureStatus;
 import ru.university.lecturebroadcasting.entity.Student;
@@ -30,14 +31,21 @@ public class LectureService {
 
     @Transactional
     public Lecture createLecture(String name, java.util.UUID sequenceId) {
+        return createLecture(name, sequenceId, AccessType.OPEN, null);
+    }
+
+    @Transactional
+    public Lecture createLecture(String name, java.util.UUID sequenceId, AccessType accessType, String password) {
         String cleaned = normalizeLectureJoinKey(name);
         if (cleaned.isEmpty()) {
             throw new IllegalArgumentException("Lecture name must not be blank");
         }
         Lecture lecture = new Lecture(cleaned, sequenceId);
+        lecture.setAccessType(accessType != null ? accessType : AccessType.OPEN);
+        lecture.setPassword(password != null && !password.isBlank() ? password.trim() : null);
         Lecture saved = lectureRepository.save(lecture);
-        log.info("Lecture created: id={} name={} status={} sequenceId={}",
-                saved.getId(), saved.getName(), saved.getStatus(), saved.getSequenceId());
+        log.info("Lecture created: id={} name={} status={} accessType={} sequenceId={}",
+                saved.getId(), saved.getName(), saved.getStatus(), saved.getAccessType(), saved.getSequenceId());
         return saved;
     }
 
@@ -90,13 +98,26 @@ public class LectureService {
 
     @Transactional
     public Student joinLecture(String lectureNameOrId, Long chatId) {
+        return joinLecture(lectureNameOrId, chatId, null);
+    }
+
+    @Transactional
+    public Student joinLecture(String lectureNameOrId, Long chatId, String password) {
         String key = normalizeLectureJoinKey(lectureNameOrId);
         if (key.isEmpty()) {
             throw new IllegalArgumentException("Lecture name or id is empty");
         }
 
+        // Ищем сначала по имени — это основной путь (работает и для "123", и для "Алгебра")
+        Optional<Long> joinableByName = findJoinableLectureIdByNameNative(key);
         Lecture lecture;
-        if (key.chars().allMatch(Character::isDigit)) {
+        if (joinableByName.isPresent()) {
+            lecture = lectureRepository.findById(joinableByName.get())
+                    .orElseThrow(() -> new IllegalStateException("Inconsistent DB for lecture id"));
+        } else if (findAnyLectureIdByNameNative(key).isPresent()) {
+            throw new IllegalStateException("Lecture has ended (STOPPED): " + key);
+        } else if (key.chars().allMatch(Character::isDigit)) {
+            // Имя не нашли — пробуем как числовой id (запасной путь)
             long id = Long.parseLong(key);
             var joinableById = lectureRepository.findByIdAndStatusIn(
                     id, List.of(LectureStatus.CREATED, LectureStatus.ACTIVE));
@@ -105,21 +126,24 @@ public class LectureService {
             } else if (lectureRepository.findById(id).isPresent()) {
                 throw new IllegalStateException("Lecture has ended (STOPPED) for id: " + id);
             } else {
-                throw new IllegalArgumentException("Active lecture not found for id: " + id);
+                throw new IllegalArgumentException("Active lecture not found: " + key);
             }
         } else {
-            // Через EntityManager: Spring Data native Optional<Long> с PostgreSQL часто даёт пустой результат
-            Optional<Long> joinableId = findJoinableLectureIdByNameNative(key);
-            if (joinableId.isPresent()) {
-                lecture = lectureRepository.findById(joinableId.get())
-                        .orElseThrow(() -> new IllegalStateException("Inconsistent DB for lecture id"));
-            } else if (findAnyLectureIdByNameNative(key).isPresent()) {
-                throw new IllegalStateException("Lecture has ended (STOPPED): " + key);
-            } else {
-                log.warn("Join by name failed: key='{}' (len={}). Rows in lectures table: {}. " +
-                                "Проверьте, что бот и API смотрят в одну БД (docker: SPRING_DATASOURCE_URL → broadcasting_db).",
-                        key, key.length(), lectureRepository.count());
-                throw new IllegalArgumentException("Active lecture not found: " + key);
+            log.warn("Join by name failed: key='{}' (len={}). Rows in lectures table: {}.",
+                    key, key.length(), lectureRepository.count());
+            throw new IllegalArgumentException("Active lecture not found: " + key);
+        }
+
+        // Проверка пароля
+        if (lecture.getAccessType() == AccessType.PASSWORD) {
+            String lp = lecture.getPassword();
+            if (lp != null && !lp.isBlank()) {
+                if (password == null || password.isBlank()) {
+                    throw new PasswordRequiredException("Password required for lecture: " + lecture.getName());
+                }
+                if (!password.trim().equals(lp.trim())) {
+                    throw new WrongPasswordException("Wrong password for lecture: " + lecture.getName());
+                }
             }
         }
 
@@ -131,6 +155,11 @@ public class LectureService {
 
     @Transactional
     public Lecture updateLectureName(Long id, String name) {
+        return updateLecture(id, name, null, null);
+    }
+
+    @Transactional
+    public Lecture updateLecture(Long id, String name, AccessType accessType, String password) {
         String cleaned = normalizeLectureJoinKey(name);
         if (cleaned.isEmpty()) {
             throw new IllegalArgumentException("Lecture name must not be blank");
@@ -138,6 +167,14 @@ public class LectureService {
         Lecture lecture = lectureRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Lecture not found: " + id));
         lecture.setName(cleaned);
+        if (accessType != null) {
+            lecture.setAccessType(accessType);
+        }
+        if (accessType == AccessType.PASSWORD && password != null && !password.isBlank()) {
+            lecture.setPassword(password.trim());
+        } else if (accessType == AccessType.OPEN) {
+            lecture.setPassword(null);
+        }
         return lectureRepository.save(lecture);
     }
 
@@ -217,4 +254,11 @@ public class LectureService {
     }
 
     public record SlideUpdateResult(Lecture lecture, byte[] imageBytes, List<Long> chatIds) {}
+
+    public List<Long> getStudentChatIds(Long lectureId) {
+        return studentRepository.findByLecture_Id(lectureId)
+                .stream()
+                .map(Student::getChatId)
+                .toList();
+    }
 }

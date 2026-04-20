@@ -44,6 +44,7 @@ services:
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME}
       - CONTENT_SERVICE_URL=http://content-service:8081
       - ANALYTICS_SERVICE_URL=http://analytics-service:8084
+      - QUIZ_SERVICE_URL=http://quiz-service:8083
     depends_on:
       postgres:
         condition: service_started
