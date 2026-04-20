@@ -1,25 +1,41 @@
-# Заглушка для Quiz Service
+# Quiz Service
 
-## Описание
-Сервис для проведения опросов, тестов и сбора вопросов от слушателей лекции. Отвечает за обратную связь лектору в реальном времени.
+Сервис тестирования и опросов. Порт: **8083**.
 
-## Задачи для разработчика
-1. Настроить Spring Boot 3 + Java 21.
-2. Подключить `quiz_db` PostgreSQL через Hibernate/Spring Data JPA.
-3. Реализовать REST API:
-   - `POST /quizzes`
-   - `POST /quizzes/{quiz_id}/responses`
-   - `GET /quizzes/{quiz_id}/results`
-   - `POST /slides/{slide_id}/questions`
-   - `GET /lectures/{lecture_id}/questions`
-   - `PUT /questions/{question_id}/answer`
-4. Обеспечить корректное использование `lecture_id` и `user_id` во всех запросах.
-5. (Опционально) Изучить вариант отправки уведомлений лектору через WebSocket о новых вопросах.
+## Реализованный функционал
+
+### Полноценные тесты (Exam)
+- Вопросы типа **MULTIPLE** (один правильный вариант) и **OPEN** (свободный ответ)
+- Статусы: `DRAFT` → `ACTIVE` → `CLOSED`
+- Ограничение времени на весь тест и/или на каждый вопрос
+- Два типа тестов: `EXAM` и `SURVEY` (опрос удовлетворённости)
+
+### API
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| `POST` | `/exams` | Создать тест |
+| `GET` | `/exams/{id}` | Получить тест с вопросами и вариантами |
+| `PUT` | `/exams/{id}` | Обновить тест (только DRAFT) |
+| `DELETE` | `/exams/{id}` | Удалить тест |
+| `GET` | `/lectures/{lectureId}/exams` | Список тестов лекции |
+| `POST` | `/exams/{id}/duplicate` | Дублировать тест как DRAFT |
+| `POST` | `/exams/{id}/launch` | Запустить тест (DRAFT → ACTIVE) |
+| `POST` | `/exams/{id}/close` | Закрыть тест (ACTIVE → CLOSED) |
+| `POST` | `/exams/import/gift` | Импорт из GIFT-файла (multipart, ?lectureId=&title=) |
+| `GET` | `/exams/{id}/export/gift` | Экспорт в GIFT-файл |
+| `POST` | `/exams/{id}/submissions` | Начать прохождение теста (студент) |
+| `POST` | `/exams/{id}/answers` | Ответить на вопрос (?chatId=) |
+| `GET` | `/exams/{id}/submissions` | Результаты всех студентов |
+| `PUT` | `/answers/{id}/grade` | Выставить балл за открытый ответ |
+
+### Устаревшие endpoint-ы (квизы реального времени)
+`POST /quizzes`, `POST /quizzes/{id}/responses`, `GET /quizzes/{id}/results` — реализованы, но не используются основным UI.
+
+## База данных
+`quiz_db` (PostgreSQL). Схема создаётся автоматически через Hibernate (`ddl-auto: update`).
 
 ## Запуск
-Сборка:
 ```bash
-mvn clean package -DskipTests
+docker compose up -d --build quiz-service
 ```
-Запуск (порт 8083):
-Сервис запускается в рамках `docker-compose up -d --build`.

@@ -1,23 +1,36 @@
-# Заглушка для Analytics Service
+# Analytics Service
 
-## Описание
-Сервис сбора телеметрии и аналитики. Получает события из других сервисов (смена слайда, вход пользователя, ответы на вопросы) и формирует отчеты по вовлеченности/активности. Рекомендуется использовать для визуализации графиков на фронтенде лектора.
+Сервис сбора событий лекции и формирования аналитики. Порт: **8084**.
 
-## Задачи для разработчика
-1. Настроить Spring Boot 3 + Java 21.
-2. Подключить `analytics_db` PostgreSQL через Hibernate/Spring Data JPA.
-3. Разработать REST API:
-   - `POST /analytics/events/lecture` (системные события, например, смена слайда)
-   - `POST /analytics/events/user` (пользовательские события, например, отвлекся/фокус окна)
-   - `GET /analytics/lectures/{lecture_id}/aggregations`
-   - `GET /analytics/lectures/{lecture_id}/dashboard`
-   - `GET /analytics/lectures/{lecture_id}/report`
-4. В будущем сервис может быть переведён на работу через Kafka или RabbitMQ для асинхронного сбора логов активности.
+## Реализованный функционал
+
+Принимает события от Lecture Broadcasting Service и предоставляет агрегированную статистику лектору.
+
+### API
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| `POST` | `/analytics/events/lecture` | Принять событие (`slide_changed`, `student_joined`, `start_lecture`, `end_lecture`) |
+| `GET` | `/analytics/lectures/{lectureId}/dashboard` | Дашборд: кол-во уникальных студентов, смен слайдов, последний слайд |
+| `GET` | `/analytics/lectures/{lectureId}/aggregations` | Агрегации по событиям |
+| `GET` | `/analytics/lectures/{lectureId}/report` | Итоговый отчёт по лекции |
+
+### Формат события (`POST /analytics/events/lecture`)
+```json
+{
+  "lectureId": 1,
+  "actionType": "student_joined",
+  "userId": "123456789",
+  "payload": "{\"slideNumber\": 3}"
+}
+```
+
+`lectureId` — тип `Long` (не UUID).
+
+## База данных
+`analytics_db` (PostgreSQL). Таблица `activity_logs` создаётся автоматически через Hibernate.
 
 ## Запуск
-Сборка:
 ```bash
-mvn clean package -DskipTests
+docker compose up -d --build analytics-service
 ```
-Запуск (порт 8084):
-Сервис запускается в рамках `docker-compose up -d --build`.
