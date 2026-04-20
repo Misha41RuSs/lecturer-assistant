@@ -70,6 +70,7 @@ export function TestsPage() {
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [editingExamId, setEditingExamId] = useState<string | null>(null);
+  const [editingQuestionId, setEditingQuestionId] = useState<number | null>(null);
   const giftInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -100,6 +101,7 @@ export function TestsPage() {
 
   const startCreate = () => {
     setEditingExamId(null);
+    setEditingQuestionId(null);
     setNewTitle(""); setNewTotalTime(""); setDraftQuestions([]);
     setQuestionText(""); setTimeLimit("60");
     setAnswers([{ id: 1, text: "", correct: false }, { id: 2, text: "", correct: false }]);
@@ -123,6 +125,7 @@ export function TestsPage() {
       })));
       setQuestionText(""); setTimeLimit("60");
       setAnswers([{ id: 1, text: "", correct: false }, { id: 2, text: "", correct: false }]);
+      setEditingQuestionId(null);
       setView("create");
     } catch {
       toast.error("Не удалось загрузить тест");
@@ -145,13 +148,31 @@ export function TestsPage() {
     if (!questionText.trim()) { toast.error("Введите текст вопроса"); return; }
     if (questionType === "multiple" && !answers.some(a => a.correct)) { toast.error("Отметьте правильный ответ"); return; }
     if (questionType === "multiple" && answers.some(a => !a.text.trim())) { toast.error("Заполните все варианты"); return; }
-    setDraftQuestions([...draftQuestions, {
-      id: Date.now(), text: questionText, type: questionType,
+
+    const updatedQuestion = {
+      id: editingQuestionId || Date.now(), text: questionText, type: questionType,
       time: timeLimit, answers: questionType === "multiple" ? [...answers] : [],
-    }]);
+    };
+
+    if (editingQuestionId) {
+      setDraftQuestions(draftQuestions.map(q => q.id === editingQuestionId ? updatedQuestion : q));
+      toast.success("Вопрос обновлен");
+    } else {
+      setDraftQuestions([...draftQuestions, updatedQuestion as unknown as DraftQuestion]);
+      toast.success("Вопрос добавлен");
+    }
+
+    setEditingQuestionId(null);
     setQuestionText("");
     setAnswers([{ id: Date.now() + 1, text: "", correct: false }, { id: Date.now() + 2, text: "", correct: false }]);
-    toast.success("Вопрос добавлен");
+  };
+
+  const editDraftQuestion = (q: DraftQuestion) => {
+    setEditingQuestionId(q.id);
+    setQuestionType(q.type);
+    setQuestionText(q.text);
+    setTimeLimit(q.time);
+    setAnswers(q.type === "multiple" && q.answers.length > 0 ? q.answers : [{ id: 1, text: "", correct: false }, { id: 2, text: "", correct: false }]);
   };
 
   const saveExam = async () => {
@@ -606,7 +627,7 @@ export function TestsPage() {
               </div>
 
               <button onClick={addQuestion} className="w-full bg-orange-500 text-white py-2.5 rounded-lg hover:bg-orange-600 text-sm">
-                Добавить вопрос
+                {editingQuestionId ? "Сохранить изменения" : "Добавить вопрос"}
               </button>
             </div>
           </div>
@@ -622,16 +643,34 @@ export function TestsPage() {
                       <div className="flex items-start gap-2">
                         <div className="w-6 h-6 bg-orange-500 text-white rounded flex items-center justify-center text-xs flex-shrink-0">{i + 1}</div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm line-clamp-2">{q.text}</p>
-                          <div className="flex gap-2 text-xs text-neutral-500 mt-1">
+                          <p className="text-sm">{q.text}</p>
+                          {q.type === "multiple" && q.answers && q.answers.length > 0 && (
+                            <div className="mt-2 space-y-1.5 pl-1 border-l-2 border-neutral-100">
+                              {q.answers.map((ans, idx) => (
+                                <div key={idx} className="flex items-start gap-1.5 text-xs">
+                                  <span className={`mt-0.5 flex-shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center ${ans.correct ? 'border-green-500 bg-green-500 text-white' : 'border-neutral-300 bg-white'}`}>
+                                    {ans.correct && <Check className="w-2.5 h-2.5" />}
+                                  </span>
+                                  <span className={ans.correct ? "text-green-700 font-medium" : "text-neutral-600"}>
+                                    {ans.text}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex gap-2 text-xs text-neutral-500 mt-2">
                             <span className="px-1.5 py-0.5 bg-neutral-100 rounded">{q.type === "multiple" ? "Выбор" : "Открытый"}</span>
                             {q.time && <span><Clock className="w-3 h-3 inline" /> {q.time}с</span>}
                           </div>
                         </div>
-                        <button onClick={() => setDraftQuestions(draftQuestions.filter(x => x.id !== q.id))}
-                          className="text-neutral-300 hover:text-red-500 opacity-0 group-hover:opacity-100 flex-shrink-0">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity">
+                          <button onClick={() => editDraftQuestion(q)} className="text-neutral-300 hover:text-orange-500">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => setDraftQuestions(draftQuestions.filter(x => x.id !== q.id))} className="text-neutral-300 hover:text-red-500">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
