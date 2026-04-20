@@ -103,6 +103,19 @@ export function gradeAnswer(answerId: string, score: number) {
   });
 }
 
+export function updateExam(examId: string, dto: Parameters<typeof createExam>[0]) {
+  return apiFetch(`/exams/${examId}`, { method: "PUT", body: JSON.stringify(dto) });
+}
+
+export async function deleteExam(examId: string): Promise<void> {
+  const { BASE_URL } = await import("./client");
+  const res = await fetch(`${BASE_URL}/exams/${examId}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+}
+
 export function duplicateExam(examId: string) {
   return apiFetch(`/exams/${examId}/duplicate`, { method: "POST" });
 }

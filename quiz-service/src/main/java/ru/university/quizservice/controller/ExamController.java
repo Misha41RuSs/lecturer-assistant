@@ -39,6 +39,20 @@ public class ExamController {
         return examService.listByLecture(lectureId);
     }
 
+    @PutMapping("/exams/{examId}")
+    public ResponseEntity<ExamDetailDto> update(
+            @PathVariable UUID examId,
+            @RequestBody CreateExamDto dto) {
+        Exam exam = examService.updateExam(examId, dto);
+        return ResponseEntity.ok(examService.getExamDetail(exam.getId()));
+    }
+
+    @DeleteMapping("/exams/{examId}")
+    public ResponseEntity<Map<String, Object>> delete(@PathVariable UUID examId) {
+        examService.deleteExam(examId);
+        return ResponseEntity.ok(Map.of("deleted", true));
+    }
+
     @PostMapping("/exams/{examId}/duplicate")
     public ResponseEntity<ExamDetailDto> duplicate(@PathVariable UUID examId) {
         Exam copy = examService.duplicateExam(examId);

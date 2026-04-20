@@ -24,6 +24,7 @@ public record ExamDetailDto(
 
     public record OptionDto(
             UUID id,
-            String text
+            String text,
+            boolean correct
     ) {}
 }

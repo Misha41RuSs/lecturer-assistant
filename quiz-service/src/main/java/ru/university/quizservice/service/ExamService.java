@@ -246,6 +246,45 @@ public class ExamService {
     }
 
     @Transactional
+    public Exam updateExam(UUID examId, CreateExamDto dto) {
+        Exam exam = getExam(examId);
+        if (exam.getStatus() != ExamStatus.DRAFT) {
+            throw new IllegalStateException("Нельзя редактировать запущенный или закрытый тест");
+        }
+        exam.setTitle(dto.title());
+        exam.setTotalTimeSec(dto.totalTimeSec());
+        exam.getQuestions().clear();
+
+        int idx = 0;
+        for (CreateExamDto.QuestionDto qDto : dto.questions()) {
+            ExamQuestion q = new ExamQuestion();
+            q.setExam(exam);
+            q.setOrderIndex(idx++);
+            q.setText(qDto.text());
+            q.setType(QuestionType.valueOf(qDto.type()));
+            q.setTimeLimitSec(qDto.timeLimitSec());
+            if (qDto.options() != null) {
+                int optIdx = 0;
+                for (CreateExamDto.OptionDto oDto : qDto.options()) {
+                    ExamOption opt = new ExamOption();
+                    opt.setQuestion(q);
+                    opt.setOrderIndex(optIdx++);
+                    opt.setText(oDto.text());
+                    opt.setCorrect(oDto.correct());
+                    q.getOptions().add(opt);
+                }
+            }
+            exam.getQuestions().add(q);
+        }
+        return examRepository.save(exam);
+    }
+
+    @Transactional
+    public void deleteExam(UUID examId) {
+        examRepository.delete(getExam(examId));
+    }
+
+    @Transactional
     public Exam importFromGift(Long lectureId, String title, String content) {
         GiftParser parser = new GiftParser();
         List<CreateExamDto.QuestionDto> questions = parser.parse(content);
@@ -278,7 +317,7 @@ public class ExamService {
                         q.getId(), q.getOrderIndex(), q.getText(), q.getType().name(),
                         q.getTimeLimitSec(),
                         q.getOptions().stream()
-                                .map(o -> new ExamDetailDto.OptionDto(o.getId(), o.getText()))
+                                .map(o -> new ExamDetailDto.OptionDto(o.getId(), o.getText(), o.isCorrect()))
                                 .toList()
                 ))
                 .toList();

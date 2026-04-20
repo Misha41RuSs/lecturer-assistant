@@ -1,14 +1,14 @@
 import { ChangeEvent, useEffect, useRef, useState } from "react";
-import { Plus, Trash2, Clock, Check, BarChart3, ChevronDown, ChevronRight, ChevronLeft, Eye, Edit2, Star, Send, Copy, Upload, Download } from "lucide-react";
+import { Plus, Trash2, Clock, Check, BarChart3, ChevronDown, ChevronRight, Pencil, Send, Copy, Upload, Download } from "lucide-react";
 import { toast } from "sonner";
 import { listLectures, LectureListItem } from "../app/api/client";
 import {
-  createExam, getExamsByLecture, getExam, getExamSubmissions,
+  createExam, updateExam, deleteExam, getExamsByLecture, getExam, getExamSubmissions,
   launchExam, closeExam, gradeAnswer, broadcastExam, duplicateExam,
   importGift, exportGift,
 } from "../app/api/quiz.api";
 
-interface ApiOption { id: string; text: string }
+interface ApiOption { id: string; text: string; correct?: boolean }
 interface ApiQuestion {
   id: string; orderIndex: number; text: string;
   type: "MULTIPLE" | "OPEN"; timeLimitSec: number | null; options: ApiOption[];
@@ -69,6 +69,7 @@ export function TestsPage() {
   const [draftQuestions, setDraftQuestions] = useState<DraftQuestion[]>([]);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [editingExamId, setEditingExamId] = useState<string | null>(null);
   const giftInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -98,10 +99,46 @@ export function TestsPage() {
   };
 
   const startCreate = () => {
+    setEditingExamId(null);
     setNewTitle(""); setNewTotalTime(""); setDraftQuestions([]);
     setQuestionText(""); setTimeLimit("60");
     setAnswers([{ id: 1, text: "", correct: false }, { id: 2, text: "", correct: false }]);
     setView("create");
+  };
+
+  const startEdit = async (examId: string) => {
+    try {
+      const detail = await getExam(examId) as ApiExam;
+      setEditingExamId(examId);
+      setNewTitle(detail.title);
+      setNewTotalTime(detail.totalTimeSec ? String(Math.round(detail.totalTimeSec / 60)) : "");
+      setDraftQuestions(detail.questions.map((q, qi) => ({
+        id: Date.now() + qi,
+        text: q.text,
+        type: q.type === "MULTIPLE" ? "multiple" : "open",
+        time: q.timeLimitSec ? String(q.timeLimitSec) : "",
+        answers: q.type === "MULTIPLE"
+          ? q.options.map((o, i) => ({ id: i + 1, text: o.text, correct: o.correct ?? false }))
+          : [],
+      })));
+      setQuestionText(""); setTimeLimit("60");
+      setAnswers([{ id: 1, text: "", correct: false }, { id: 2, text: "", correct: false }]);
+      setView("create");
+    } catch {
+      toast.error("Не удалось загрузить тест");
+    }
+  };
+
+  const handleDelete = async (examId: string) => {
+    if (!confirm("Удалить тест? Это действие необратимо.")) return;
+    try {
+      await deleteExam(examId);
+      toast.success("Тест удалён");
+      setExpandedExam(null);
+      reloadExams();
+    } catch {
+      toast.error("Не удалось удалить тест");
+    }
   };
 
   const addQuestion = () => {
@@ -123,7 +160,7 @@ export function TestsPage() {
     if (!selectedLectureId) { toast.error("Выберите лекцию"); return; }
     setSaving(true);
     try {
-      await createExam({
+      const dto = {
         lectureId: String(selectedLectureId),
         title: newTitle.trim(),
         totalTimeSec: newTotalTime ? parseInt(newTotalTime) * 60 : null,
@@ -135,8 +172,15 @@ export function TestsPage() {
             ? q.answers.map(a => ({ text: a.text, correct: a.correct }))
             : undefined,
         })),
-      });
-      toast.success("Тест создан");
+      };
+      if (editingExamId) {
+        await updateExam(editingExamId, dto);
+        toast.success("Тест обновлён");
+      } else {
+        await createExam(dto);
+        toast.success("Тест создан");
+      }
+      setEditingExamId(null);
       reloadExams();
       setView("list");
     } catch {
@@ -479,12 +523,12 @@ export function TestsPage() {
   if (view === "create") {
     return (
       <div className="p-4 sm:p-6 lg:p-8">
-        <Breadcrumbs items={[{ label: "Тесты", onClick: () => setView("list") }, { label: "Создание теста" }]} />
+        <Breadcrumbs items={[{ label: "Тесты", onClick: () => setView("list") }, { label: editingExamId ? "Редактирование теста" : "Создание теста" }]} />
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <h1 className="mb-0">Создание теста</h1>
+          <h1 className="mb-0">{editingExamId ? "Редактирование теста" : "Создание теста"}</h1>
           <button onClick={saveExam} disabled={saving}
             className="flex items-center gap-2 bg-orange-500 text-white px-5 py-2.5 rounded-full hover:bg-orange-600 text-sm disabled:opacity-60 self-start sm:self-auto">
-            <Check className="w-4 h-4" /> {saving ? "Сохранение..." : "Сохранить тест"}
+            <Check className="w-4 h-4" /> {saving ? "Сохранение..." : (editingExamId ? "Сохранить изменения" : "Сохранить тест")}
           </button>
         </div>
 
@@ -682,6 +726,12 @@ export function TestsPage() {
                         className="flex items-center gap-1 px-3 py-1.5 border border-neutral-300 rounded-lg text-sm hover:bg-neutral-50">
                         <BarChart3 className="w-3.5 h-3.5" /> Результаты
                       </button>
+                      {exam.status === "DRAFT" && (
+                        <button onClick={() => startEdit(exam.id)}
+                          className="flex items-center gap-1 px-3 py-1.5 border border-neutral-300 rounded-lg text-sm hover:bg-neutral-50">
+                          <Pencil className="w-3.5 h-3.5" /> Редактировать
+                        </button>
+                      )}
                       <button onClick={() => handleDuplicate(exam.id)}
                         className="flex items-center gap-1 px-3 py-1.5 border border-neutral-300 rounded-lg text-sm hover:bg-neutral-50">
                         <Copy className="w-3.5 h-3.5" /> Дублировать
@@ -702,6 +752,10 @@ export function TestsPage() {
                           Закрыть тест
                         </button>
                       )}
+                      <button onClick={() => handleDelete(exam.id)}
+                        className="flex items-center gap-1 px-3 py-1.5 border border-red-200 text-red-500 rounded-lg text-sm hover:bg-red-50 ml-auto">
+                        <Trash2 className="w-3.5 h-3.5" /> Удалить
+                      </button>
                     </div>
                   </div>
                 )}
