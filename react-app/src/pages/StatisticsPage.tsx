@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Users, ClipboardList, CheckCircle, ChevronDown, ChevronUp, Star } from "lucide-react";
 import { toast } from "sonner";
-import { listLectures, LectureListItem } from "../app/api/client";
+import { listLectures, LectureListItem, getLectureStudents } from "../app/api/client";
 import { getLectureDashboard } from "../app/api/analytics.api";
 import { getExamsByLecture, getExamSubmissions } from "../app/api/quiz.api";
 
