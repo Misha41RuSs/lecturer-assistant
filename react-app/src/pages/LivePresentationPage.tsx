@@ -26,12 +26,14 @@ import {
 	stopLecture,
 	broadcastSlideImage,
 	getLectureStudents,
+	kickLectureStudent,
+	StudentDto,
 	broadcastMessage,
 	getStudentQuestions,
 	sendPrivateReply,
 	sendBroadcastReply,
 } from '../app/api/client'
-import { createExam, broadcastExam, getExamsByLecture } from '../app/api/quiz.api'
+import { createExam, broadcastExam, getExamsByLecture, sendExamToUser } from '../app/api/quiz.api'
 import { sendLectureEvent } from '../app/api/analytics.api'
 import { DrawingOverlay, DrawingOverlayHandle } from '../features/DrawingOverlay'
 
@@ -55,10 +57,12 @@ interface Question {
 function QuizLaunchForm({
 	lectureId,
 	studentsCount,
+	isPersonal = false,
 	onLaunch,
 }: {
 	lectureId: string
 	studentsCount: number
+	isPersonal?: boolean
 	onLaunch: (examId: string) => void
 }) {
 	const [exams, setExams] = useState<{ id: string; title: string }[]>([])
@@ -95,7 +99,7 @@ function QuizLaunchForm({
 				disabled={!selectedId}
 				className="w-full px-4 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 disabled:opacity-40"
 			>
-				Запустить для всех ({studentsCount})
+				{isPersonal ? 'Выдать лично' : `Запустить для всех (${studentsCount})`}
 			</button>
 		</div>
 	)
@@ -154,7 +158,8 @@ export function LivePresentationPage() {
 	const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(lectureUrl)}`
 
 	const [questions, setQuestions] = useState<Question[]>([])
-	const [studentsCount, setStudentsCount] = useState(0)
+	const [students, setStudents] = useState<StudentDto[]>([])
+	const studentsCount = students.length
 
 	// Load lecture data and slides from backend
 	useEffect(() => {
@@ -231,7 +236,7 @@ export function LivePresentationPage() {
 		if (!lectureId) return
 		const load = () => {
 			getLectureStudents(lectureId)
-				.then((ids: number[]) => setStudentsCount(ids.length))
+				.then((list) => setStudents(list))
 				.catch(() => {})
 		}
 		load()
@@ -359,8 +364,13 @@ export function LivePresentationPage() {
 	const handleAssignTestAll = async (examId: string) => {
 		if (!lectureId) return
 		try {
-			await broadcastExam(examId, lectureId)
-			toast.success(`Тест запущен для студентов (${studentsCount})`)
+			if (showTestModal === -1) {
+				await broadcastExam(examId, lectureId)
+				toast.success(`Тест запущен для студентов (${studentsCount})`)
+			} else if (showTestModal !== null) {
+				await sendExamToUser(examId, showTestModal)
+				toast.success(`Тест выдан студенту`)
+			}
 		} catch {
 			toast.error('Не удалось запустить тест')
 		}
@@ -853,16 +863,59 @@ export function LivePresentationPage() {
 								)
 							) : (
 								<div className="flex flex-col h-full">
-									<div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-4 py-8">
-										<Users className="w-10 h-10 text-neutral-600" />
-										<div>
-											<div className="text-3xl text-white mb-1">{studentsCount}</div>
-											<div className="text-neutral-400 text-sm">студентов подключилось</div>
+									{students.length === 0 ? (
+										<div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-4 py-8">
+											<Users className="w-10 h-10 text-neutral-600" />
+											<div className="text-neutral-500 text-sm">Пока никто не подключился</div>
 										</div>
-										<p className="text-neutral-500 text-xs mt-2">
-											Студенты подключены через Telegram-бот. Индивидуальный список недоступен.
-										</p>
-									</div>
+									) : (
+										<div className="flex-1 overflow-y-auto space-y-2 mb-3">
+											{students.map(s => (
+												<div key={s.chatId} className="bg-neutral-800 rounded-lg p-3 flex flex-col gap-2 border border-neutral-700">
+													<div className="flex items-center justify-between">
+														<div className="flex items-center gap-2 min-w-0">
+															<div className="w-8 h-8 bg-neutral-700 rounded-full flex items-center justify-center text-sm font-medium text-white flex-shrink-0">
+																{s.firstName?.[0] || 'С'}
+															</div>
+															<div className="min-w-0">
+																<div className="text-white text-sm font-medium truncate">
+																	{s.firstName ? `${s.firstName} ${s.lastName || ''}` : `Студент`}
+																</div>
+																<div className="text-orange-400/80 text-xs truncate">
+																	{s.username ? `@${s.username}` : `ID: ${s.chatId}`}
+																</div>
+															</div>
+														</div>
+														<button
+															onClick={async () => {
+																if (!window.confirm('Выгнать студента из лекции? Он больше не сможет зайти.')) return;
+																try {
+																	await kickLectureStudent(lectureId!, s.chatId);
+																	setStudents(prev => prev.filter(x => x.chatId !== s.chatId));
+																	toast.success('Студент отключен');
+																} catch (e) {
+																	toast.error('Не удалось отключить студента');
+																}
+															}}
+															className="p-1.5 text-neutral-500 hover:bg-red-500/10 hover:text-red-400 rounded transition-colors"
+															title="Выгнать из лекции"
+														>
+															<X className="w-4 h-4" />
+														</button>
+													</div>
+													<div className="flex mt-1">
+														<button
+															onClick={() => setShowTestModal(s.chatId)}
+															className="w-full justify-center flex items-center gap-1.5 px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 text-white text-xs font-medium rounded transition-colors"
+														>
+															<ClipboardList className="w-3.5 h-3.5" />
+															Выдать тест лично
+														</button>
+													</div>
+												</div>
+											))}
+										</div>
+									)}
 
 									{/* Action buttons */}
 									<div className="pt-3 border-t border-neutral-800 space-y-2">
@@ -913,11 +966,18 @@ export function LivePresentationPage() {
 			{showTestModal !== null && (
 				<div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
 					<div className="bg-white rounded-xl p-6 max-w-sm w-full max-h-[80vh] flex flex-col">
-						<h3 className="mb-1">Запустить квиз</h3>
+						<h3 className="mb-1">{showTestModal === -1 ? 'Запустить квиз для всех' : 'Выдать тест студенту'}</h3>
 						<p className="text-sm text-neutral-500 mb-4">
-							Введите название квиза — студенты получат его через Telegram-бот и смогут ответить.
+							{showTestModal === -1 
+								? 'Введите название квиза — все студенты получат его через Telegram-бот.'
+								: 'Выберите тест. Он будет отправлен только этому студенту.'}
 						</p>
-						<QuizLaunchForm lectureId={lectureId!} studentsCount={studentsCount} onLaunch={handleAssignTestAll} />
+						<QuizLaunchForm 
+							lectureId={lectureId!} 
+							studentsCount={studentsCount} 
+							isPersonal={showTestModal !== -1}
+							onLaunch={handleAssignTestAll} 
+						/>
 						<button
 							onClick={() => setShowTestModal(null)}
 							className="w-full px-4 py-2 border border-neutral-300 rounded-lg text-sm mt-auto"

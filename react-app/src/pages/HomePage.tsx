@@ -53,8 +53,8 @@ export function HomePage() {
     l.name.toLowerCase().includes(search.toLowerCase())
   );
   const runningCount = lectures.filter((l) => l.status === "ACTIVE").length;
+  const draftCount = lectures.filter((l) => l.status === "CREATED").length;
   const finishedCount = lectures.filter((l) => l.status === "STOPPED" || l.status === "FINISHED").length;
-  const withPresentation = lectures.filter((l) => l.sequenceId).length;
 
   const handleDelete = (id: number) => {
     setLectures((p) => p.filter((l) => l.id !== id));
@@ -93,8 +93,8 @@ export function HomePage() {
           <div className="text-sm text-neutral-500">Запущено сейчас</div>
         </div>
         <div className="bg-white rounded-xl p-4 lg:p-6 border border-neutral-200">
-          <div className="text-2xl lg:text-3xl mb-1">{withPresentation}</div>
-          <div className="text-sm text-neutral-500">С презентацией</div>
+          <div className="text-2xl lg:text-3xl mb-1">{draftCount}</div>
+          <div className="text-sm text-neutral-500">В черновиках</div>
         </div>
         <div className="bg-white rounded-xl p-4 lg:p-6 border border-neutral-200">
           <div className="text-2xl lg:text-3xl mb-1">{finishedCount}</div>

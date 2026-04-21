@@ -127,6 +127,13 @@ export function broadcastExam(examId: string, lectureId: string) {
   });
 }
 
+export function sendExamToUser(examId: string, chatId: number) {
+  return apiFetch(`/api/exams/launch-to-user`, {
+    method: "POST",
+    body: JSON.stringify({ examId, chatId: String(chatId) }),
+  });
+}
+
 export async function importGift(lectureId: string, title: string, file: File): Promise<any> {
   const { BASE_URL } = await import("./client");
   const formData = new FormData();

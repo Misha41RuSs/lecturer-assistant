@@ -156,10 +156,22 @@ export async function updateLecture(
 	return res.json()
 }
 
-export async function getLectureStudents(lectureId: string): Promise<number[]> {
+export interface StudentDto {
+	chatId: number
+	firstName: string | null
+	lastName: string | null
+	username: string | null
+}
+
+export async function getLectureStudents(lectureId: string): Promise<StudentDto[]> {
 	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/students`)
 	if (!res.ok) throw new Error('Failed to load students')
 	return res.json()
+}
+
+export async function kickLectureStudent(lectureId: string, chatId: number): Promise<void> {
+	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/kick/${chatId}`, { method: 'POST' })
+	if (!res.ok) throw new Error('Failed to kick student')
 }
 
 export async function broadcastMessage(lectureId: string, text: string): Promise<void> {

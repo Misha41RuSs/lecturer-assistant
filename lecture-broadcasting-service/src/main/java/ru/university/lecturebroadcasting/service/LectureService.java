@@ -13,6 +13,8 @@ import ru.university.lecturebroadcasting.entity.LectureStatus;
 import ru.university.lecturebroadcasting.entity.Student;
 import ru.university.lecturebroadcasting.repository.LectureRepository;
 import ru.university.lecturebroadcasting.repository.StudentRepository;
+import ru.university.lecturebroadcasting.repository.BannedUserRepository;
+import ru.university.lecturebroadcasting.dto.StudentDto;
 
 import java.text.Normalizer;
 import java.util.List;
@@ -25,6 +27,7 @@ public class LectureService {
 
     private final LectureRepository lectureRepository;
     private final StudentRepository studentRepository;
+    private final BannedUserRepository bannedUserRepository;
     private final ContentServiceClient contentServiceClient;
     private final AnalyticsServiceClient analyticsServiceClient;
     private final EntityManager entityManager;
@@ -82,12 +85,6 @@ public class LectureService {
 
         List<Student> attached = studentRepository.findByLecture_Id(id);
         List<Long> chatIds = attached.stream().map(Student::getChatId).toList();
-        for (Student s : attached) {
-            s.setLecture(null);
-        }
-        if (!attached.isEmpty()) {
-            studentRepository.saveAll(attached);
-        }
 
         log.info("Lecture stopped: id={} name={} disconnectedStudents={}",
                 lecture.getId(), lecture.getName(), chatIds.size());
@@ -97,12 +94,12 @@ public class LectureService {
     public record StopLectureResult(Lecture lecture, List<Long> disconnectedChatIds) {}
 
     @Transactional
-    public Student joinLecture(String lectureNameOrId, Long chatId) {
-        return joinLecture(lectureNameOrId, chatId, null);
+    public Student joinLecture(String lectureNameOrId, Long chatId, String firstName, String lastName, String username) {
+        return joinLecture(lectureNameOrId, chatId, null, firstName, lastName, username);
     }
 
     @Transactional
-    public Student joinLecture(String lectureNameOrId, Long chatId, String password) {
+    public Student joinLecture(String lectureNameOrId, Long chatId, String password, String firstName, String lastName, String username) {
         String key = normalizeLectureJoinKey(lectureNameOrId);
         if (key.isEmpty()) {
             throw new IllegalArgumentException("Lecture name or id is empty");
@@ -147,9 +144,17 @@ public class LectureService {
             }
         }
 
+        // Check banned users
+        if (bannedUserRepository.existsByLectureIdAndChatId(lecture.getId(), chatId)) {
+            throw new IllegalArgumentException("Вы отключены от этой лекции (доступ запрещён).");
+        }
+
         Student student = studentRepository.findByChatId(chatId)
                 .orElseGet(() -> new Student(chatId, lecture));
         student.setLecture(lecture);
+        if (firstName != null) student.setFirstName(firstName);
+        if (lastName != null) student.setLastName(lastName);
+        if (username != null) student.setUsername(username);
         return studentRepository.save(student);
     }
 
@@ -260,5 +265,25 @@ public class LectureService {
                 .stream()
                 .map(Student::getChatId)
                 .toList();
+    }
+
+    public List<StudentDto> getStudents(Long lectureId) {
+        return studentRepository.findByLecture_Id(lectureId)
+                .stream()
+                .map(s -> new StudentDto(s.getChatId(), s.getFirstName(), s.getLastName(), s.getUsername()))
+                .toList();
+    }
+
+    @Transactional
+    public void kickStudent(Long lectureId, Long chatId) {
+        if (!bannedUserRepository.existsByLectureIdAndChatId(lectureId, chatId)) {
+            bannedUserRepository.save(new ru.university.lecturebroadcasting.entity.BannedUser(lectureId, chatId));
+        }
+        studentRepository.findByChatId(chatId).ifPresent(student -> {
+            if (student.getLecture() != null && student.getLecture().getId().equals(lectureId)) {
+                student.setLecture(null);
+                studentRepository.save(student);
+            }
+        });
     }
 }

@@ -24,6 +24,15 @@ public class Student {
     @JoinColumn(name = "lecture_id")
     private Lecture lecture;
 
+    @Column(name = "first_name")
+    private String firstName;
+
+    @Column(name = "last_name")
+    private String lastName;
+
+    @Column(name = "username")
+    private String username;
+
     public Student(Long chatId, Lecture lecture) {
         this.chatId = chatId;
         this.lecture = lecture;
