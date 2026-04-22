@@ -1,0 +1,235 @@
+PS C:\Users\Seren\Documents\StudentPJ\lecturer-assistant>
+>> curl.exe -X PUT "http://localhost:8080/slide-sequences/caa5e244-3446-47d4-ab29-5bd1e4211023" -H "Content-Type: application/json" -d '{"id":"caa5e244-3446-47d4-ab29-5bd1e4211023","slideIds":["c709d25d-d659-4946-bee1-6bacd4b24bea","e12efcf4-6f6b-4926-b4f3-65c1f54156ea"]}'
+{"timestamp":"2026-04-22T09:34:39.762+00:00","status":400,"error":"Bad Request","path":"/slide-sequences/caa5e244-3446-47d4-ab29-5bd1e4211023"}
+PS C:\Users\Seren\Documents\StudentPJ\lecturer-assistant> curl.exe -X PUT "http://localhost:8080/slide-sequences/caa5e244-3446-47d4-ab29-5bd1e4211023" `
+>>   -H "Content-Type: application/json" `
+>>   -d '{"slideIds":["c709d25d-d659-4946-bee1-6bacd4b24bea","e12efcf4-6f6b-4926-b4f3-65c1f54156ea"]}'
+{"timestamp":"2026-04-22T09:35:40.559+00:00","status":400,"error":"Bad Request","path":"/slide-sequences/caa5e244-3446-47d4-ab29-5bd1e4211023"}
+PS C:\Users\Seren\Documents\StudentPJ\lecturer-assistant> curl.exe -X PUT http://localhost:8081/slide-sequences/caa5e244-3446-47d4-ab29-5bd1e4211023 `
+>>   -H "Content-Type: application/json" `
+>>   -d "{\"slideIds\":[\"c709d25d-d659-4946-bee1-6bacd4b24bea\",\"e12efcf4-6f6b-4926-b4f3-65c1f54156ea\"]}"
+{"timestamp":"2026-04-22T09:37:48.506+00:00","status":400,"error":"Bad Request","path":"/slide-sequences/caa5e244-3446-47d4-ab29-5bd1e4211023"}curl: (3) bad range specification in URL position 12:
+slideIds\:[\c709d25d-d659-4946-bee1-6bacd4b24bea\,\e12efcf4-6f6b-4926-b4f3-65c1f54156ea\]}
+           ^
+PS C:\Users\Seren\Documents\StudentPJ\lecturer-assistant> curl.exe -X PUT "http://localhost:8080/slide-sequences/caa5e244-3446-47d4-ab29-5bd1e4211023" `
+>>   -H "Content-Type: application/json" `
+>>   -d '{"slideIds":["c709d25d-d659-4946-bee1-6bacd4b24bea","e12efcf4-6f6b-4926-b4f3-65c1f54156ea"]}'
+{"timestamp":"2026-04-22T09:37:58.839+00:00","status":400,"error":"Bad Request","path":"/slide-sequences/caa5e244-3446-47d4-ab29-5bd1e4211023"}
+PS C:\Users\Seren\Documents\StudentPJ\lecturer-assistant> docker logs content_service --tail 200
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select ss1_0.id,ss1_0.created_at,ss1_0.name,ss1_0.updated_at from slide_sequences ss1_0 where ss1_0.id=?
+Hibernate: insert into slide_sequences (created_at,name,updated_at,id) values (?,?,?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: select ss1_0.id,ss1_0.created_at,ss1_0.name,ss1_0.updated_at from slide_sequences ss1_0 where ss1_0.id=?
+Hibernate: select s1_0.sequence_id,s1_0.slide_id from slide_sequence_slides s1_0 where s1_0.sequence_id=?
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+2026-04-22T09:23:07.943Z  WARN 1 --- [nio-8081-exec-8] .w.s.m.s.DefaultHandlerExceptionResolver : Resolved [org.springframework.http.converter.HttpMessageNotReadableException: JSON parse error: Cannot deserialize value of type `java.util.ArrayList<java.util.UUID>` from Object value (token `JsonToken.START_OBJECT`)]
+2026-04-22T09:24:47.232Z  WARN 1 --- [nio-8081-exec-9] .w.s.m.s.DefaultHandlerExceptionResolver : Resolved [org.springframework.http.converter.HttpMessageNotReadableException: JSON parse error: Cannot deserialize value of type `java.util.ArrayList<java.util.UUID>` from Object value (token `JsonToken.START_OBJECT`)]
+2026-04-22T09:25:26.845Z  WARN 1 --- [io-8081-exec-10] .w.s.m.s.DefaultHandlerExceptionResolver : Resolved [org.springframework.http.converter.HttpMessageNotReadableException: JSON parse error: Cannot deserialize value of type `java.util.ArrayList<java.util.UUID>` from Object value (token `JsonToken.START_OBJECT`)]
+Hibernate: select ss1_0.id,ss1_0.created_at,ss1_0.name,ss1_0.updated_at from slide_sequences ss1_0 where ss1_0.id=?
+Hibernate: select s1_0.sequence_id,s1_0.slide_id from slide_sequence_slides s1_0 where s1_0.sequence_id=?
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+2026-04-22T09:29:39.867Z  WARN 1 --- [nio-8081-exec-4] .w.s.m.s.DefaultHandlerExceptionResolver : Resolved [org.springframework.http.converter.HttpMessageNotReadableException: JSON parse error: Cannot deserialize value of type `java.util.ArrayList<java.util.UUID>` from Object value (token `JsonToken.START_OBJECT`)]
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+2026-04-22T09:29:46.098Z  WARN 1 --- [nio-8081-exec-5] .w.s.m.s.DefaultHandlerExceptionResolver : Resolved [org.springframework.http.converter.HttpMessageNotReadableException: JSON parse error: Cannot deserialize value of type `java.util.ArrayList<java.util.UUID>` from Object value (token `JsonToken.START_OBJECT`)]
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select s1_0.id,s1_0.author_id,s1_0.created_at,s1_0.file_path,s1_0.title,s1_0.updated_at,s1_0.version from slides s1_0 where s1_0.id=?
+Hibernate: insert into slides (author_id,created_at,file_path,title,updated_at,version,id) values (?,?,?,?,?,?,?)
+Hibernate: select ss1_0.id,ss1_0.created_at,ss1_0.name,ss1_0.updated_at from slide_sequences ss1_0 where ss1_0.id=?
+Hibernate: insert into slide_sequences (created_at,name,updated_at,id) values (?,?,?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+Hibernate: insert into slide_sequence_slides (sequence_id,slide_id) values (?,?)
+2026-04-22T09:30:32.431Z  WARN 1 --- [nio-8081-exec-6] .w.s.m.s.DefaultHandlerExceptionResolver : Resolved [org.springframework.http.converter.HttpMessageNotReadableException: JSON parse error: Cannot deserialize value of type `java.util.ArrayList<java.util.UUID>` from Object value (token `JsonToken.START_OBJECT`)]
+2026-04-22T09:31:30.696Z  WARN 1 --- [nio-8081-exec-7] .w.s.m.s.DefaultHandlerExceptionResolver : Resolved [org.springframework.http.converter.HttpMessageNotReadableException: JSON parse error: Cannot deserialize value of type `java.util.ArrayList<java.util.UUID>` from Object value (token `JsonToken.START_OBJECT`)]
+2026-04-22T09:32:08.125Z  WARN 1 --- [nio-8081-exec-8] .w.s.m.s.DefaultHandlerExceptionResolver : Resolved [org.springframework.http.converter.HttpMessageNotReadableException: JSON parse error: Cannot deserialize value of type `java.util.ArrayList<java.util.UUID>` from Object value (token `JsonToken.START_OBJECT`)]
+2026-04-22T09:34:39.760Z  WARN 1 --- [nio-8081-exec-9] .w.s.m.s.DefaultHandlerExceptionResolver : Resolved [org.springframework.http.converter.HttpMessageNotReadableException: JSON parse error: Cannot deserialize value of type `java.util.ArrayList<java.util.UUID>` from Object value (token `JsonToken.START_OBJECT`)]
+2026-04-22T09:35:40.557Z  WARN 1 --- [io-8081-exec-10] .w.s.m.s.DefaultHandlerExceptionResolver : Resolved [org.springframework.http.converter.HttpMessageNotReadableException: JSON parse error: Cannot deserialize value of type `java.util.ArrayList<java.util.UUID>` from Object value (token `JsonToken.START_OBJECT`)]
+2026-04-22T09:37:48.505Z  WARN 1 --- [nio-8081-exec-2] .w.s.m.s.DefaultHandlerExceptionResolver : Resolved [org.springframework.http.converter.HttpMessageNotReadableException: JSON parse error: Cannot deserialize value of type `java.util.ArrayList<java.util.UUID>` from Object value (token `JsonToken.START_OBJECT`)]
+2026-04-22T09:37:58.838Z  WARN 1 --- [nio-8081-exec-3] .w.s.m.s.DefaultHandlerExceptionResolver : Resolved [org.springframework.http.converter.HttpMessageNotReadableException: JSON parse error: Cannot deserialize value of type `java.util.ArrayList<java.util.UUID>` from Object value (token `JsonToken.START_OBJECT`)]
+PS C:\Users\Seren\Documents\StudentPJ\lecturer-assistant> curl.exe -X PUT http://localhost:8080/slide-sequences/caa5e244-3446-47d4-ab29-5bd1e4211023 \
+{"timestamp":"2026-04-22T09:43:32.340+00:00","status":400,"error":"Bad Request","path":"/slide-sequences/caa5e244-3446-47d4-ab29-5bd1e4211023"}curl: (3) URL rejected: Bad hostname
+PS C:\Users\Seren\Documents\StudentPJ\lecturer-assistant>   -H "Content-Type: application/json" \
+-H : Имя "-H" не распознано как имя командлета, функции, файла сценария или выполняемой программы. Проверьте правильность написания имени, а также наличие и правильность пути, после чего повторите попытку.
+строка:1 знак:3
++   -H "Content-Type: application/json" \
++   ~~
+    + CategoryInfo          : ObjectNotFound: (-H:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\Seren\Documents\StudentPJ\lecturer-assistant> curl.exe -X PUT http://localhost:8080/slide-sequences/caa5e244-3446-47d4-ab29-5bd1e4211023 -H "Content-Type: application/json" -d '["c709d25d-d659-4946-bee1-6bacd4b24bea", "e12efcf4-6f6b-4926-b4f3-65c1f54156ea"]'
+{"timestamp":"2026-04-22T09:44:01.863+00:00","status":400,"error":"Bad Request","path":"/slide-sequences/caa5e244-3446-47d4-ab29-5bd1e4211023"}
+PS C:\Users\Seren\Documents\StudentPJ\lecturer-assistant> curl.exe -X PUT http://localhost:8080/slide-sequences/caa5e244-3446-47d4-ab29-5bd1e4211023 `
+>>   -H "Content-Type: application/json" `
+>>   -d '{"slideIds": ["c709d25d-d659-4946-bee1-6bacd4b24bea", "e12efcf4-6f6b-4926-b4f3-65c1f54156ea"]}'
+{"timestamp":"2026-04-22T09:47:35.137+00:00","status":400,"error":"Bad Request","path":"/slide-sequences/caa5e244-3446-47d4-ab29-5bd1e4211023"}
+PS C:\Users\Seren\Documents\StudentPJ\lecturer-assistant>
