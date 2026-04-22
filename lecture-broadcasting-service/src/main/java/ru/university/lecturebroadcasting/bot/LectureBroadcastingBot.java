@@ -96,7 +96,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             String[] parts = text.split("\\s+", 2);
             if (parts.length > 1 && parts[1].startsWith("join_")) {
                 String lectureKey = parts[1].substring(5);
-                tryJoinWithPassword(chatId, lectureKey, null);
+                tryJoinWithPassword(chatId, lectureKey, null, update.getMessage().getFrom());
                 return;
             }
             sendText(chatId,
@@ -125,8 +125,8 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             }
             String questionText = parts[1].trim();
             studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
-                if (student.getLecture() == null) {
-                    sendText(chatId, "Вы не подключены к лекции. Используйте /join.");
+                if (student.getLecture() == null || student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
+                    sendText(chatId, "Вы не подключены к активной лекции.");
                     return;
                 }
                 studentQuestionService.add(student.getLecture().getId(), chatId, questionText);
@@ -137,7 +137,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
 
         if (pendingPasswordJoin.containsKey(chatId) && !cmd.startsWith("/")) {
             String lectureName = pendingPasswordJoin.remove(chatId);
-            tryJoinWithPassword(chatId, lectureName, text.trim());
+            tryJoinWithPassword(chatId, lectureName, text.trim(), update.getMessage().getFrom());
             return;
         }
 
@@ -163,7 +163,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 sendText(chatId, "Укажите название лекции или её id.");
                 return;
             }
-            tryJoinWithPassword(chatId, key, null);
+            tryJoinWithPassword(chatId, key, null, update.getMessage().getFrom());
             return;
         }
 
@@ -193,8 +193,8 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
 
     private void handlePrevSlide(long chatId) {
         studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
-            if (student.getLecture() == null) {
-                sendText(chatId, "Вы не подключены к лекции. Используйте /join.");
+            if (student.getLecture() == null || student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
+                sendText(chatId, "Вы не подключены к активной лекции.");
                 return;
             }
             int current = studentCurrentSlide.getOrDefault(chatId, student.getLecture().getCurrentSlide());
@@ -312,9 +312,12 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         sendNextQuestion(chatId, session);
     }
 
-    private void tryJoinWithPassword(long chatId, String lectureName, String password) {
+    private void tryJoinWithPassword(long chatId, String lectureName, String password, org.telegram.telegrambots.meta.api.objects.User tgUser) {
         try {
-            Student student = lectureService.joinLecture(lectureName, chatId, password);
+            String firstName = tgUser != null ? tgUser.getFirstName() : null;
+            String lastName = tgUser != null ? tgUser.getLastName() : null;
+            String username = tgUser != null ? tgUser.getUserName() : null;
+            Student student = lectureService.joinLecture(lectureName, chatId, password, firstName, lastName, username);
             pendingPasswordJoin.remove(chatId);
             sendText(chatId, "Вы подключились к лекции: " + student.getLecture().getName());
             analyticsServiceClient.sendStudentJoinedEvent(student.getLecture().getId(), chatId);
@@ -384,8 +387,8 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
         studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
-            if (student.getLecture() == null) {
-                sendText(chatId, "Вы не подключены к лекции.");
+            if (student.getLecture() == null || student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
+                sendText(chatId, "Вы не подключены к активной лекции.");
                 return;
             }
             try {

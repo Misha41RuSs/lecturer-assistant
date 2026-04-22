@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import ru.university.lecturebroadcasting.bot.LectureBroadcastingBot;
 import ru.university.lecturebroadcasting.dto.LectureListItem;
+import ru.university.lecturebroadcasting.dto.StudentDto;
 import ru.university.lecturebroadcasting.entity.AccessType;
 import ru.university.lecturebroadcasting.entity.Lecture;
 import ru.university.lecturebroadcasting.service.LectureService;
@@ -135,8 +136,15 @@ public class LectureController {
     }
 
     @GetMapping("/{id}/students")
-    public ResponseEntity<List<Long>> getStudents(@PathVariable Long id) {
-        return ResponseEntity.ok(lectureService.getStudentChatIds(id));
+    public ResponseEntity<List<StudentDto>> getStudents(@PathVariable Long id) {
+        return ResponseEntity.ok(lectureService.getStudents(id));
+    }
+
+    @PostMapping("/{id}/kick/{chatId}")
+    public ResponseEntity<Void> kickStudent(@PathVariable Long id, @PathVariable Long chatId) {
+        lectureService.kickStudent(id, chatId);
+        bot.sendTextMessage(chatId, "Вы отключены лектором от текущей лекции.");
+        return ResponseEntity.ok().build();
     }
 
     @PutMapping("/{id}/current-slide")

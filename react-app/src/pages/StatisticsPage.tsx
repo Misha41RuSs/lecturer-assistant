@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
 import { Users, ClipboardList, CheckCircle, ChevronDown, ChevronUp, Star } from "lucide-react";
 import { toast } from "sonner";
-import { listLectures, LectureListItem, getLectureStudents } from "../app/api/client";
+import { listLectures, LectureListItem, getLectureStudents, StudentDto } from "../app/api/client";
 import { getLectureDashboard } from "../app/api/analytics.api";
 import { getExamsByLecture, getExamSubmissions } from "../app/api/quiz.api";
-
-interface StudentRow { chatId: number }
 interface ExamRow {
   id: string
   title: string
@@ -33,7 +31,7 @@ interface SubmRow {
 export function StatisticsPage() {
   const [lectures, setLectures] = useState<LectureListItem[]>([]);
   const [selectedLectureId, setSelectedLectureId] = useState<number>(0);
-  const [students, setStudents] = useState<StudentRow[]>([]);
+  const [students, setStudents] = useState<StudentDto[]>([]);
   const [exams, setExams] = useState<ExamRow[]>([]);
   const [surveys, setSurveys] = useState<SurveyRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -51,8 +49,8 @@ export function StatisticsPage() {
     Promise.all([
       getLectureStudents(String(selectedLectureId)).catch(() => []),
       getExamsByLecture(String(selectedLectureId)).catch(() => []),
-    ]).then(async ([studentIds, examList]: [number[], any[]]) => {
-      setStudents(studentIds.map(chatId => ({ chatId })));
+    ]).then(async ([studentList, examList]: [StudentDto[], any[]]) => {
+      setStudents(studentList);
 
       const examRows: ExamRow[] = [];
       const surveyRows: SurveyRow[] = [];
@@ -168,15 +166,22 @@ export function StatisticsPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-neutral-200">
-                      <th className="text-left py-2 px-3 text-xs text-neutral-500">#</th>
-                      <th className="text-left py-2 px-3 text-xs text-neutral-500">Telegram Chat ID</th>
+                      <th className="text-left py-2 px-3 text-xs text-neutral-500">Студент</th>
+                      <th className="text-left py-2 px-3 text-xs text-neutral-500">Telegram Username</th>
+                      <th className="text-left py-2 px-3 text-xs text-neutral-500">Chat ID</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {students.map((s, i) => (
+                    {students.map((s) => (
                       <tr key={s.chatId} className="border-b border-neutral-100 hover:bg-neutral-50">
-                        <td className="py-2 px-3 text-sm text-neutral-400">{i + 1}</td>
-                        <td className="py-2 px-3 text-sm font-mono">{s.chatId}</td>
+                        <td className="py-2 px-3 text-sm flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-neutral-200 flex items-center justify-center text-xs font-medium text-neutral-600">
+                            {s.firstName?.[0] || 'С'}
+                          </div>
+                          <span className="font-medium">{s.firstName ? `${s.firstName} ${s.lastName || ''}` : 'Студент'}</span>
+                        </td>
+                        <td className="py-2 px-3 text-sm text-neutral-500">{s.username ? `@${s.username}` : '—'}</td>
+                        <td className="py-2 px-3 text-sm font-mono text-neutral-400">{s.chatId}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -244,7 +249,7 @@ export function StatisticsPage() {
                         <table className="w-full">
                           <thead>
                             <tr className="border-b border-neutral-100">
-                              <th className="text-left py-1.5 text-xs text-neutral-500">Chat ID</th>
+                              <th className="text-left py-1.5 text-xs text-neutral-500">Студент</th>
                               <th className="text-left py-1.5 text-xs text-neutral-500">Баллы</th>
                               <th className="text-left py-1.5 text-xs text-neutral-500">Результат</th>
                             </tr>
@@ -252,9 +257,15 @@ export function StatisticsPage() {
                           <tbody>
                             {exam.submissions.map((sub, i) => {
                               const pct = sub.maxScore > 0 ? Math.round(sub.totalScore / sub.maxScore * 100) : 0;
+                              const st = students.find(x => x.chatId === sub.chatId);
                               return (
                                 <tr key={i} className="border-b border-neutral-50">
-                                  <td className="py-1.5 text-sm font-mono">{sub.chatId}</td>
+                                  <td className="py-1.5 text-sm">
+                                    <div className="flex flex-col">
+                                      <span className="font-medium">{st?.firstName ? `${st.firstName} ${st.lastName || ''}` : 'Студент'}</span>
+                                      <span className="text-xs text-neutral-400 font-mono">{sub.chatId}</span>
+                                    </div>
+                                  </td>
                                   <td className="py-1.5 text-sm">{sub.totalScore}/{sub.maxScore}</td>
                                   <td className="py-1.5 text-sm">
                                     {sub.hasUngraded ? (

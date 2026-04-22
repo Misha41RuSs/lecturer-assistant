@@ -175,6 +175,14 @@ export function TestsPage() {
     setAnswers(q.type === "multiple" && q.answers.length > 0 ? q.answers : [{ id: 1, text: "", correct: false }, { id: 2, text: "", correct: false }]);
   };
 
+  const moveDraftQuestion = (oldIndex: number, newIndex: number) => {
+    if (isNaN(newIndex) || newIndex < 0 || newIndex >= draftQuestions.length || oldIndex === newIndex) return;
+    const items = [...draftQuestions];
+    const [moved] = items.splice(oldIndex, 1);
+    items.splice(newIndex, 0, moved);
+    setDraftQuestions(items);
+  };
+
   const saveExam = async () => {
     if (!newTitle.trim()) { toast.error("Введите название теста"); return; }
     if (draftQuestions.length === 0) { toast.error("Добавьте хотя бы один вопрос"); return; }
@@ -626,9 +634,25 @@ export function TestsPage() {
                   className="w-full sm:w-40 px-4 py-2.5 bg-neutral-50 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500" />
               </div>
 
-              <button onClick={addQuestion} className="w-full bg-orange-500 text-white py-2.5 rounded-lg hover:bg-orange-600 text-sm">
-                {editingQuestionId ? "Сохранить изменения" : "Добавить вопрос"}
-              </button>
+              <div className="flex gap-2">
+                <button onClick={addQuestion} className="flex-1 bg-orange-500 text-white py-2.5 rounded-lg hover:bg-orange-600 text-sm">
+                  {editingQuestionId ? "Сохранить изменения" : "Добавить вопрос"}
+                </button>
+                {editingQuestionId && (
+                  <button
+                    onClick={() => {
+                      setDraftQuestions(draftQuestions.filter(x => x.id !== editingQuestionId));
+                      setEditingQuestionId(null);
+                      setQuestionText("");
+                      setAnswers([{ id: Date.now() + 1, text: "", correct: false }, { id: Date.now() + 2, text: "", correct: false }]);
+                      toast.success("Вопрос удален");
+                    }}
+                    className="px-4 py-2.5 border border-red-200 text-red-500 rounded-lg hover:bg-red-50 text-sm"
+                  >
+                    Удалить
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -641,7 +665,17 @@ export function TestsPage() {
                   {draftQuestions.map((q, i) => (
                     <div key={q.id} className="border border-neutral-200 rounded-lg p-3 group">
                       <div className="flex items-start gap-2">
-                        <div className="w-6 h-6 bg-orange-500 text-white rounded flex items-center justify-center text-xs flex-shrink-0">{i + 1}</div>
+                        <input
+                          type="number"
+                          min="1"
+                          max={draftQuestions.length}
+                          value={i + 1}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            if (!isNaN(val)) moveDraftQuestion(i, val - 1);
+                          }}
+                          className="w-10 h-6 bg-orange-500 text-white rounded outline-none text-center text-xs flex-shrink-0 font-medium"
+                        />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm">{q.text}</p>
                           {q.type === "multiple" && q.answers && q.answers.length > 0 && (

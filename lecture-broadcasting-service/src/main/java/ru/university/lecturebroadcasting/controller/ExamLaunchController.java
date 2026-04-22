@@ -72,4 +72,35 @@ public class ExamLaunchController {
                 "sentTo", chatIds.size()
         ));
     }
+
+    /**
+     * POST /api/exams/launch-to-user
+     * Body: { "examId": "uuid", "chatId": "number" }
+     *
+     */
+    @PostMapping("/launch-to-user")
+    public ResponseEntity<Map<String, Object>> launchToUser(@RequestBody Map<String, String> body) {
+        String examIdStr = body.get("examId");
+        String chatIdStr = body.get("chatId");
+
+        if (examIdStr == null || chatIdStr == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "examId and chatId are required"));
+        }
+
+        UUID examId = UUID.fromString(examIdStr);
+        long chatId = Long.parseLong(chatIdStr);
+
+        quizServiceClient.launchExam(examId);
+
+        try {
+            bot.sendExamToStudent(chatId, examId);
+        } catch (Exception e) {
+            log.error("Failed to send exam to chatId={}", chatId, e);
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "examId", examId,
+                "sentTo", 1
+        ));
+    }
 }
