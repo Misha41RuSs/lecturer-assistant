@@ -30,7 +30,7 @@ public class E2ELecturerFlowTest {
     @Test
     @DisplayName("E2E: Загрузка презентации → Получение слайдов → Проверка изображений")
     void e2e_uploadPresentationAndRetrieveSlides() {
-        // ===== 1. Загружаем презентацию =====
+        //Загружаем презентацию
         String sequenceId = given()
                 .multiPart("file", new File(TEST_FILE))
                 .post("/presentations/upload")
@@ -42,7 +42,7 @@ public class E2ELecturerFlowTest {
         assertThat(sequenceId).isNotNull();
         System.out.println("✅ Загружена презентация, sequenceId: " + sequenceId);
 
-        // ===== 2. Ждем, пока слайды обработаются =====
+        //Ждем, пока слайды обработаются
         await().until(() -> {
             List<String> slides = given()
                     .get("/slide-sequences/" + sequenceId)
@@ -55,7 +55,7 @@ public class E2ELecturerFlowTest {
             return slides != null && !slides.isEmpty();
         });
 
-        // ===== 3. Получаем список слайдов =====
+        //Получаем список слайдов
         List<String> slideIds = given()
                 .get("/slide-sequences/" + sequenceId)
                 .then()
@@ -67,7 +67,7 @@ public class E2ELecturerFlowTest {
         System.out.println("✅ Найдено слайдов: " + slideIds.size());
         assertThat(slideIds).isNotEmpty();
 
-        // ===== 4. Скачиваем первый слайд как изображение =====
+        //Скачиваем первый слайд как изображение
         byte[] slideImage = given()
                 .get("/slides/" + slideIds.get(0))
                 .then()
@@ -106,7 +106,10 @@ public class E2ELecturerFlowTest {
         long duration = System.currentTimeMillis() - startTime;
         System.out.println("⏱️ Загрузка 5 презентаций заняла: " + duration + " мс");
 
-        // Проверяем, что среднее время загрузки < 5 секунд
+        //Проверяем, что среднее время загрузки < 5 секунд
         assertThat(duration / 5).isLessThan(5000);
     }
+
+
+
 }
