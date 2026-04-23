@@ -1,4 +1,4 @@
-package src.test.java.ru.university.qatest;
+package ru.university.qatest;
 
 import io.restassured.RestAssured;
 import org.awaitility.Awaitility;
