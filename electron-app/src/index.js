@@ -1,26 +1,13 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('node:path')
 const fs = require('fs')
-const ServiceManager = require('../scripts/start-services')
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
 	app.quit()
 }
 
-// Initialize service manager
-const serviceManager = new ServiceManager()
-
 const createWindow = async () => {
-	// Start backend services first
-	console.log('Starting backend services...')
-	const servicesStarted = await serviceManager.startServices()
-
-	if (!servicesStarted) {
-		console.error('Failed to start backend services')
-		// Still show the app but with error notification
-	}
-
 	const mainWindow = new BrowserWindow({
 		width: 800,
 		height: 600,
@@ -85,12 +72,6 @@ app.whenReady().then(() => {
 			createWindow()
 		}
 	})
-})
-
-// Handle app quit - stop services
-app.on('before-quit', async () => {
-	console.log('Stopping backend services...')
-	await serviceManager.stopServices()
 })
 
 // Closing windows
