@@ -23,21 +23,40 @@
 
 ### API
 
+#### Управление лекциями
 | Метод | Путь | Описание |
 |-------|------|----------|
 | `POST` | `/lectures` | Создать лекцию |
 | `GET` | `/lectures` | Список всех лекций |
 | `GET` | `/lectures/{id}` | Получить лекцию |
-| `PUT` | `/lectures/{id}` | Обновить название/пароль |
-| `POST` | `/lectures/{id}/start` | Запустить лекцию |
-| `POST` | `/lectures/{id}/stop` | Остановить лекцию |
-| `PUT` | `/lectures/{id}/current-slide` | Сменить слайд (рассылает студентам) |
+| `PUT` | `/lectures/{id}` | Обновить название/пароль/тип доступа |
+| `POST` | `/lectures/{id}/start` | Запустить лекцию (CREATED → ACTIVE) |
+| `POST` | `/lectures/{id}/stop` | Остановить лекцию (ACTIVE → FINISHED) |
+
+#### Управление слайдами и контентом
+| Метод | Путь | Описание |
+|-------|------|----------|
+| `PUT` | `/lectures/{id}/current-slide` | Сменить текущий слайд (рассылает студентам) |
+| `POST` | `/lectures/{id}/broadcast-message` | Отправить текстовое сообщение всем студентам |
+| `POST` | `/lectures/{id}/broadcast-image` | Отправить PNG-изображение всем студентам (multipart: `image`) |
+
+#### Управление студентами
+| Метод | Путь | Описание |
+|-------|------|----------|
 | `GET` | `/lectures/{id}/students` | Список подключённых студентов (chatId) |
-| `POST` | `/lectures/{id}/broadcast-message` | Отправить сообщение всем студентам |
-| `POST` | `/lectures/{id}/broadcast-image` | Отправить изображение всем студентам |
-| `GET` | `/lectures/{id}/student-questions` | Вопросы студентов (без ответов) |
-| `PUT` | `/lectures/{id}/student-questions/{qId}/private-reply` | Ответить конкретному студенту |
-| `PUT` | `/lectures/{id}/student-questions/{qId}/broadcast-reply` | Ответить всем студентам |
+| `POST` | `/lectures/{id}/kick/{chatId}` | Исключить студента из лекции |
+
+#### Вопросы студентов
+| Метод | Путь | Описание |
+|-------|------|----------|
+| `GET` | `/lectures/{id}/student-questions` | Получить все вопросы студентов |
+| `PUT` | `/lectures/{id}/student-questions/{qId}/private-reply` | Ответить конкретному студенту (личное сообщение) |
+| `PUT` | `/lectures/{id}/student-questions/{qId}/broadcast-reply` | Ответить всем студентам (общее сообщение) |
+
+#### Служебные
+| Метод | Путь | Описание |
+|-------|------|----------|
+| `GET` | `/lectures/health/db` | Проверка здоровья БД и соответствия JDBC-пула |
 
 Вопросы студентов хранятся **в памяти** и сбрасываются при остановке лекции.
 

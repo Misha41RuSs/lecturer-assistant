@@ -60,7 +60,11 @@
 | `GET` | `/lectures/{id}/student-questions` | Вопросы студентов без ответа |
 | `PUT` | `/lectures/{id}/student-questions/{qId}/private-reply` | Личный ответ студенту |
 | `PUT` | `/lectures/{id}/student-questions/{qId}/broadcast-reply` | Ответ всем студентам |
-| `POST` | `/api/exams/launch` | Запустить тест в боте (body: `{examId, lectureId}`) |
+| `POST` | `/lectures/{id}/kick/{chatId}` | Исключить студента из лекции |
+| `POST` | `/lectures/{id}/broadcast-image` | Рассылка PNG-изображения всем студентам |
+| `GET` | `/lectures/health/db` | Проверка состояния БД сервиса |
+| `POST` | `/api/exams/launch` | Запустить тест для группы (body: `{examId, lectureId}`) |
+| `POST` | `/api/exams/launch-to-user` | Запустить тест для одного студента (body: `{examId, chatId}`) |
 
 ### Telegram-бот команды
 - `/join <название>` — подключиться к лекции
