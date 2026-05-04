@@ -1,7 +1,9 @@
 package ru.university.lecturebroadcasting.bot;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Bean; // <--- ДОБАВИТЬ ИМПОРТ
 import org.springframework.context.annotation.Configuration;
+import org.telegram.telegrambots.bots.DefaultBotOptions; // <--- ДОБАВИТЬ ИМПОРТ
 import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
@@ -16,6 +18,13 @@ public class TelegramBotConfig {
 
     public TelegramBotConfig(LectureBroadcastingBot bot) {
         this.bot = bot;
+    }
+
+    @Bean
+    public DefaultBotOptions defaultBotOptions() {
+        DefaultBotOptions options = new DefaultBotOptions();
+        options.setBaseUrl("https://tg-proxy.mrus7684.workers.dev/bot");
+        return options;
     }
 
     @PostConstruct

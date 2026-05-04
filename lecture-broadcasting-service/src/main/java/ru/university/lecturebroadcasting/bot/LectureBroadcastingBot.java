@@ -8,6 +8,7 @@ import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.bots.DefaultBotOptions;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
@@ -51,6 +52,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final StudentQuestionService studentQuestionService;
 
     public LectureBroadcastingBot(
+            DefaultBotOptions options, // <--- 1. ДОБАВЛЯЕМ ЭТОТ ПАРАМЕТР
             @Value("${telegram.bot.token}") String botToken,
             @Value("${telegram.bot.username}") String botUsername,
             StudentRepository studentRepository,
@@ -58,7 +60,9 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             QuizServiceClient quizServiceClient,
             AnalyticsServiceClient analyticsServiceClient,
             StudentQuestionService studentQuestionService) {
-        super(botToken);
+        
+        super(options, botToken); // <--- 2. ПЕРЕДАЕМ options СЮДА ВМЕСТО super(botToken)
+        
         this.botUsername = botUsername;
         this.studentRepository = studentRepository;
         this.lectureService = lectureService;
