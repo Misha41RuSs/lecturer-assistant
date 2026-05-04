@@ -15,27 +15,36 @@ import {
 	Users,
 	X
 } from 'lucide-react'
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
-import {
-	updateCurrentSlide,
-	getLecture,
-	getSlideSequence,
-	BASE_URL,
-	stopLecture,
-	broadcastSlideImage,
-	getLectureStudents,
-	kickLectureStudent,
-	StudentDto,
-	broadcastMessage,
-	getStudentQuestions,
-	sendPrivateReply,
-	sendBroadcastReply,
-} from '../app/api/client'
-import { createExam, broadcastExam, getExamsByLecture, sendExamToUser } from '../app/api/quiz.api'
 import { sendLectureEvent } from '../app/api/analytics.api'
-import { DrawingOverlay, DrawingOverlayHandle } from '../features/DrawingOverlay'
+import {
+	BASE_URL,
+	broadcastMessage,
+	broadcastSlideImage,
+	getLecture,
+	getLectureStudents,
+	getSlideSequence,
+	getStudentQuestions,
+	kickLectureStudent,
+	sendBroadcastReply,
+	sendPrivateReply,
+	stopLecture,
+	StudentDto,
+	updateCurrentSlide
+} from '../app/api/client'
+import {
+	broadcastExam,
+	createExam,
+	getExamsByLecture,
+	sendExamToUser
+} from '../app/api/quiz.api'
+import {
+	DrawingOverlay,
+	DrawingOverlayHandle
+} from '../features/DrawingOverlay'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../shared/tooltip'
 
 interface SlideData {
 	id: string
@@ -58,7 +67,7 @@ function QuizLaunchForm({
 	lectureId,
 	studentsCount,
 	isPersonal = false,
-	onLaunch,
+	onLaunch
 }: {
 	lectureId: string
 	studentsCount: number
@@ -80,7 +89,9 @@ function QuizLaunchForm({
 	return (
 		<div className="space-y-3 mb-4">
 			{exams.length === 0 ? (
-				<p className="text-sm text-neutral-500">Нет тестов. Создайте тест в разделе «Тесты».</p>
+				<p className="text-sm text-neutral-500">
+					Нет тестов. Создайте тест в разделе «Тесты».
+				</p>
 			) : (
 				<select
 					value={selectedId}
@@ -88,14 +99,19 @@ function QuizLaunchForm({
 					className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
 				>
 					{exams.map((e: any) => (
-						<option key={e.id} value={e.id}>
+						<option
+							key={e.id}
+							value={e.id}
+						>
 							{e.title} [{e.status}]
 						</option>
 					))}
 				</select>
 			)}
 			<button
-				onClick={() => { if (selectedId) onLaunch(selectedId) }}
+				onClick={() => {
+					if (selectedId) onLaunch(selectedId)
+				}}
 				disabled={!selectedId}
 				className="w-full px-4 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 disabled:opacity-40"
 			>
@@ -105,7 +121,10 @@ function QuizLaunchForm({
 	)
 }
 
-function mapStudentQuestion(q: { id: string; text: string; createdAt: string }, idx: number): Question {
+function mapStudentQuestion(
+	q: { id: string; text: string; createdAt: string },
+	idx: number
+): Question {
 	const created = new Date(q.createdAt)
 	const mins = Math.round((Date.now() - created.getTime()) / 60000)
 	const time = mins < 1 ? 'только что' : `${mins} мин.`
@@ -117,7 +136,7 @@ function mapStudentQuestion(q: { id: string; text: string; createdAt: string }, 
 		time,
 		text: q.text,
 		isNew: mins < 2,
-		index: num,
+		index: num
 	}
 }
 
@@ -128,9 +147,11 @@ export function LivePresentationPage() {
 	const [slidesData, setSlidesData] = useState<SlideData[]>([])
 	const [isLoading, setIsLoading] = useState(true)
 	const [lectureName, setLectureName] = useState('')
-	
+
 	const [quickMessage, setQuickMessage] = useState('')
-	const [activeTab, setActiveTab] = useState<'questions' | 'students'>('questions')
+	const [activeTab, setActiveTab] = useState<'questions' | 'students'>(
+		'questions'
+	)
 	const [sidebarOpen, setSidebarOpen] = useState(true)
 	const [elapsed, setElapsed] = useState(0)
 	const [showConfirmEnd, setShowConfirmEnd] = useState(false)
@@ -180,21 +201,26 @@ export function LivePresentationPage() {
 					setAccessType('open')
 					setPassword('')
 				}
-				
+
 				const seqId = lecture.sequenceId
 				if (seqId) {
 					const sequence = await getSlideSequence(seqId)
 					const slideIds: string[] = sequence.slides || []
 
-					const realSlides: SlideData[] = slideIds.map((id: string, idx: number) => ({
-						id,
-						index: idx + 1,
-						imageUrl: `${BASE_URL}/slide-sequences/${seqId}/slide/${idx + 1}`
-					}))
+					const realSlides: SlideData[] = slideIds.map(
+						(id: string, idx: number) => ({
+							id,
+							index: idx + 1,
+							imageUrl: `${BASE_URL}/slide-sequences/${seqId}/slide/${idx + 1}`
+						})
+					)
 
 					const isInvitation = lecture.accessType === 'INVITATION'
 					const slides: SlideData[] = isInvitation
-						? [{ id: 'qr-slide', index: 0, imageUrl: '', isQrSlide: true }, ...realSlides]
+						? [
+								{ id: 'qr-slide', index: 0, imageUrl: '', isQrSlide: true },
+								...realSlides
+							]
 						: realSlides
 
 					setSlidesData(slides)
@@ -236,7 +262,7 @@ export function LivePresentationPage() {
 		if (!lectureId) return
 		const load = () => {
 			getLectureStudents(lectureId)
-				.then((list) => setStudents(list))
+				.then(list => setStudents(list))
 				.catch(() => {})
 		}
 		load()
@@ -253,40 +279,62 @@ export function LivePresentationPage() {
 		if (!lectureId) return
 		const channel = new BroadcastChannel(`lecture-${lectureId}`)
 		broadcastChannelRef.current = channel
-		return () => { channel.close(); broadcastChannelRef.current = null }
+		return () => {
+			channel.close()
+			broadcastChannelRef.current = null
+		}
 	}, [lectureId])
 
 	const broadcastCompositeToProjector = useCallback(async (idx: number) => {
 		if (!drawingRef.current) return
 		const blob = await drawingRef.current.getAnnotationsBlob(idx)
 		if (blob) {
-			broadcastChannelRef.current?.postMessage({ type: 'annotations-update', slideIndex: idx, blob })
+			broadcastChannelRef.current?.postMessage({
+				type: 'annotations-update',
+				slideIndex: idx,
+				blob
+			})
 		} else {
-			broadcastChannelRef.current?.postMessage({ type: 'slide-change', slideIndex: idx })
+			broadcastChannelRef.current?.postMessage({
+				type: 'slide-change',
+				slideIndex: idx
+			})
 		}
 	}, [])
 
-	const handleAnnotationsChange = useCallback((idx: number) => {
-		broadcastCompositeToProjector(idx)
-	}, [broadcastCompositeToProjector])
+	const handleAnnotationsChange = useCallback(
+		(idx: number) => {
+			broadcastCompositeToProjector(idx)
+		},
+		[broadcastCompositeToProjector]
+	)
 
-	const handleSaveToStudents = useCallback(async (idx: number) => {
-		const slideData = slidesData[idx]
-		if (!slideData || !drawingRef.current) return
-		if (!drawingRef.current.hasAnnotations(idx)) { toast.info('Нет рисунков для отправки'); return }
-		// Telegram: full composite
-		const compositeBlob = await drawingRef.current.getCompositeBlob(idx, slideData.imageUrl)
-		if (compositeBlob) {
-			try {
-				await broadcastSlideImage(parseInt(lectureId!), compositeBlob)
-				toast.success('Слайд с рисунками отправлен студентам')
-			} catch {
-				toast.error('Ошибка при отправке слайда')
+	const handleSaveToStudents = useCallback(
+		async (idx: number) => {
+			const slideData = slidesData[idx]
+			if (!slideData || !drawingRef.current) return
+			if (!drawingRef.current.hasAnnotations(idx)) {
+				toast.info('Нет рисунков для отправки')
+				return
 			}
-		}
-		// Projector: annotations layer
-		broadcastCompositeToProjector(idx)
-	}, [slidesData, lectureId, broadcastCompositeToProjector])
+			// Telegram: full composite
+			const compositeBlob = await drawingRef.current.getCompositeBlob(
+				idx,
+				slideData.imageUrl
+			)
+			if (compositeBlob) {
+				try {
+					await broadcastSlideImage(parseInt(lectureId!), compositeBlob)
+					toast.success('Слайд с рисунками отправлен студентам')
+				} catch {
+					toast.error('Ошибка при отправке слайда')
+				}
+			}
+			// Projector: annotations layer
+			broadcastCompositeToProjector(idx)
+		},
+		[slidesData, lectureId, broadcastCompositeToProjector]
+	)
 
 	useEffect(() => {
 		localStorage.setItem('lecture_slide', String(currentSlide))
@@ -384,17 +432,19 @@ export function LivePresentationPage() {
 				lectureId,
 				title: 'Опрос об удовлетворённости',
 				examType: 'SURVEY',
-				questions: [{
-					text: satisfactionPreset,
-					type: 'MULTIPLE',
-					options: [
-						{ text: '1 ⭐', correct: false },
-						{ text: '2 ⭐⭐', correct: false },
-						{ text: '3 ⭐⭐⭐', correct: false },
-						{ text: '4 ⭐⭐⭐⭐', correct: false },
-						{ text: '5 ⭐⭐⭐⭐⭐', correct: false },
-					],
-				}],
+				questions: [
+					{
+						text: satisfactionPreset,
+						type: 'MULTIPLE',
+						options: [
+							{ text: '1 ⭐', correct: false },
+							{ text: '2 ⭐⭐', correct: false },
+							{ text: '3 ⭐⭐⭐', correct: false },
+							{ text: '4 ⭐⭐⭐⭐', correct: false },
+							{ text: '5 ⭐⭐⭐⭐⭐', correct: false }
+						]
+					}
+				]
 			})
 			await broadcastExam(exam.id, lectureId)
 			toast.success(`Опрос запущен для студентов (${studentsCount})`)
@@ -426,7 +476,7 @@ export function LivePresentationPage() {
 			sendLectureEvent({
 				lectureId,
 				actionType: 'slide_changed',
-				payload: JSON.stringify({ slideNumber: newSlide.index }),
+				payload: JSON.stringify({ slideNumber: newSlide.index })
 			}).catch(() => {})
 
 			setCurrentSlide(newSlideIndex)
@@ -435,13 +485,21 @@ export function LivePresentationPage() {
 			// Broadcast to projector and Telegram if annotations exist
 			if (drawingRef.current?.hasAnnotations(newSlideIndex)) {
 				// Telegram: full composite (slide image + annotations)
-				drawingRef.current.getCompositeBlob(newSlideIndex, newSlide.imageUrl).then(blob => {
-					if (blob) broadcastSlideImage(parseInt(lectureId), blob).catch(e => console.error('broadcastSlideImage failed', e))
-				})
+				drawingRef.current
+					.getCompositeBlob(newSlideIndex, newSlide.imageUrl)
+					.then(blob => {
+						if (blob)
+							broadcastSlideImage(parseInt(lectureId), blob).catch(e =>
+								console.error('broadcastSlideImage failed', e)
+							)
+					})
 				// Projector: annotations layer only (transparent PNG, overlaid on slide in projector)
 				broadcastCompositeToProjector(newSlideIndex)
 			} else {
-				broadcastChannelRef.current?.postMessage({ type: 'slide-change', slideIndex: newSlideIndex })
+				broadcastChannelRef.current?.postMessage({
+					type: 'slide-change',
+					slideIndex: newSlideIndex
+				})
 			}
 		} catch (error) {
 			console.error('Failed to update slide:', error)
@@ -452,10 +510,12 @@ export function LivePresentationPage() {
 	}
 
 	const openProjection = () => {
-		window.open(`/projection/${lectureId}`, 'projection', 'width=1280,height=720')
-		toast.success(
-			'Окно проектора открыто. Переместите на второй экран.'
+		window.open(
+			`/projection/${lectureId}`,
+			'projection',
+			'width=1280,height=720'
 		)
+		toast.success('Окно проектора открыто. Переместите на второй экран.')
 	}
 
 	const handleConfirmEndLecture = async () => {
@@ -490,8 +550,13 @@ export function LivePresentationPage() {
 			<div className="h-screen bg-black flex items-center justify-center">
 				<div className="text-neutral-400 text-center">
 					<p className="text-lg mb-2">Слайды не найдены</p>
-					<p className="text-sm">Убедитесь, что к лекции привязана презентация</p>
-					<Link to="/" className="mt-4 inline-block text-orange-500 hover:text-orange-400">
+					<p className="text-sm">
+						Убедитесь, что к лекции привязана презентация
+					</p>
+					<Link
+						to="/"
+						className="mt-4 inline-block text-orange-500 hover:text-orange-400"
+					>
 						← На главную
 					</Link>
 				</div>
@@ -524,51 +589,98 @@ export function LivePresentationPage() {
 					</span>
 
 					{(accessType === 'password' || accessType === 'invitation') && (
-						<button
-							onClick={() => setShowAccessInfo(!showAccessInfo)}
-							className="flex items-center gap-1 px-2 py-1 bg-neutral-800 text-neutral-300 rounded text-xs hover:bg-neutral-700"
-						>
-							{accessType === 'password' ? (
-								<Lock className="w-3 h-3" />
-							) : (
-								<QrCode className="w-3 h-3" />
-							)}
-							<span className="hidden sm:inline">
-								{accessType === 'password' ? password : 'QR'}
-							</span>
-						</button>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<button
+									onClick={() => setShowAccessInfo(!showAccessInfo)}
+									className="flex items-center gap-1 px-2 py-1 bg-neutral-800 text-neutral-300 rounded text-xs hover:bg-neutral-700"
+								>
+									{accessType === 'password' ? (
+										<Lock className="w-3 h-3" />
+									) : (
+										<QrCode className="w-3 h-3" />
+									)}
+									<span className="hidden sm:inline">
+										{accessType === 'password' ? password : 'QR'}
+									</span>
+								</button>
+							</TooltipTrigger>
+							<TooltipContent>
+								<p>
+									{accessType === 'password'
+										? 'Показать пароль для подключения'
+										: 'Показать QR-код для подключения'}
+								</p>
+							</TooltipContent>
+						</Tooltip>
 					)}
 
-					<button
-						onClick={openProjection}
-						className="flex items-center gap-1 px-2 py-1 bg-neutral-800 text-neutral-300 rounded text-xs hover:bg-neutral-700"
-						title="Открывает отдельное окно с чистым слайдом для проектора"
-					>
-						<Monitor className="w-3 h-3" />{' '}
-						<span className="hidden sm:inline">Проектор</span>
-					</button>
-					<button
-						onClick={() => setDrawingActive(!drawingActive)}
-						className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${drawingActive ? 'bg-orange-500 text-white' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}
-						title="Рисование поверх слайда"
-					>
-						<Pencil className="w-3 h-3" />{' '}
-						<span className="hidden sm:inline">
-							{drawingActive ? 'Рисование ВКЛ' : 'Рисовать'}
-						</span>
-					</button>
-					<button
-						onClick={() => setSidebarOpen(!sidebarOpen)}
-						className="p-1.5 text-neutral-400 hover:text-white hidden lg:block"
-					>
-						<MessageSquare className="w-4 h-4" />
-					</button>
-					<button
-						onClick={() => setShowConfirmEnd(true)}
-						className="bg-orange-500 text-white px-3 py-1.5 rounded-lg hover:bg-orange-600 text-sm"
-					>
-						Завершить
-					</button>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								onClick={openProjection}
+								className="flex items-center gap-1 px-2 py-1 bg-neutral-800 text-neutral-300 rounded text-xs hover:bg-neutral-700"
+								title="Открывает отдельное окно с чистым слайдом для проектора"
+							>
+								<Monitor className="w-3 h-3" />{' '}
+								<span className="hidden sm:inline">Проектор</span>
+							</button>
+						</TooltipTrigger>
+						<TooltipContent>
+							<p>Открыть окно проектора</p>
+						</TooltipContent>
+					</Tooltip>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								onClick={() => setDrawingActive(!drawingActive)}
+								className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${drawingActive ? 'bg-orange-500 text-white' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}
+								title="Рисование поверх слайда"
+							>
+								<Pencil className="w-3 h-3" />{' '}
+								<span className="hidden sm:inline">
+									{drawingActive ? 'Рисование ВКЛ' : 'Рисовать'}
+								</span>
+							</button>
+						</TooltipTrigger>
+						<TooltipContent>
+							<p>
+								{drawingActive
+									? 'Отключить рисование'
+									: 'Включить рисование на слайде'}
+							</p>
+						</TooltipContent>
+					</Tooltip>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								onClick={() => setSidebarOpen(!sidebarOpen)}
+								className="p-1.5 text-neutral-400 hover:text-white hidden lg:block"
+							>
+								<MessageSquare className="w-4 h-4" />
+							</button>
+						</TooltipTrigger>
+						<TooltipContent>
+							<p>
+								{sidebarOpen
+									? 'Скрыть чат с вопросами'
+									: 'Показать чат с вопросами'}
+							</p>
+						</TooltipContent>
+					</Tooltip>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								onClick={() => setShowConfirmEnd(true)}
+								className="bg-orange-500 text-white px-3 py-1.5 rounded-lg hover:bg-orange-600 text-sm"
+							>
+								Завершить
+							</button>
+						</TooltipTrigger>
+						<TooltipContent>
+							<p>Завершить лекцию</p>
+						</TooltipContent>
+					</Tooltip>
 				</div>
 			</div>
 
@@ -664,8 +776,15 @@ export function LivePresentationPage() {
 												className="w-48 h-48"
 											/>
 										</div>
-										<p className="text-lg font-medium">Отсканируйте для подключения</p>
-										<p className="text-sm text-neutral-400">или напишите боту: <span className="font-mono text-orange-400">/join {lectureId}</span></p>
+										<p className="text-lg font-medium">
+											Отсканируйте для подключения
+										</p>
+										<p className="text-sm text-neutral-400">
+											или напишите боту:{' '}
+											<span className="font-mono text-orange-400">
+												/join {lectureId}
+											</span>
+										</p>
 									</div>
 								) : (
 									<img
@@ -689,27 +808,43 @@ export function LivePresentationPage() {
 
 						{/* Nav */}
 						<div className="flex items-center justify-between mt-4">
-							<button
-								onClick={() => handleSlideChange(Math.max(0, currentSlide - 1))}
-								disabled={currentSlide === 0}
-								className="p-2 sm:px-4 sm:py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 disabled:opacity-30"
-							>
-								<ChevronLeft className="w-5 h-5" />
-							</button>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<button
+										onClick={() =>
+											handleSlideChange(Math.max(0, currentSlide - 1))
+										}
+										disabled={currentSlide === 0}
+										className="p-2 sm:px-4 sm:py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 disabled:opacity-30"
+									>
+										<ChevronLeft className="w-5 h-5" />
+									</button>
+								</TooltipTrigger>
+								<TooltipContent>
+									<p>Предыдущий слайд</p>
+								</TooltipContent>
+							</Tooltip>
 							<span className="text-white text-sm bg-neutral-800 px-3 py-1.5 rounded-lg">
 								{currentSlide + 1} / {slidesData.length}
 							</span>
-							<button
-								onClick={() =>
-									handleSlideChange(
-										Math.min(slidesData.length - 1, currentSlide + 1)
-									)
-								}
-								disabled={currentSlide === slidesData.length - 1}
-								className="p-2 sm:px-4 sm:py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-30"
-							>
-								<ChevronRight className="w-5 h-5" />
-							</button>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<button
+										onClick={() =>
+											handleSlideChange(
+												Math.min(slidesData.length - 1, currentSlide + 1)
+											)
+										}
+										disabled={currentSlide === slidesData.length - 1}
+										className="p-2 sm:px-4 sm:py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-30"
+									>
+										<ChevronRight className="w-5 h-5" />
+									</button>
+								</TooltipTrigger>
+								<TooltipContent>
+									<p>Следующий слайд</p>
+								</TooltipContent>
+							</Tooltip>
 						</div>
 
 						{/* Thumbnails */}
@@ -866,12 +1001,17 @@ export function LivePresentationPage() {
 									{students.length === 0 ? (
 										<div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-4 py-8">
 											<Users className="w-10 h-10 text-neutral-600" />
-											<div className="text-neutral-500 text-sm">Пока никто не подключился</div>
+											<div className="text-neutral-500 text-sm">
+												Пока никто не подключился
+											</div>
 										</div>
 									) : (
 										<div className="flex-1 overflow-y-auto space-y-2 mb-3">
 											{students.map(s => (
-												<div key={s.chatId} className="bg-neutral-800 rounded-lg p-3 flex flex-col gap-2 border border-neutral-700">
+												<div
+													key={s.chatId}
+													className="bg-neutral-800 rounded-lg p-3 flex flex-col gap-2 border border-neutral-700"
+												>
 													<div className="flex items-center justify-between">
 														<div className="flex items-center gap-2 min-w-0">
 															<div className="w-8 h-8 bg-neutral-700 rounded-full flex items-center justify-center text-sm font-medium text-white flex-shrink-0">
@@ -879,22 +1019,33 @@ export function LivePresentationPage() {
 															</div>
 															<div className="min-w-0">
 																<div className="text-white text-sm font-medium truncate">
-																	{s.firstName ? `${s.firstName} ${s.lastName || ''}` : `Студент`}
+																	{s.firstName
+																		? `${s.firstName} ${s.lastName || ''}`
+																		: `Студент`}
 																</div>
 																<div className="text-orange-400/80 text-xs truncate">
-																	{s.username ? `@${s.username}` : `ID: ${s.chatId}`}
+																	{s.username
+																		? `@${s.username}`
+																		: `ID: ${s.chatId}`}
 																</div>
 															</div>
 														</div>
 														<button
 															onClick={async () => {
-																if (!window.confirm('Выгнать студента из лекции? Он больше не сможет зайти.')) return;
+																if (
+																	!window.confirm(
+																		'Выгнать студента из лекции? Он больше не сможет зайти.'
+																	)
+																)
+																	return
 																try {
-																	await kickLectureStudent(lectureId!, s.chatId);
-																	setStudents(prev => prev.filter(x => x.chatId !== s.chatId));
-																	toast.success('Студент отключен');
+																	await kickLectureStudent(lectureId!, s.chatId)
+																	setStudents(prev =>
+																		prev.filter(x => x.chatId !== s.chatId)
+																	)
+																	toast.success('Студент отключен')
 																} catch (e) {
-																	toast.error('Не удалось отключить студента');
+																	toast.error('Не удалось отключить студента')
 																}
 															}}
 															className="p-1.5 text-neutral-500 hover:bg-red-500/10 hover:text-red-400 rounded transition-colors"
@@ -966,17 +1117,21 @@ export function LivePresentationPage() {
 			{showTestModal !== null && (
 				<div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
 					<div className="bg-white rounded-xl p-6 max-w-sm w-full max-h-[80vh] flex flex-col">
-						<h3 className="mb-1">{showTestModal === -1 ? 'Запустить квиз для всех' : 'Выдать тест студенту'}</h3>
+						<h3 className="mb-1">
+							{showTestModal === -1
+								? 'Запустить квиз для всех'
+								: 'Выдать тест студенту'}
+						</h3>
 						<p className="text-sm text-neutral-500 mb-4">
-							{showTestModal === -1 
+							{showTestModal === -1
 								? 'Введите название квиза — все студенты получат его через Telegram-бот.'
 								: 'Выберите тест. Он будет отправлен только этому студенту.'}
 						</p>
-						<QuizLaunchForm 
-							lectureId={lectureId!} 
-							studentsCount={studentsCount} 
+						<QuizLaunchForm
+							lectureId={lectureId!}
+							studentsCount={studentsCount}
 							isPersonal={showTestModal !== -1}
-							onLaunch={handleAssignTestAll} 
+							onLaunch={handleAssignTestAll}
 						/>
 						<button
 							onClick={() => setShowTestModal(null)}

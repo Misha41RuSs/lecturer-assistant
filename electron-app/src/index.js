@@ -7,7 +7,7 @@ if (require('electron-squirrel-startup')) {
 	app.quit()
 }
 
-const createWindow = () => {
+const createWindow = async () => {
 	const mainWindow = new BrowserWindow({
 		width: 800,
 		height: 600,
@@ -18,9 +18,31 @@ const createWindow = () => {
 		}
 	})
 
-	//! Development
-	mainWindow.loadURL('http://localhost:5173')
-	// TODO: Production
+	// ! Development
+	// mainWindow.loadURL('http://localhost:5173')
+	// !Production
+	mainWindow.loadFile(path.join(__dirname, 'index.html'))
+
+	// Navigate to root path after loading to fix initial 404
+	mainWindow.webContents.once('did-finish-load', () => {
+		mainWindow.webContents.executeJavaScript(`
+			if (window.location.pathname !== '/') {
+				window.history.pushState({}, '', '/');
+				window.dispatchEvent(new PopStateEvent('popstate'));
+			}
+		`)
+	})
+
+	// Open DevTools for debugging (disabled in production)
+	// mainWindow.webContents.openDevTools()
+
+	// Log any errors
+	mainWindow.webContents.on(
+		'did-fail-load',
+		(event, errorCode, errorDescription) => {
+			console.error('Failed to load:', errorCode, errorDescription)
+		}
+	)
 }
 
 // IPC handlers для preload
@@ -41,7 +63,7 @@ ipcMain.handle('file:readFile', async (_event, filePath) => {
 	)
 })
 
-// Создание окна
+// Creating window
 app.whenReady().then(() => {
 	createWindow()
 
@@ -52,7 +74,7 @@ app.whenReady().then(() => {
 	})
 })
 
-// Закрытие окон
+// Closing windows
 app.on('window-all-closed', () => {
 	if (process.platform !== 'darwin') {
 		app.quit()
