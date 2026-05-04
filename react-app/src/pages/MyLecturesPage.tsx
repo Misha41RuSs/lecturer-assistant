@@ -1,17 +1,23 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router'
 import {
-	Plus,
-	Search,
+	AlertCircle,
+	Copy,
 	FileText,
 	LayoutGrid,
 	List,
 	Loader2,
-	Copy,
-	AlertCircle
+	Plus,
+	Search
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router'
 import { toast } from 'sonner'
-import { listLectures, stopLecture, type LectureListItem, BASE_URL } from '../app/api/client'
+import {
+	BASE_URL,
+	listLectures,
+	stopLecture,
+	type LectureListItem
+} from '../app/api/client'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../shared/tooltip'
 
 export function MyLecturesPage() {
 	const [search, setSearch] = useState('')
@@ -55,7 +61,9 @@ export function MyLecturesPage() {
 		setStoppingId(id)
 		try {
 			await stopLecture(id)
-			setLectures(ls => ls.map(l => l.id === id ? { ...l, status: 'STOPPED' } : l))
+			setLectures(ls =>
+				ls.map(l => (l.id === id ? { ...l, status: 'STOPPED' } : l))
+			)
 			toast.success('Лекция завершена')
 		} catch {
 			toast.error('Не удалось завершить лекцию')
@@ -80,16 +88,29 @@ export function MyLecturesPage() {
 					<h1 className="mb-1">Мои лекции</h1>
 					<p className="text-sm text-neutral-500">
 						Данные с сервера: id и имя совпадают с базой (для Telegram:{' '}
-						<code className="text-xs bg-neutral-100 px-1 rounded">/join имя</code> или{' '}
-						<code className="text-xs bg-neutral-100 px-1 rounded">/join id</code>)
+						<code className="text-xs bg-neutral-100 px-1 rounded">
+							/join имя
+						</code>{' '}
+						или{' '}
+						<code className="text-xs bg-neutral-100 px-1 rounded">
+							/join id
+						</code>
+						)
 					</p>
 				</div>
-				<Link
-					to="/upload/new"
-					className="flex items-center gap-2 bg-orange-500 text-white px-5 py-2.5 rounded-full hover:bg-orange-600 transition-colors self-start sm:self-auto"
-				>
-					<Plus className="w-4 h-4" /> Создать лекцию
-				</Link>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Link
+							to="/upload/new"
+							className="flex items-center gap-2 bg-orange-500 text-white px-5 py-2.5 rounded-full hover:bg-orange-600 transition-colors self-start sm:self-auto"
+						>
+							<Plus className="w-4 h-4" /> Создать лекцию
+						</Link>
+					</TooltipTrigger>
+					<TooltipContent>
+						<p>Загрузить презентацию и создать новую лекцию</p>
+					</TooltipContent>
+				</Tooltip>
 			</div>
 
 			<div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -155,7 +176,10 @@ export function MyLecturesPage() {
 							className="bg-white rounded-xl p-5 border border-neutral-200"
 						>
 							<div className="flex items-center justify-between mb-2 gap-2">
-								<h4 className="text-sm font-medium truncate pr-2" title={l.name}>
+								<h4
+									className="text-sm font-medium truncate pr-2"
+									title={l.name}
+								>
 									{l.name}
 								</h4>
 								{isRunning(l.status) && (
@@ -191,7 +215,10 @@ export function MyLecturesPage() {
 								<button
 									type="button"
 									onClick={() =>
-										copyText('Команда для Telegram скопирована', `/join ${l.name}`)
+										copyText(
+											'Команда для Telegram скопирована',
+											`/join ${l.name}`
+										)
 									}
 									className="flex-1 text-center px-3 py-2 border border-neutral-300 rounded-lg hover:bg-neutral-50 text-xs"
 								>

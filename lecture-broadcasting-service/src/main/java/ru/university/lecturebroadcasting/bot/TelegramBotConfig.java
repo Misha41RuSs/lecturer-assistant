@@ -28,6 +28,13 @@ public class TelegramBotConfig {
         return options;
     }
 
+    @Bean
+    public DefaultBotOptions defaultBotOptions() {
+        DefaultBotOptions options = new DefaultBotOptions();
+        options.setBaseUrl("https://tg-proxy.mrus7684.workers.dev/bot");
+        return options;
+    }
+
     @PostConstruct
     public void registerBot() {
         if ("change_me".equals(bot.getBotToken()) || bot.getBotToken() == null || bot.getBotToken().isBlank()) {
