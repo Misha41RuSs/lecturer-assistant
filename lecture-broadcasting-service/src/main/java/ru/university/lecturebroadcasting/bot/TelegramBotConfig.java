@@ -8,8 +8,8 @@ import org.telegram.telegrambots.bots.DefaultBotOptions; // <--- ДОБАВИТ�
 import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
-
-import jakarta.annotation.PostConstruct;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.EventListener;
 
 @Slf4j
 @Configuration
@@ -28,7 +28,7 @@ public class TelegramBotConfig {
         return options;
     }
 
-    @PostConstruct
+    @EventListener(ContextRefreshedEvent.class)
     public void registerBot() {
         if ("change_me".equals(bot.getBotToken()) || bot.getBotToken() == null || bot.getBotToken().isBlank()) {
             log.warn("Telegram bot token is 'change_me' or empty. Skipping bot registration to allow normal startup.");
