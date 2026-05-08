@@ -4,6 +4,7 @@ import ru.university.contentservice.entity.SlideSequence;
 import ru.university.contentservice.service.ContentService;
 import ru.university.contentservice.service.ContentUploadService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -13,6 +14,7 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
 
+@Slf4j
 @RestController
 @RequiredArgsConstructor
 public class ContentController {
@@ -60,12 +62,19 @@ public class ContentController {
 
     @GetMapping("/slide-sequences/{sequenceId}/slide/{slideIndex}")
     public ResponseEntity<byte[]> getSlideByIndex(@PathVariable UUID sequenceId, @PathVariable int slideIndex) throws IOException {
-        byte[] file = contentService.getSlideByIndex(sequenceId, slideIndex);
-        return ResponseEntity.ok()
-                .contentType(MediaType.IMAGE_PNG)
-                .header("Cache-Control", "public, max-age=3600, immutable")
-                .header("Access-Control-Allow-Origin", "*")
-                .body(file);
+        log.info("GET request for slide: sequenceId={} slideIndex={}", sequenceId, slideIndex);
+        try {
+            byte[] file = contentService.getSlideByIndex(sequenceId, slideIndex);
+            log.info("Returning slide: sequenceId={} slideIndex={} size={} bytes", sequenceId, slideIndex, file.length);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.IMAGE_PNG)
+                    .header("Cache-Control", "public, max-age=3600, immutable")
+                    .header("Access-Control-Allow-Origin", "*")
+                    .body(file);
+        } catch (Exception e) {
+            log.error("Failed to get slide: sequenceId={} slideIndex={} error={}", sequenceId, slideIndex, e.getMessage(), e);
+            throw e;
+        }
     }
 
     @GetMapping("/slide-sequences/{sequenceId}")
