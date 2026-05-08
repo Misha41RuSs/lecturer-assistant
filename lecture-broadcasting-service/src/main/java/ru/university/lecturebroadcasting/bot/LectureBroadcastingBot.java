@@ -445,6 +445,12 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     }
 
     public void sendSlideToStudent(long chatId, byte[] imageBytes, int slideNumber) {
+        if (imageBytes == null || imageBytes.length == 0) {
+            log.error("Slide image is null or empty for chatId={} slideNumber={}", chatId, slideNumber);
+            sendText(chatId, "Не удалось загрузить картинку слайда " + slideNumber + ". Попробуйте позже.");
+            return;
+        }
+
         // Не отправляем слайд повторно, если студент уже его смотрит
         Integer current = studentCurrentSlide.get(chatId);
         if (current != null && current == slideNumber) return;
