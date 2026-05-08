@@ -11,11 +11,13 @@ public class GiftParser {
 
     private static final Pattern OPTION_PATTERN = Pattern.compile("(?<!\\\\)([=~])((?:[^=~\\\\]|\\\\.)*)");
     private static final Pattern PERCENT_PATTERN = Pattern.compile("^%(-?\\d+)%");
+    private static final Pattern PERCENT_CLEANUP = Pattern.compile("^%-?\\d+%");
 
     public List<CreateExamDto.QuestionDto> parse(String giftText) {
         List<CreateExamDto.QuestionDto> questions = new ArrayList<>();
         giftText = giftText.replace("\r\n", "\n").replace("\r", "\n");
         giftText = removeLineComments(giftText);
+        giftText = removeSubheadings(giftText);
 
         for (String block : extractBlocks(giftText)) {
             block = block.trim();
@@ -61,6 +63,17 @@ public class GiftParser {
         StringBuilder sb = new StringBuilder();
         for (String line : text.split("\n", -1)) {
             sb.append(line.replaceAll("(?<!\\\\)//.*$", "")).append("\n");
+        }
+        return sb.toString();
+    }
+
+    // Удаляет строки-подзаголовки вида "== Название секции ==" (GIFT-расширение)
+    private String removeSubheadings(String text) {
+        StringBuilder sb = new StringBuilder();
+        for (String line : text.split("\n", -1)) {
+            if (!line.trim().startsWith("==")) {
+                sb.append(line).append("\n");
+            }
         }
         return sb.toString();
     }
@@ -130,7 +143,7 @@ public class GiftParser {
                 int pct = Integer.parseInt(pm.group(1));
                 percentCorrect = pct > 0;
             }
-            text = text.replaceAll("^%-?\\d+%", "").trim();
+            text = PERCENT_CLEANUP.matcher(text).replaceFirst("").trim();
 
             if (text.isEmpty()) continue;
             boolean correct = prefix == '=' || percentCorrect;
@@ -140,10 +153,20 @@ public class GiftParser {
     }
 
     private String unescape(String text) {
-        return text
-                .replace("\\~", "~").replace("\\=", "=")
-                .replace("\\{", "{").replace("\\}", "}")
-                .replace("\\#", "#").replace("\\:", ":").trim();
+        StringBuilder sb = new StringBuilder(text.length());
+        int i = 0;
+        while (i < text.length()) {
+            char c = text.charAt(i);
+            if (c == '\\' && i + 1 < text.length()) {
+                char next = text.charAt(i + 1);
+                sb.append(next);
+                i += 2;
+            } else {
+                sb.append(c);
+                i++;
+            }
+        }
+        return sb.toString().trim();
     }
 
     private CreateExamDto.QuestionDto multipleChoice(String text, List<CreateExamDto.OptionDto> options) {

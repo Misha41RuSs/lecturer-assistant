@@ -11,9 +11,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -36,39 +33,35 @@ public class ContentUploadService {
         String filename = file.getOriginalFilename();
         if (filename == null) throw new RuntimeException("Filename is null");
 
-        List<BufferedImage> images;
+        // Parsers return PNG bytes directly, encoding and chunking handled internally
+        List<byte[]> encodedSlides;
         if (filename.endsWith(".pdf")) {
-            images = pdfParser.parse(file);
+            encodedSlides = pdfParser.parse(file);
         } else if (filename.endsWith(".pptx")) {
-            images = pptxParser.parse(file);
+            encodedSlides = pptxParser.parse(file);
         } else {
             throw new RuntimeException("Unsupported file type: " + filename);
         }
 
         UUID sequenceId = UUID.randomUUID();
-        List<UUID> slideIds = new ArrayList<>();
+        List<UUID> slideIds = new ArrayList<>(encodedSlides.size());
+        List<Slide> slides = new ArrayList<>(encodedSlides.size());
 
-        for (int i = 0; i < images.size(); i++) {
+        for (int i = 0; i < encodedSlides.size(); i++) {
             String slideFileName = sequenceId + "_slide_" + (i + 1) + ".png";
-
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            ImageIO.write(images.get(i), "png", baos);
-            byte[] bytes = baos.toByteArray();
-
-            String path = fileStorage.saveFile(bytes, slideFileName);
-
-            Slide slide = Slide.builder()
-                    .id(UUID.randomUUID())
+            String path = fileStorage.saveFile(encodedSlides.get(i), slideFileName);
+            UUID slideId = UUID.randomUUID();
+            slides.add(Slide.builder()
+                    .id(slideId)
                     .title("Slide " + (i + 1))
                     .filePath(path)
                     .version(1)
                     .createdAt(LocalDateTime.now())
                     .updatedAt(LocalDateTime.now())
-                    .build();
-
-            slideRepository.save(slide);
-            slideIds.add(slide.getId());
+                    .build());
+            slideIds.add(slideId);
         }
+        slideRepository.saveAll(slides);
 
         SlideSequence sequence = SlideSequence.builder()
                 .id(sequenceId)
@@ -79,7 +72,7 @@ public class ContentUploadService {
                 .build();
 
         sequenceRepository.save(sequence);
-        return new UploadResult(sequenceId, images.size());
+        return new UploadResult(sequenceId, encodedSlides.size());
     }
 
     public void attachMedia(UUID slideId, MultipartFile file) throws IOException {

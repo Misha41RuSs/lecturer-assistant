@@ -25,6 +25,8 @@ public class ContentController {
         byte[] file = contentService.getSlide(slideId);
         return ResponseEntity.ok()
                 .contentType(MediaType.IMAGE_PNG)
+                .header("Cache-Control", "public, max-age=3600, immutable")
+                .header("Access-Control-Allow-Origin", "*")
                 .body(file);
     }
 
@@ -61,6 +63,8 @@ public class ContentController {
         byte[] file = contentService.getSlideByIndex(sequenceId, slideIndex);
         return ResponseEntity.ok()
                 .contentType(MediaType.IMAGE_PNG)
+                .header("Cache-Control", "public, max-age=3600, immutable")
+                .header("Access-Control-Allow-Origin", "*")
                 .body(file);
     }
 

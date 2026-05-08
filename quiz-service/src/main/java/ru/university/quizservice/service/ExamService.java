@@ -172,9 +172,9 @@ public class ExamService {
                 answer.setSelectedOptionId(optId);
                 boolean correct = question.getOptions().stream()
                         .anyMatch(o -> o.getId().equals(optId) && o.isCorrect());
-                answer.setScore(correct ? answer.getMaxScore() : 0);
+                answer.setScore(correct ? answer.getMaxScore() : -1);
             } else {
-                answer.setScore(0); // тайм-аут или пропуск — 0 баллов
+                answer.setScore(-1); // таймаут или пропуск — штрафной балл
             }
         } else {
             answer.setOpenText(dto.openText());
