@@ -32,13 +32,17 @@ public class PptxParserService {
      * A failed slide (missing font, unsupported shape, etc.) produces an error-placeholder instead of aborting.
      */
     public List<byte[]> parse(MultipartFile file) throws IOException {
+        log.info("Starting PPTX parsing: {}", file.getOriginalFilename());
         try (XMLSlideShow ppt = new XMLSlideShow(file.getInputStream())) {
             List<XSLFSlide> slides = ppt.getSlides();
+            log.info("PPTX loaded. Total slides: {}", slides.size());
+
             Dimension pgSize = ppt.getPageSize();
             if (pgSize == null || pgSize.width <= 0 || pgSize.height <= 0) {
                 log.warn("PPTX: could not determine page size, using default 16:9");
                 pgSize = FALLBACK_SIZE;
             }
+            log.debug("PPTX page size: {}x{}", pgSize.width, pgSize.height);
 
             int slideCount = Math.min(slides.size(), MAX_SLIDES);
             if (slideCount < slides.size()) {
@@ -48,15 +52,22 @@ public class PptxParserService {
             List<byte[]> result = new ArrayList<>(slideCount);
             for (int chunkStart = 0; chunkStart < slideCount; chunkStart += CHUNK_SIZE) {
                 int chunkEnd = Math.min(chunkStart + CHUNK_SIZE, slideCount);
+                log.debug("Processing chunk: slides {} to {}", chunkStart + 1, chunkEnd);
                 List<BufferedImage> chunk = new ArrayList<>(chunkEnd - chunkStart);
                 // XMLSlideShow / XSLFSlide rendering is not thread-safe — render sequentially
                 for (int i = chunkStart; i < chunkEnd; i++) {
                     chunk.add(renderSlide(slides.get(i), pgSize, i + 1));
                 }
+                log.debug("Chunk rendered ({} images), starting encoding", chunk.size());
                 encodeChunkParallel(chunk, result);
+                log.debug("Chunk encoded, total encoded: {}", result.size());
                 // chunk goes out of scope here → BufferedImages eligible for GC
             }
+            log.info("PPTX parsing completed successfully. Total slides: {}", result.size());
             return result;
+        } catch (Exception e) {
+            log.error("PPTX parsing failed for file: {}", file.getOriginalFilename(), e);
+            throw e;
         }
     }
 

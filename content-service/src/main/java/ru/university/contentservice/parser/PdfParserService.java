@@ -30,9 +30,11 @@ public class PdfParserService {
      * A failed page produces an error-placeholder slide instead of aborting the upload.
      */
     public List<byte[]> parse(MultipartFile file) throws IOException {
+        log.info("Starting PDF parsing: {}", file.getOriginalFilename());
         try (PDDocument document = PDDocument.load(file.getInputStream())) {
             PDFRenderer renderer = new PDFRenderer(document);
             int pageCount = Math.min(document.getNumberOfPages(), MAX_PAGES);
+            log.info("PDF loaded. Total pages: {}, will process: {}", document.getNumberOfPages(), pageCount);
             if (pageCount < document.getNumberOfPages()) {
                 log.warn("PDF has {} pages — truncated to {}", document.getNumberOfPages(), MAX_PAGES);
             }
@@ -40,15 +42,22 @@ public class PdfParserService {
             List<byte[]> result = new ArrayList<>(pageCount);
             for (int chunkStart = 0; chunkStart < pageCount; chunkStart += CHUNK_SIZE) {
                 int chunkEnd = Math.min(chunkStart + CHUNK_SIZE, pageCount);
+                log.debug("Processing chunk: pages {} to {}", chunkStart + 1, chunkEnd);
                 List<BufferedImage> chunk = new ArrayList<>(chunkEnd - chunkStart);
                 // PDFRenderer is not thread-safe for concurrent access on the same document — render sequentially
                 for (int i = chunkStart; i < chunkEnd; i++) {
                     chunk.add(renderPage(renderer, i));
                 }
+                log.debug("Chunk rendered ({} images), starting encoding", chunk.size());
                 encodeChunkParallel(chunk, result);
+                log.debug("Chunk encoded, total encoded: {}", result.size());
                 // chunk goes out of scope here → BufferedImages eligible for GC
             }
+            log.info("PDF parsing completed successfully. Total slides: {}", result.size());
             return result;
+        } catch (Exception e) {
+            log.error("PDF parsing failed for file: {}", file.getOriginalFilename(), e);
+            throw e;
         }
     }
 
