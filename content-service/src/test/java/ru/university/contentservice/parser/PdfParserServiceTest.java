@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.List;
@@ -35,7 +34,7 @@ class PdfParserServiceTest {
         MultipartFile file = new MockMultipartFile("file", "sample.pdf", "application/pdf", pdfBytes);
 
         // when
-        List<BufferedImage> images = pdfParser.parse(file);
+        List<byte[]> images = pdfParser.parse(file);
 
         // then
         assertThat(images).hasSize(2); // 2 страницы

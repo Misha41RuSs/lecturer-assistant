@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.List;
@@ -35,7 +34,7 @@ class PptxParserServiceTest {
                 "application/vnd.openxmlformats-officedocument.presentationml.presentation", pptxBytes);
 
         // when
-        List<BufferedImage> images = pptxParser.parse(file);
+        List<byte[]> images = pptxParser.parse(file);
 
         // then
         assertThat(images).hasSize(2); // 2 слайда
