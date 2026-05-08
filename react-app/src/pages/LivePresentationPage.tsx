@@ -254,7 +254,7 @@ export function LivePresentationPage() {
 				.catch(() => {})
 		}
 		load()
-		const interval = setInterval(load, 10000)
+		const interval = setInterval(load, 5000)
 		return () => clearInterval(interval)
 	}, [lectureId])
 

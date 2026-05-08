@@ -12,14 +12,15 @@ import java.nio.file.Paths;
 @Service
 public class FileStorageService {
 
-    private final String storagePath = "storage/slides/";
+    private final String storagePath = "/app/storage/slides/";
 
     public String saveFile(byte[] bytes, String fileName) throws IOException {
         Path path = Paths.get(storagePath + fileName);
         Files.createDirectories(path.getParent());
         Files.write(path, bytes);
-        log.info("File saved: fileName={} absolutePath={}", fileName, path.toAbsolutePath());
-        return path.toString();
+        String absolutePath = path.toAbsolutePath().toString();
+        log.info("File saved: fileName={} absolutePath={}", fileName, absolutePath);
+        return absolutePath;
     }
 
     public byte[] loadFile(String filePath) throws IOException {
