@@ -1,6 +1,7 @@
 package ru.university.contentservice.parser;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.poi.openxml4j.util.ZipSecureFile;
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xslf.usermodel.XSLFSlide;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,10 @@ public class PptxParserService {
     private static final int CHUNK_SIZE = 8;
     private static final int TARGET_WIDTH = 1280;
     private static final Dimension FALLBACK_SIZE = new Dimension(960, 540);
+
+    static {
+        ZipSecureFile.setMinInflateRatio(0.001d);
+    }
 
     /**
      * Parses a PPTX and returns PNG-encoded bytes for each slide.
