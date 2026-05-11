@@ -23,7 +23,9 @@ import ru.university.lecturebroadcasting.service.StudentQuestionService;
 import ru.university.lecturebroadcasting.service.WrongPasswordException;
 
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.Message;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.ForceReplyKeyboard;
 
 import java.io.ByteArrayInputStream;
 import java.util.*;
@@ -38,8 +40,10 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private static final String CB_EXAM_OPT = "exam_opt:";
 
     private final ConcurrentHashMap<Long, String> pendingPasswordJoin = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, String> pendingCommand = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, ExamSession> examSessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Integer> lastSlideMessageId = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Integer> lastQuestionMessageId = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Integer> studentCurrentSlide = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Boolean> pendingGoToSlide = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Timer> questionTimers = new ConcurrentHashMap<>();
@@ -92,21 +96,55 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private void handleTextMessage(Update update) {
         String text = update.getMessage().getText().trim();
         long chatId = update.getMessage().getChatId();
+        org.telegram.telegrambots.meta.api.objects.User from = update.getMessage().getFrom();
         String cmd = baseCommand(text.split("\\s+", 2)[0]);
 
         log.info("Telegram message: chatId={} cmd='{}'", chatId, cmd);
+
+        // Ответ на пароль от лекции (приоритет выше прочих pending)
+        if (pendingPasswordJoin.containsKey(chatId) && !cmd.startsWith("/")) {
+            String lectureName = pendingPasswordJoin.remove(chatId);
+            tryJoinWithPassword(chatId, lectureName, text.trim(), from);
+            return;
+        }
+
+        // Ответ на номер слайда
+        if (pendingGoToSlide.remove(chatId) != null && !cmd.startsWith("/")) {
+            handleGoToSlideByNumber(chatId, text.trim());
+            return;
+        }
+
+        // Ответ на двухшаговую команду (/question, /join без аргументов)
+        if (pendingCommand.containsKey(chatId) && !cmd.startsWith("/")) {
+            String pending = pendingCommand.remove(chatId);
+            switch (pending) {
+                case "question" -> handleQuestionText(chatId, text.trim(), from);
+                case "join" -> {
+                    String key = LectureService.normalizeLectureJoinKey(text.trim());
+                    if (key.isEmpty()) { sendText(chatId, "Укажите название лекции или её id."); return; }
+                    tryJoinWithPassword(chatId, key, null, from);
+                }
+            }
+            return;
+        }
+
+        // Студент проходит тест — ввёл открытый ответ
+        if (examSessions.containsKey(chatId) && !cmd.startsWith("/")) {
+            handleOpenAnswer(chatId, text.trim());
+            return;
+        }
 
         if ("/start".equals(cmd)) {
             String[] parts = text.split("\\s+", 2);
             if (parts.length > 1 && parts[1].startsWith("join_")) {
                 String lectureKey = parts[1].substring(5);
-                tryJoinWithPassword(chatId, lectureKey, null, update.getMessage().getFrom());
+                tryJoinWithPassword(chatId, lectureKey, null, from);
                 return;
             }
             sendText(chatId,
                     "Привет! Я бот для лекций.\n\n" +
-                    "/join <название или id> — подключиться к лекции\n" +
-                    "/question <текст> — задать вопрос преподавателю\n" +
+                    "/join — подключиться к лекции\n" +
+                    "/question — задать вопрос преподавателю\n" +
                     "/ping — проверка связи\n\n" +
                     "Когда преподаватель запустит тест, вопросы придут автоматически.");
             return;
@@ -123,55 +161,51 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
 
         if ("/question".equals(cmd)) {
             String[] parts = text.split("\\s+", 2);
-            if (parts.length < 2 || parts[1].isBlank()) {
-                sendText(chatId, "Используйте: /question <текст вашего вопроса>");
-                return;
+            if (parts.length >= 2 && !parts[1].isBlank()) {
+                handleQuestionText(chatId, parts[1].trim(), from);
+            } else {
+                requestInput(chatId, "question", "Введите текст вашего вопроса:");
             }
-            String questionText = parts[1].trim();
-            studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
-                if (student.getLecture() == null || student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
-                    sendText(chatId, "Вы не подключены к активной лекции.");
-                    return;
-                }
-                studentQuestionService.add(student.getLecture().getId(), chatId, questionText);
-                sendText(chatId, "✅ Ваш вопрос отправлен преподавателю.");
-            }, () -> sendText(chatId, "Вы не подключены. Используйте /join."));
             return;
         }
 
-        if (pendingPasswordJoin.containsKey(chatId) && !cmd.startsWith("/")) {
-            String lectureName = pendingPasswordJoin.remove(chatId);
-            tryJoinWithPassword(chatId, lectureName, text.trim(), update.getMessage().getFrom());
-            return;
-        }
-
-        if (pendingGoToSlide.remove(chatId) != null && !cmd.startsWith("/")) {
-            handleGoToSlideByNumber(chatId, text.trim());
-            return;
-        }
-
-        // Студент проходит тест — ввёл открытый ответ
-        if (examSessions.containsKey(chatId) && !cmd.startsWith("/")) {
-            handleOpenAnswer(chatId, text.trim());
-            return;
-        }
-
-        if ("/join".equals(cmd) || cmd.startsWith("/join")) {
+        if ("/join".equals(cmd)) {
             String[] parts = text.split("\\s+", 2);
-            if (parts.length < 2 || parts[1].isBlank()) {
-                sendText(chatId, "Использование: /join <название или id лекции>");
-                return;
+            if (parts.length >= 2 && !parts[1].isBlank()) {
+                String key = LectureService.normalizeLectureJoinKey(parts[1]);
+                if (key.isEmpty()) { sendText(chatId, "Укажите название лекции или её id."); return; }
+                tryJoinWithPassword(chatId, key, null, from);
+            } else {
+                requestInput(chatId, "join", "Введите название или ID лекции:");
             }
-            String key = LectureService.normalizeLectureJoinKey(parts[1]);
-            if (key.isEmpty()) {
-                sendText(chatId, "Укажите название лекции или её id.");
-                return;
-            }
-            tryJoinWithPassword(chatId, key, null, update.getMessage().getFrom());
             return;
         }
 
-        sendText(chatId, "Команды:\n/join <название или id> — подключиться к лекции\n/ping — проверка");
+        sendText(chatId, "Команды:\n/join — подключиться к лекции\n/question — задать вопрос\n/ping — проверка");
+    }
+
+    private void requestInput(long chatId, String commandKey, String promptText) {
+        pendingCommand.put(chatId, commandKey);
+        try {
+            execute(SendMessage.builder()
+                    .chatId(chatId)
+                    .text(promptText)
+                    .replyMarkup(ForceReplyKeyboard.builder().forceReply(true).selective(true).build())
+                    .build());
+        } catch (TelegramApiException e) {
+            log.warn("requestInput failed chatId={}: {}", chatId, e.getMessage());
+        }
+    }
+
+    private void handleQuestionText(long chatId, String questionText, org.telegram.telegrambots.meta.api.objects.User from) {
+        studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
+            if (student.getLecture() == null || student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
+                sendText(chatId, "Вы не подключены к активной лекции.");
+                return;
+            }
+            studentQuestionService.add(student.getLecture().getId(), chatId, questionText);
+            sendText(chatId, "✅ Ваш вопрос отправлен преподавателю.");
+        }, () -> sendText(chatId, "Вы не подключены. Используйте /join."));
     }
 
     private void handleCallbackQuery(Update update) {
@@ -218,11 +252,60 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         if (t != null) t.cancel();
     }
 
-    private void scheduleQuestionTimer(long chatId, ExamSession session, Question q) {
+    private InlineKeyboardMarkup buildQuestionKeyboard(Question q) {
+        List<List<InlineKeyboardButton>> keyboard = q.options().stream()
+                .map(opt -> {
+                    String btnText = opt.text().length() > 60
+                            ? opt.text().substring(0, 57) + "..."
+                            : opt.text();
+                    return List.of(InlineKeyboardButton.builder()
+                            .text(btnText)
+                            .callbackData(CB_EXAM_OPT + opt.id())
+                            .build());
+                })
+                .toList();
+        return InlineKeyboardMarkup.builder().keyboard(keyboard).build();
+    }
+
+    private void scheduleQuestionTimer(long chatId, ExamSession session, Question q, Integer msgId) {
         if (q.timeLimitSec() == null) return;
+        int totalSec = q.timeLimitSec();
         Timer t = new Timer(true);
         questionTimers.put(chatId, t);
         int qIdx = session.currentIndex();
+        String header = String.format("Вопрос %d/%d", qIdx + 1, session.total());
+        boolean isMultiple = session.isMultiple();
+        String suffix = isMultiple ? "\n\nВыберите ответ:" : "\n\n✏️ Напишите ответ:";
+        InlineKeyboardMarkup markup = isMultiple ? buildQuestionKeyboard(q) : null;
+
+        // Обратный отсчёт: редактируем сообщение каждые 10 секунд
+        if (msgId != null) {
+            for (int elapsed = 10; elapsed < totalSec; elapsed += 10) {
+                final int remaining = totalSec - elapsed;
+                t.schedule(new TimerTask() {
+                    @Override
+                    public void run() {
+                        ExamSession cur = examSessions.get(chatId);
+                        if (cur == null || cur.currentIndex() != qIdx) return;
+                        Integer curMsgId = lastQuestionMessageId.get(chatId);
+                        if (!msgId.equals(curMsgId)) return;
+                        try {
+                            String updatedText = header + " ⏱ " + remaining + " с\n\n" + q.text() + suffix;
+                            EditMessageText edit = EditMessageText.builder()
+                                    .chatId(chatId).messageId(msgId)
+                                    .text(updatedText)
+                                    .replyMarkup(markup)
+                                    .build();
+                            execute(edit);
+                        } catch (TelegramApiException ex) {
+                            log.debug("countdown edit failed: {}", ex.getMessage());
+                        }
+                    }
+                }, (long) elapsed * 1000L);
+            }
+        }
+
+        // Таймаут — время истекло
         t.schedule(new TimerTask() {
             @Override
             public void run() {
@@ -235,7 +318,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 sendText(chatId, "⏰ Время вышло! Ответ на вопрос не засчитан.");
                 sendNextQuestion(chatId, cur);
             }
-        }, q.timeLimitSec() * 1000L);
+        }, (long) totalSec * 1000L);
     }
 
     private void handleMultipleChoiceAnswer(long chatId, String optionId) {
@@ -269,10 +352,17 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     }
 
     private void sendNextQuestion(long chatId, ExamSession session) {
+        // Удаляем предыдущее сообщение с вопросом
+        Integer prevId = lastQuestionMessageId.remove(chatId);
+        if (prevId != null) {
+            try { execute(DeleteMessage.builder().chatId(chatId).messageId(prevId).build()); }
+            catch (TelegramApiException ignored) {}
+        }
+
         if (!session.hasMore()) {
             examSessions.remove(chatId);
             cancelQuestionTimer(chatId);
-            sendText(chatId, "Тест завершён! Ваши ответы записаны. Результаты сообщит преподаватель.");
+            sendText(chatId, "✅ Тест завершён! Ваши ответы записаны. Результаты сообщит преподаватель.");
             return;
         }
 
@@ -280,25 +370,31 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         String header = String.format("Вопрос %d/%d", session.currentIndex() + 1, session.total());
         String timeHint = q.timeLimitSec() != null ? " ⏱ " + q.timeLimitSec() + " с" : "";
 
-        if (session.isMultiple()) {
-            List<List<InlineKeyboardButton>> keyboard = q.options().stream()
-                    .map(opt -> List.of(InlineKeyboardButton.builder()
-                            .text(opt.text())
-                            .callbackData(CB_EXAM_OPT + opt.id())
-                            .build()))
-                    .toList();
-            String text = header + timeHint + "\n\n" + q.text() + "\n\nВыберите ответ:";
-            SendMessage msg = SendMessage.builder()
-                    .chatId(chatId)
-                    .text(text)
-                    .replyMarkup(InlineKeyboardMarkup.builder().keyboard(keyboard).build())
-                    .build();
-            try { execute(msg); } catch (TelegramApiException e) { log.error("sendQuestion failed", e); }
-        } else {
-            sendText(chatId, header + timeHint + "\n\n" + q.text() + "\n\nНапишите ответ:");
+        Message sent = null;
+        try {
+            if (session.isMultiple()) {
+                String msgText = header + timeHint + "\n\n" + q.text() + "\n\nВыберите ответ:";
+                SendMessage msg = SendMessage.builder()
+                        .chatId(chatId)
+                        .text(msgText)
+                        .replyMarkup(buildQuestionKeyboard(q))
+                        .build();
+                sent = execute(msg);
+            } else {
+                SendMessage msg = SendMessage.builder()
+                        .chatId(chatId)
+                        .text(header + timeHint + "\n\n" + q.text() + "\n\n✏️ Напишите ответ:")
+                        .build();
+                sent = execute(msg);
+            }
+        } catch (TelegramApiException e) {
+            log.error("sendQuestion failed chatId={}", chatId, e);
         }
 
-        scheduleQuestionTimer(chatId, session, q);
+        if (sent != null) {
+            lastQuestionMessageId.put(chatId, sent.getMessageId());
+        }
+        scheduleQuestionTimer(chatId, session, q, sent != null ? sent.getMessageId() : null);
     }
 
     public void sendExamToStudent(long chatId, UUID examId) {
@@ -349,6 +445,16 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     }
 
     public void sendSlideToStudent(long chatId, byte[] imageBytes, int slideNumber) {
+        if (imageBytes == null || imageBytes.length == 0) {
+            log.error("Slide image is null or empty for chatId={} slideNumber={}", chatId, slideNumber);
+            sendText(chatId, "Не удалось загрузить картинку слайда " + slideNumber + ". Попробуйте позже.");
+            return;
+        }
+
+        // Не отправляем слайд повторно, если студент уже его смотрит
+        Integer current = studentCurrentSlide.get(chatId);
+        if (current != null && current == slideNumber) return;
+
         studentCurrentSlide.put(chatId, slideNumber);
 
         // Удаляем предыдущее сообщение со слайдом

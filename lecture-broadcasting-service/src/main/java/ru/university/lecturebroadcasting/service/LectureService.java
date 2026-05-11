@@ -243,11 +243,24 @@ public class LectureService {
         lecture.setCurrentSlide(slideNumber);
         lectureRepository.save(lecture);
 
+        log.info("Fetching slide image: lectureId={} sequenceId={} slideNumber={}",
+                lectureId, lecture.getSequenceId(), slideNumber);
         byte[] imageBytes = contentServiceClient.getSlideImage(lecture.getSequenceId(), slideNumber);
+
+        if (imageBytes != null) {
+            log.info("Slide image fetched successfully: lectureId={} slideNumber={} size={} bytes",
+                    lectureId, slideNumber, imageBytes.length);
+        } else {
+            log.warn("Slide image is null: lectureId={} slideNumber={}", lectureId, slideNumber);
+        }
+
         List<Long> chatIds = studentRepository.findByLecture(lecture)
                 .stream()
                 .map(Student::getChatId)
                 .toList();
+
+        log.info("Slide update result: lectureId={} slideNumber={} studentsCount={}",
+                lectureId, slideNumber, chatIds.size());
 
         analyticsServiceClient.sendSlideChangedEvent(lectureId, slideNumber);
 

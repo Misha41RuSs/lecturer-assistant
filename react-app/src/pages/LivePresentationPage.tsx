@@ -167,6 +167,7 @@ export function LivePresentationPage() {
 	const [satisfactionDraft, setSatisfactionDraft] = useState(satisfactionPreset)
 	const [drawingActive, setDrawingActive] = useState(false)
 	const [endingLecture, setEndingLecture] = useState(false)
+	const [isChangingSlide, setIsChangingSlide] = useState(false)
 
 	const drawingRef = useRef<DrawingOverlayHandle>(null)
 	const broadcastChannelRef = useRef<BroadcastChannel | null>(null)
@@ -175,8 +176,8 @@ export function LivePresentationPage() {
 		'open' | 'password' | 'invitation'
 	>('open')
 	const [password, setPassword] = useState('')
-	const lectureUrl = `https://lectureapp.ru/join/${lectureId}`
-	const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(lectureUrl)}`
+	const telegramJoinUrl = `https://t.me/lecturer_assistant_bot?start=join_${lectureId}`
+	const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(telegramJoinUrl)}`
 
 	const [questions, setQuestions] = useState<Question[]>([])
 	const [students, setStudents] = useState<StudentDto[]>([])
@@ -253,7 +254,7 @@ export function LivePresentationPage() {
 				.catch(() => {})
 		}
 		load()
-		const interval = setInterval(load, 10000)
+		const interval = setInterval(load, 5000)
 		return () => clearInterval(interval)
 	}, [lectureId])
 
@@ -455,10 +456,7 @@ export function LivePresentationPage() {
 	}
 
 	const handleSlideChange = async (newSlideIndex: number) => {
-		if (!lectureId) {
-			console.error('No lecture ID found')
-			return
-		}
+		if (!lectureId || isChangingSlide) return
 
 		const newSlide = slidesData[newSlideIndex]
 		if (!newSlide) return
@@ -468,23 +466,29 @@ export function LivePresentationPage() {
 			return
 		}
 
-		try {
-			// Update DB + WebSocket + Telegram (plain image)
-			await updateCurrentSlide(parseInt(lectureId), newSlide.index.toString())
+		// Оптимистичный update — UI реагирует мгновенно, до ответа сервера
+		setCurrentSlide(newSlideIndex)
+		localStorage.setItem('lecture_slide', String(newSlideIndex))
 
-			// Событие аналитики
+		if (drawingRef.current?.hasAnnotations(newSlideIndex)) {
+			broadcastCompositeToProjector(newSlideIndex)
+		} else {
+			broadcastChannelRef.current?.postMessage({
+				type: 'slide-change',
+				slideIndex: newSlideIndex
+			})
+		}
+
+		setIsChangingSlide(true)
+		try {
+			await updateCurrentSlide(parseInt(lectureId), newSlide.index.toString())
 			sendLectureEvent({
 				lectureId,
 				actionType: 'slide_changed',
 				payload: JSON.stringify({ slideNumber: newSlide.index })
 			}).catch(() => {})
 
-			setCurrentSlide(newSlideIndex)
-			localStorage.setItem('lecture_slide', String(newSlideIndex))
-
-			// Broadcast to projector and Telegram if annotations exist
 			if (drawingRef.current?.hasAnnotations(newSlideIndex)) {
-				// Telegram: full composite (slide image + annotations)
 				drawingRef.current
 					.getCompositeBlob(newSlideIndex, newSlide.imageUrl)
 					.then(blob => {
@@ -493,19 +497,12 @@ export function LivePresentationPage() {
 								console.error('broadcastSlideImage failed', e)
 							)
 					})
-				// Projector: annotations layer only (transparent PNG, overlaid on slide in projector)
-				broadcastCompositeToProjector(newSlideIndex)
-			} else {
-				broadcastChannelRef.current?.postMessage({
-					type: 'slide-change',
-					slideIndex: newSlideIndex
-				})
 			}
 		} catch (error) {
 			console.error('Failed to update slide:', error)
 			toast.error('Ошибка при переключении слайда')
-			setCurrentSlide(newSlideIndex)
-			localStorage.setItem('lecture_slide', String(newSlideIndex))
+		} finally {
+			setIsChangingSlide(false)
 		}
 	}
 
@@ -814,7 +811,7 @@ export function LivePresentationPage() {
 										onClick={() =>
 											handleSlideChange(Math.max(0, currentSlide - 1))
 										}
-										disabled={currentSlide === 0}
+										disabled={currentSlide === 0 || isChangingSlide}
 										className="p-2 sm:px-4 sm:py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 disabled:opacity-30"
 									>
 										<ChevronLeft className="w-5 h-5" />
@@ -835,7 +832,7 @@ export function LivePresentationPage() {
 												Math.min(slidesData.length - 1, currentSlide + 1)
 											)
 										}
-										disabled={currentSlide === slidesData.length - 1}
+										disabled={currentSlide === slidesData.length - 1 || isChangingSlide}
 										className="p-2 sm:px-4 sm:py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-30"
 									>
 										<ChevronRight className="w-5 h-5" />
@@ -853,10 +850,11 @@ export function LivePresentationPage() {
 								<button
 									key={s.id}
 									onClick={() => handleSlideChange(i)}
+									disabled={isChangingSlide}
 									className={`flex-shrink-0 w-20 aspect-video bg-neutral-800 rounded border-2 transition-all relative overflow-hidden ${
 										i === currentSlide
 											? 'border-orange-500 scale-105'
-											: 'border-neutral-700 opacity-50 hover:opacity-80'
+											: 'border-neutral-700 opacity-50 hover:opacity-80 disabled:cursor-wait'
 									}`}
 								>
 									{s.isQrSlide ? (
@@ -867,6 +865,7 @@ export function LivePresentationPage() {
 										<img
 											src={s.imageUrl}
 											alt={`Слайд ${s.index}`}
+											loading="lazy"
 											className="w-full h-full object-cover"
 										/>
 									)}

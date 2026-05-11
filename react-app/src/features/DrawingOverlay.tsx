@@ -157,7 +157,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
           await new Promise<void>((resolve, reject) => {
             img.onload = () => resolve();
             img.onerror = reject;
-            img.src = slideUrl + (slideUrl.includes("?") ? "&" : "?") + "_cors=1";
+            img.src = slideUrl;
           });
           ctx.drawImage(img, 0, 0, w, h);
         } catch {

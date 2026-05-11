@@ -6,8 +6,12 @@ import org.springframework.context.annotation.Bean; // <--- ДОБАВИТЬ И�
 import org.springframework.context.annotation.Configuration;
 import org.telegram.telegrambots.bots.DefaultBotOptions; // <--- ДОБАВИТЬ ИМПОРТ
 import org.telegram.telegrambots.meta.TelegramBotsApi;
+import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
+import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
+
+import java.util.List;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
 
@@ -39,6 +43,14 @@ public class TelegramBotConfig {
             TelegramBotsApi api = new TelegramBotsApi(DefaultBotSession.class);
             api.registerBot(bot);
             log.info("Telegram bot '@{}' зарегистрирован, long polling запущен", bot.getBotUsername());
+            bot.execute(SetMyCommands.builder()
+                    .commands(List.of(
+                            BotCommand.builder().command("start").description("Начало работы").build(),
+                            BotCommand.builder().command("join").description("Подключиться к лекции").build(),
+                            BotCommand.builder().command("question").description("Задать вопрос преподавателю").build(),
+                            BotCommand.builder().command("ping").description("Проверка связи").build()
+                    ))
+                    .build());
         } catch (TelegramApiException e) {
             log.error("КРИТИЧНО: не удалось зарегистрировать Telegram-бота (проверьте TELEGRAM_BOT_TOKEN): {}", e.getMessage(), e);
             log.warn("Telegram bot registration failed. Skipping bot startup to allow the rest of the application to run.");

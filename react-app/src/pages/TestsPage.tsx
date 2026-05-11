@@ -847,6 +847,72 @@ export function TestsPage() {
 						Тест ещё никто не проходил
 					</div>
 				)}
+
+				{examDetail.questions.length > 0 && submissions.length > 0 && (
+					<div className="bg-white rounded-xl p-5 border border-neutral-200 mt-4">
+						<h3 className="text-sm mb-4">Статистика по вопросам</h3>
+						<div className="space-y-4">
+							{examDetail.questions.map((q, i) => {
+								const total = submissions.length
+								const qAnswers = submissions.flatMap(s =>
+									s.answers.filter(a => a.questionId === q.id)
+								)
+								const correct = qAnswers.filter(a => a.correct === true).length
+								const incorrect = qAnswers.filter(
+									a => a.correct === false
+								).length
+								const unanswered = total - qAnswers.length
+								const correctPct =
+									total > 0 ? Math.round((correct / total) * 100) : 0
+								return (
+									<div key={q.id}>
+										<div className="flex items-start gap-2 mb-1.5">
+											<span className="w-6 h-6 bg-orange-100 text-orange-600 rounded text-xs flex items-center justify-center flex-shrink-0 font-medium">
+												{i + 1}
+											</span>
+											<p className="text-sm flex-1 leading-snug">{q.text}</p>
+										</div>
+										{q.type === 'MULTIPLE' ? (
+											<div className="ml-8 flex items-center gap-3 text-xs">
+												<span className="text-green-600 flex-shrink-0">
+													{correct} верно
+												</span>
+												<span className="text-red-500 flex-shrink-0">
+													{incorrect} неверно
+												</span>
+												{unanswered > 0 && (
+													<span className="text-neutral-400 flex-shrink-0">
+														{unanswered} без ответа
+													</span>
+												)}
+												<div className="flex-1 bg-neutral-100 rounded-full h-2">
+													<div
+														className="h-2 bg-green-400 rounded-full transition-all"
+														style={{ width: `${correctPct}%` }}
+													/>
+												</div>
+												<span className="text-neutral-500 flex-shrink-0">
+													{correctPct}%
+												</span>
+											</div>
+										) : (
+											<div className="ml-8 text-xs text-neutral-500">
+												{qAnswers.length} ответили
+												{qAnswers.filter(a => a.score === null).length > 0 && (
+													<span className="text-yellow-600 ml-2">
+														·{' '}
+														{qAnswers.filter(a => a.score === null).length} ждут
+														проверки
+													</span>
+												)}
+											</div>
+										)}
+									</div>
+								)
+							})}
+						</div>
+					</div>
+				)}
 			</div>
 		)
 	}
