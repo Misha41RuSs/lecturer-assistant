@@ -5,8 +5,9 @@ export function useLectureSocket(
   onSlideChange: (slideId: number) => void
 ) {
   useEffect(() => {
+    const WS_URL = import.meta.env.VITE_WS_URL;
     const ws = new WebSocket(
-      `ws://localhost:8080/ws/broadcasting/${lectureId}`
+      `${WS_URL}/ws/broadcasting/${lectureId}`
     );
 
     ws.onmessage = (event) => {

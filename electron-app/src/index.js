@@ -21,7 +21,7 @@ const createWindow = async () => {
 	// ! Development
 	// mainWindow.loadURL('http://localhost:5173')
 	// !Production
-	mainWindow.loadFile(path.join(__dirname, 'index.html'))
+	mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
 
 	// Navigate to root path after loading to fix initial 404
 	mainWindow.webContents.once('did-finish-load', () => {
