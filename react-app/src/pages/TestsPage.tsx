@@ -5,8 +5,9 @@ import { listLectures, LectureListItem } from "../app/api/client";
 import {
   createExam, updateExam, deleteExam, getExamsByLecture, getExam, getExamSubmissions,
   launchExam, closeExam, gradeAnswer, broadcastExam, duplicateExam,
-  importGift, exportGift,
+  importGift, exportGift, getExamAnalytics,
 } from "../app/api/quiz.api";
+import { StatsPanel, ExamAnalytics } from "../features/StatsPanel";
 
 interface ApiOption { id: string; text: string; correct?: boolean }
 interface ApiQuestion {
@@ -54,6 +55,8 @@ export function TestsPage() {
   const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
   const [examDetail, setExamDetail] = useState<ApiExam | null>(null);
   const [submissions, setSubmissions] = useState<ApiSubmission[]>([]);
+  const [analytics, setAnalytics] = useState<ExamAnalytics | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
   const [view, setView] = useState<"list" | "create" | "stats" | "student-detail">("list");
 
@@ -189,13 +192,13 @@ export function TestsPage() {
     if (!selectedLectureId) { toast.error("Выберите лекцию"); return; }
     setSaving(true);
     try {
-      const dto = {
+      const dto: Parameters<typeof createExam>[0] = {
         lectureId: String(selectedLectureId),
         title: newTitle.trim(),
         totalTimeSec: newTotalTime ? parseInt(newTotalTime) * 60 : null,
         questions: draftQuestions.map(q => ({
           text: q.text,
-          type: q.type === "multiple" ? "MULTIPLE" : "OPEN",
+          type: q.type === "multiple" ? ("MULTIPLE" as const) : ("OPEN" as const),
           timeLimitSec: q.time ? parseInt(q.time) : null,
           options: q.type === "multiple"
             ? q.answers.map(a => ({ text: a.text, correct: a.correct }))
@@ -221,6 +224,7 @@ export function TestsPage() {
 
   const openStats = async (examId: string) => {
     try {
+      setAnalytics(null);
       const [detail, subs] = await Promise.all([
         loadExamDetail(examId),
         getExamSubmissions(examId),
@@ -228,6 +232,12 @@ export function TestsPage() {
       setSubmissions(subs as ApiSubmission[]);
       setSelectedExamId(examId);
       setView("stats");
+      // Load analytics (non-blocking — can succeed or fail independently)
+      setAnalyticsLoading(true);
+      getExamAnalytics(examId)
+        .then((a: any) => setAnalytics(a as ExamAnalytics))
+        .catch(() => {})
+        .finally(() => setAnalyticsLoading(false));
     } catch {
       toast.error("Не удалось загрузить результаты");
     }
@@ -423,7 +433,7 @@ export function TestsPage() {
       const ratingCounts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
       submissions.forEach(r => {
         r.answers.forEach(a => {
-          const match = a.selectedOptionText?.match(/^(\d)/);
+          const match = a.selectedOptionText?.match(/(\d)/);
           if (match) ratingCounts[parseInt(match[1])] = (ratingCounts[parseInt(match[1])] || 0) + 1;
         });
       });
@@ -471,40 +481,41 @@ export function TestsPage() {
       );
     }
 
-    const avg = submissions.length > 0
-      ? Math.round(submissions.reduce((s, r) => s + r.totalScore, 0) / submissions.length) : 0;
-    const maxPossible = submissions[0]?.maxScore ?? 0;
-    const passed = submissions.filter(r => r.maxScore > 0 && r.totalScore >= r.maxScore * 0.7).length;
-    const ungraded = submissions.filter(r => r.hasUngraded).length;
-
     return (
       <div className="p-4 sm:p-6 lg:p-8">
         <Breadcrumbs items={[
           { label: "Тесты", onClick: () => setView("list") },
           { label: examDetail.title },
         ]} />
-        <h1 className="mb-1">{examDetail.title}</h1>
-        <p className="text-sm text-neutral-500 mb-6">
-          {examDetail.totalTimeSec ? `${Math.round(examDetail.totalTimeSec / 60)} мин.` : "Без ограничения"}
-          {" · "}{examDetail.questions.length} вопросов
-          {" · "}{getStatusLabel(examDetail.status).text}
-        </p>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          {[
-            { val: submissions.length, label: "Прошли тест" },
-            { val: `${avg}/${maxPossible}`, label: "Средний балл" },
-            { val: passed, label: "Сдали (≥70%)", cls: "text-green-600" },
-            { val: ungraded, label: "Ждут проверки", cls: ungraded > 0 ? "text-yellow-600" : "" },
-          ].map((s, i) => (
-            <div key={i} className="bg-white rounded-xl p-4 border border-neutral-200">
-              <div className={`text-2xl mb-1 ${s.cls ?? ""}`}>{s.val}</div>
-              <div className="text-sm text-neutral-500">{s.label}</div>
-            </div>
-          ))}
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-6">
+          <div>
+            <h1 className="mb-1">{examDetail.title}</h1>
+            <p className="text-sm text-neutral-500">
+              {examDetail.totalTimeSec ? `${Math.round(examDetail.totalTimeSec / 60)} мин.` : "Без ограничения"}
+              {" · "}{examDetail.questions.length} вопросов
+              {" · "}{getStatusLabel(examDetail.status).text}
+            </p>
+          </div>
         </div>
 
-        {submissions.length > 0 ? (
+        {analyticsLoading && (
+          <div className="text-center py-10 text-neutral-400 text-sm">Загрузка аналитики...</div>
+        )}
+
+        {!analyticsLoading && analytics && (
+          <StatsPanel
+            analytics={analytics}
+            onStudentClick={(chatId) => { setSelectedChatId(chatId); setView("student-detail"); }}
+          />
+        )}
+
+        {!analyticsLoading && !analytics && submissions.length === 0 && (
+          <div className="bg-white rounded-xl p-8 border border-neutral-200 text-center text-neutral-500 text-sm">
+            Тест ещё никто не проходил
+          </div>
+        )}
+
+        {!analyticsLoading && !analytics && submissions.length > 0 && (
           <div className="bg-white rounded-xl p-5 border border-neutral-200">
             <h3 className="text-sm mb-4">Результаты — нажмите для подробностей</h3>
             <div className="overflow-x-auto">
@@ -538,10 +549,6 @@ export function TestsPage() {
                 </tbody>
               </table>
             </div>
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl p-8 border border-neutral-200 text-center text-neutral-500 text-sm">
-            Тест ещё никто не проходил
           </div>
         )}
       </div>

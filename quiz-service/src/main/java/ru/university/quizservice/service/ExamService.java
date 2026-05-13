@@ -327,4 +327,100 @@ public class ExamService {
                 exam.getTotalTimeSec(), exam.getStatus().name(), exam.getExamType().name(), questions
         );
     }
+
+    @Transactional(readOnly = true)
+    public ExamAnalyticsDto getAnalytics(UUID examId) {
+        Exam exam = getExam(examId);
+        List<ExamSubmission> subs = submissionRepository.findByExam_IdOrderByStartedAtDesc(examId);
+        List<ExamAnswer> allAnswers = answerRepository.findWithQuestionByExamId(examId);
+
+        // Build option lookup
+        Map<UUID, ExamOption> optionMap = exam.getQuestions().stream()
+                .flatMap(q -> q.getOptions().stream())
+                .collect(Collectors.toMap(ExamOption::getId, o -> o));
+
+        // ── Per-question stats ──────────────────────────────────────────────
+        List<ExamAnalyticsDto.QuestionStatDto> questionStats = exam.getQuestions().stream()
+                .sorted(Comparator.comparingInt(ExamQuestion::getOrderIndex))
+                .map(q -> {
+                    List<ExamAnswer> qAnswers = allAnswers.stream()
+                            .filter(a -> a.getQuestion().getId().equals(q.getId()))
+                            .toList();
+
+                    int total = qAnswers.size();
+                    int correct = 0;
+
+                    List<ExamAnalyticsDto.OptionStatDto> optionStats = new ArrayList<>();
+
+                    if (q.getType() == QuestionType.MULTIPLE) {
+                        // Count how many times each option was chosen
+                        Map<UUID, Long> choiceCounts = qAnswers.stream()
+                                .filter(a -> a.getSelectedOptionId() != null)
+                                .collect(Collectors.groupingBy(ExamAnswer::getSelectedOptionId, Collectors.counting()));
+
+                        correct = (int) qAnswers.stream()
+                                .filter(a -> a.getSelectedOptionId() != null &&
+                                        optionMap.containsKey(a.getSelectedOptionId()) &&
+                                        optionMap.get(a.getSelectedOptionId()).isCorrect())
+                                .count();
+
+                        optionStats = q.getOptions().stream()
+                                .sorted(Comparator.comparingInt(ExamOption::getOrderIndex))
+                                .map(opt -> {
+                                    int chosen = choiceCounts.getOrDefault(opt.getId(), 0L).intValue();
+                                    int pct = total > 0 ? Math.round(chosen * 100f / total) : 0;
+                                    return new ExamAnalyticsDto.OptionStatDto(
+                                            opt.getId(), opt.getText(), opt.isCorrect(), chosen, pct);
+                                })
+                                .toList();
+                    }
+
+                    int correctPct = (q.getType() == QuestionType.MULTIPLE && total > 0)
+                            ? Math.round(correct * 100f / total) : 0;
+
+                    return new ExamAnalyticsDto.QuestionStatDto(
+                            q.getId(), q.getOrderIndex(), q.getText(), q.getType().name(),
+                            total, correct, correctPct, optionStats
+                    );
+                })
+                .toList();
+
+        // ── Per-student stats ──────────────────────────────────────────────
+        Map<UUID, List<ExamAnswer>> answersBySubmission = allAnswers.stream()
+                .collect(Collectors.groupingBy(a -> a.getSubmission().getId()));
+
+        List<ExamAnalyticsDto.StudentStatDto> studentStats = subs.stream().map(sub -> {
+            List<ExamAnswer> answers = answersBySubmission.getOrDefault(sub.getId(), List.of());
+
+            int totalScore = 0, maxScore = 0, correctMultiple = 0, totalMultiple = 0;
+            boolean hasUngraded = false;
+
+            for (ExamAnswer a : answers) {
+                maxScore += a.getMaxScore();
+                if (a.getScore() != null) totalScore += a.getScore();
+                else hasUngraded = true;
+
+                if (a.getQuestion().getType() == QuestionType.MULTIPLE) {
+                    totalMultiple++;
+                    if (a.getSelectedOptionId() != null &&
+                            optionMap.containsKey(a.getSelectedOptionId()) &&
+                            optionMap.get(a.getSelectedOptionId()).isCorrect()) {
+                        correctMultiple++;
+                    }
+                }
+            }
+
+            int correctPct = totalMultiple > 0
+                    ? Math.round(correctMultiple * 100f / totalMultiple) : 0;
+
+            return new ExamAnalyticsDto.StudentStatDto(
+                    sub.getChatId(), totalScore, maxScore,
+                    correctPct, correctMultiple, totalMultiple, hasUngraded
+            );
+        }).toList();
+
+        return new ExamAnalyticsDto(
+                exam.getId(), exam.getTitle(), subs.size(), questionStats, studentStats
+        );
+    }
 }
