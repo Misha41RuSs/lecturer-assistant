@@ -8,6 +8,7 @@ import {
 	Lock,
 	MessageSquare,
 	Monitor,
+	NotebookPen,
 	Pencil,
 	QrCode,
 	Send,
@@ -36,6 +37,7 @@ import {
 import { createExam, broadcastExam, getExamsByLecture, sendExamToUser } from '../app/api/quiz.api'
 import { sendLectureEvent } from '../app/api/analytics.api'
 import { DrawingOverlay, DrawingOverlayHandle } from '../features/DrawingOverlay'
+import { SlideNotesPanel } from '../features/SlideNotesPanel'
 
 interface SlideData {
 	id: string
@@ -146,6 +148,7 @@ export function LivePresentationPage() {
 	const [satisfactionDraft, setSatisfactionDraft] = useState(satisfactionPreset)
 	const [drawingActive, setDrawingActive] = useState(false)
 	const [endingLecture, setEndingLecture] = useState(false)
+	const [showNotes, setShowNotes] = useState(false)
 	const [isMessageCoolingDown, setIsMessageCoolingDown] = useState(false)
 
 	const drawingRef = useRef<DrawingOverlayHandle>(null)
@@ -567,6 +570,15 @@ export function LivePresentationPage() {
 						</span>
 					</button>
 					<button
+						id="slide-notes-toggle-btn"
+						onClick={() => setShowNotes(v => !v)}
+						className={`snp-trigger-btn ${showNotes ? 'snp-trigger-btn--on' : 'snp-trigger-btn--off'}`}
+						title="Заметки к слайду"
+					>
+						<NotebookPen className="w-3 h-3" />{' '}
+						<span className="hidden sm:inline">Заметки</span>
+					</button>
+					<button
 						onClick={() => setSidebarOpen(!sidebarOpen)}
 						className="p-1.5 text-neutral-400 hover:text-white hidden lg:block"
 					>
@@ -663,6 +675,15 @@ export function LivePresentationPage() {
 					<div className="w-full max-w-5xl">
 						{/* Slide */}
 						<div className="relative">
+							{/* Notes panel — anchored to slide container */}
+							{showNotes && lectureId && slide && (
+								<SlideNotesPanel
+									lectureId={lectureId}
+									slideId={slide.id}
+									slideIndex={slide.isQrSlide ? 0 : slide.index}
+									onClose={() => setShowNotes(false)}
+								/>
+							)}
 							<div className="aspect-video bg-neutral-900 rounded-lg shadow-2xl overflow-hidden flex items-center justify-center">
 								{slide.isQrSlide ? (
 									<div className="flex flex-col items-center justify-center gap-4 text-white p-8">

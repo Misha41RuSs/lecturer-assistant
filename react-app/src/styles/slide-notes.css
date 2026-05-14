@@ -1,0 +1,202 @@
+/* ─── Slide Notes Panel ──────────────────────────────────────────────────── */
+
+.slide-notes-panel {
+  position: absolute;
+  bottom: 80px;         /* выше навигации слайдов */
+  left: 12px;
+  width: 320px;
+  background: rgba(23, 23, 23, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(249, 115, 22, 0.12);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  display: flex;
+  flex-direction: column;
+  z-index: 40;
+  animation: snp-slide-in 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+}
+
+@keyframes snp-slide-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)  scale(1); }
+}
+
+/* Header */
+.snp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  flex-shrink: 0;
+}
+
+.snp-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #f97316;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.snp-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: #737373;
+  transition: color 0.15s, background 0.15s;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.snp-close-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Body */
+.snp-body {
+  padding: 10px 12px;
+  flex: 1;
+}
+
+.snp-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+}
+
+.snp-spinner {
+  animation: spin 0.8s linear infinite;
+  color: #f97316;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.snp-empty {
+  color: #737373;
+  font-size: 12px;
+  text-align: center;
+  padding: 16px 0;
+}
+
+.snp-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 110px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #e5e5e5;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.snp-textarea:focus {
+  border-color: rgba(249, 115, 22, 0.5);
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.15);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.snp-textarea::placeholder {
+  color: #525252;
+}
+
+/* Footer */
+.snp-footer {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  justify-content: flex-end;
+}
+
+.snp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 7px;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.snp-btn-primary {
+  background: #f97316;
+  color: #fff;
+}
+
+.snp-btn-primary:hover:not(:disabled) {
+  background: #ea6a0a;
+}
+
+.snp-btn-danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.snp-btn-danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.25);
+}
+
+.snp-btn-disabled,
+.snp-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Hint */
+.snp-hint {
+  font-size: 10px;
+  color: #525252;
+  text-align: right;
+  padding: 0 14px 8px;
+}
+
+/* Trigger button (in top bar) */
+.snp-trigger-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.snp-trigger-btn--off {
+  background: rgb(38, 38, 38);
+  color: rgb(163, 163, 163);
+}
+
+.snp-trigger-btn--off:hover {
+  background: rgb(64, 64, 64);
+}
+
+.snp-trigger-btn--on {
+  background: #f97316;
+  color: #fff;
+}
