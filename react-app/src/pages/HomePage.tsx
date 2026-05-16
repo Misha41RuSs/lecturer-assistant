@@ -15,9 +15,11 @@ import { toast } from 'sonner'
 import {
 	getSlideSequence,
 	listLectures,
+	deleteLecture,
 	type LectureListItem
 } from '../app/api/client'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../shared/tooltip'
+
 
 type LectureWithSlides = LectureListItem & { slideCount?: number }
 
@@ -75,11 +77,17 @@ export function HomePage() {
 		l => l.status === 'STOPPED' || l.status === 'FINISHED'
 	).length
 
-	const handleDelete = (id: number) => {
-		setLectures(p => p.filter(l => l.id !== id))
-		setMenuOpen(null)
-		toast.success('Лекция удалена из списка')
-	}
+const handleDelete = async (id: number) => {
+    try {
+        await deleteLecture(id)
+        setLectures(p => p.filter(l => l.id !== id))
+        setMenuOpen(null)
+        toast.success('Лекция удалена')
+    } catch (e) {
+        toast.error('Не удалось удалить лекцию')
+    }
+}
+
 
 	const statusLabel = (status: string) => {
 		if (status === 'ACTIVE') return 'Live'
@@ -205,18 +213,19 @@ export function HomePage() {
 												</TooltipContent>
 											</Tooltip>
 											<Tooltip>
-												<TooltipTrigger asChild>
-													<button
-														onClick={() => handleDelete(lecture.id)}
-														className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-													>
-														<Trash2 className="w-3.5 h-3.5" /> Удалить
-													</button>
-												</TooltipTrigger>
-												<TooltipContent>
-													<p>Удалить лекцию навсегда</p>
-												</TooltipContent>
-											</Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <button
+                                                        onClick={() => lecture.status !== 'ACTIVE' && handleDelete(lecture.id)}
+                                                        disabled={lecture.status === 'ACTIVE'}
+                                                        className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" /> Удалить
+                                                    </button>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                    <p>{lecture.status === 'ACTIVE' ? 'Сначала остановите лекцию' : 'Удалить лекцию навсегда'}</p>
+                                                </TooltipContent>
+                                            </Tooltip>
 										</div>
 									)}
 								</div>

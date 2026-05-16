@@ -58,6 +58,7 @@ public class QuizServiceClient {
         }
     }
 
+
     public void closeExam(UUID examId) {
         try {
             restTemplate.postForObject(baseUrl + "/exams/" + examId + "/close", null, Object.class);

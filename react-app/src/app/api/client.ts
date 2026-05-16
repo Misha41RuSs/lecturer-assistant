@@ -72,6 +72,15 @@ export async function getLecture(id: number) {
 	if (!res.ok) throw new Error('Failed to load lecture')
 	return res.json()
 }
+export async function deleteLecture(lectureId: number): Promise<void> {
+    const res = await fetch(`${BASE_URL}/lectures/${lectureId}`, {
+        method: 'DELETE'
+    })
+    if (!res.ok) {
+        const t = await res.text()
+        throw new Error(`Failed to delete lecture: ${res.status} ${t}`)
+    }
+}
 
 export async function getSlideSequence(sequenceId: string) {
 	const res = await fetch(`${BASE_URL}/slide-sequences/${sequenceId}`)

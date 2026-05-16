@@ -87,6 +87,11 @@ public class LectureController {
         return ResponseEntity.ok(lectureService.updateLecture(id, name, accessType, password));
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteLecture(@PathVariable Long id) {
+        lectureService.deleteLecture(id);
+        return ResponseEntity.noContent().build();
+    }
     /**
      * Принимает PNG-композит (слайд + рисунки) и рассылает его всем подключённым студентам.
      * Вызывается фронтом когда на слайде есть аннотации.

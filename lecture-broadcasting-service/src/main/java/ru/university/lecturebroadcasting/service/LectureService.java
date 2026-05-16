@@ -52,6 +52,18 @@ public class LectureService {
         return saved;
     }
 
+    @Transactional
+    public void deleteLecture(Long id) {
+        Lecture lecture = lectureRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Lecture not found: " + id));
+        if (lecture.getStatus() == LectureStatus.ACTIVE) {
+            throw new IllegalStateException("Cannot delete an active lecture");
+        }
+
+        log.info("Deleting lecture {}", id);
+        lectureRepository.deleteById(id);
+    }
+
     public List<Lecture> findAllOrderByIdDesc() {
         return lectureRepository.findAll(Sort.by(Sort.Direction.DESC, "id"));
     }
