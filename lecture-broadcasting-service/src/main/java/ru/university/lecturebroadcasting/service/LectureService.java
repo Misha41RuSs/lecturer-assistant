@@ -60,6 +60,9 @@ public class LectureService {
             throw new IllegalStateException("Cannot delete an active lecture");
         }
 
+        bannedUserRepository.deleteByLectureId(id);
+        studentRepository.deleteByLecture_Id(id);
+
         log.info("Deleting lecture {}", id);
         lectureRepository.deleteById(id);
     }
