@@ -39,3 +39,7 @@ export function getLectureDashboard(lectureId: string) {
 export function getLectureReport(lectureId: string) {
   return apiFetch(`/analytics/lectures/${lectureId}/report`);
 }
+
+export function getSlideRequestStats(lectureId: string) {
+    return apiFetch(`/analytics/lectures/${lectureId}/slide-request-stats`);
+}

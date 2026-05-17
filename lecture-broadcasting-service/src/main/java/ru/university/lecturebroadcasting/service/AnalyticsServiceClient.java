@@ -46,4 +46,19 @@ public class AnalyticsServiceClient {
             System.err.println("Failed to send student_joined event to analytics: " + e.getMessage());
         }
     }
+
+    @Async
+    public void sendSlideRequestedEvent(Long lectureId, Long chatId, int slideNumber) {
+        try {
+            String url = analyticsServiceUrl + "/analytics/events/user";
+            Map<String, String> body = new HashMap<>();
+            body.put("lectureId", String.valueOf(lectureId));
+            body.put("userId", String.valueOf(chatId));
+            body.put("actionType", "slide_requested");
+            body.put("payload", "{\"slideNumber\":" + slideNumber + "}");
+            restTemplate.postForObject(url, body, Void.class);
+        } catch (Exception e) {
+            System.err.println("Failed to send slide_requested event: " + e.getMessage());
+        }
+    }
 }

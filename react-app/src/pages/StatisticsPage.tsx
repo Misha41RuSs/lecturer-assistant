@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { Users, ClipboardList, CheckCircle, ChevronDown, ChevronUp, Star } from "lucide-react";
 import { toast } from "sonner";
 import { listLectures, LectureListItem, getLectureStudents, StudentDto } from "../app/api/client";
-import { getLectureDashboard } from "../app/api/analytics.api";
+import { getLectureDashboard, getSlideRequestStats } from "../app/api/analytics.api";
 import { getExamsByLecture, getExamSubmissions } from "../app/api/quiz.api";
+
 interface ExamRow {
   id: string
   title: string
@@ -27,6 +28,12 @@ interface SubmRow {
   maxScore: number
   hasUngraded: boolean
 }
+interface SlideStats {
+  lectureId: number
+  totalRequests: number
+  topSlides: { slideNumber: number; count: number }[]
+  byStudent: { chatId: number; requestCount: number }[]
+}
 
 export function StatisticsPage() {
   const [lectures, setLectures] = useState<LectureListItem[]>([]);
@@ -34,6 +41,7 @@ export function StatisticsPage() {
   const [students, setStudents] = useState<StudentDto[]>([]);
   const [exams, setExams] = useState<ExamRow[]>([]);
   const [surveys, setSurveys] = useState<SurveyRow[]>([]);
+  const [slideStats, setSlideStats] = useState<SlideStats | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -43,14 +51,22 @@ export function StatisticsPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedLectureId) { setStudents([]); setExams([]); setSurveys([]); return; }
+    if (!selectedLectureId) {
+      setStudents([]);
+      setExams([]);
+      setSurveys([]);
+      setSlideStats(null);
+      return;
+    }
     setLoading(true);
 
     Promise.all([
       getLectureStudents(String(selectedLectureId)).catch(() => []),
       getExamsByLecture(String(selectedLectureId)).catch(() => []),
-    ]).then(async ([studentList, examList]: [StudentDto[], any[]]) => {
+      getSlideRequestStats(String(selectedLectureId)).catch(() => null),
+    ]).then(async ([studentList, examList, slideStatsData]: [StudentDto[], any[], any]) => {
       setStudents(studentList);
+      setSlideStats(slideStatsData);
 
       const examRows: ExamRow[] = [];
       const surveyRows: SurveyRow[] = [];
@@ -190,6 +206,46 @@ export function StatisticsPage() {
             )}
           </div>
 
+          {/* Статистика запросов слайдов */}
+          {slideStats && slideStats.totalRequests > 0 && (
+            <div className="bg-white rounded-xl p-5 border border-neutral-200 mb-6">
+              <h3 className="text-sm font-medium mb-3">
+                Запросы слайдов ({slideStats.totalRequests})
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Топ слайдов */}
+                <div>
+                  <div className="text-xs text-neutral-500 mb-2">Топ запрошенных слайдов</div>
+                  <div className="space-y-1">
+                    {slideStats.topSlides.slice(0, 5).map((s) => (
+                      <div key={s.slideNumber} className="flex items-center justify-between py-1.5 px-3 bg-neutral-50 rounded-lg">
+                        <span className="text-sm">Слайд {s.slideNumber}</span>
+                        <span className="text-sm font-medium text-orange-600">{s.count} раз</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {/* По студентам */}
+                <div>
+                  <div className="text-xs text-neutral-500 mb-2">Запросы по студентам</div>
+                  <div className="space-y-1">
+                    {slideStats.byStudent.map((s) => {
+                      const st = students.find(x => x.chatId === s.chatId);
+                      return (
+                        <div key={s.chatId} className="flex items-center justify-between py-1.5 px-3 bg-neutral-50 rounded-lg">
+                          <span className="text-sm">
+                            {st?.firstName ? `${st.firstName} ${st.lastName || ''}` : `ID ${s.chatId}`}
+                          </span>
+                          <span className="text-sm font-medium text-orange-600">{s.requestCount} запросов</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Опросы удовлетворённости */}
           {surveys.length > 0 && (
             <div className="bg-white rounded-xl p-5 border border-neutral-200 mb-6">
@@ -296,3 +352,305 @@ export function StatisticsPage() {
     </div>
   );
 }
+
+
+
+// import { useEffect, useState } from "react";
+// import { Users, ClipboardList, CheckCircle, ChevronDown, ChevronUp, Star } from "lucide-react";
+// import { toast } from "sonner";
+// import { listLectures, LectureListItem, getLectureStudents, StudentDto } from "../app/api/client";
+// import { getLectureDashboard } from "../app/api/analytics.api";
+// import { getExamsByLecture, getExamSubmissions } from "../app/api/quiz.api";
+// interface ExamRow {
+//   id: string
+//   title: string
+//   status: string
+//   submissionCount: number
+//   avgScore: number | null
+//   maxScore: number | null
+//   submissions: SubmRow[]
+//   expanded: boolean
+// }
+// interface SurveyRow {
+//   id: string
+//   title: string
+//   status: string
+//   responseCount: number
+//   avgRating: number | null
+// }
+// interface SubmRow {
+//   chatId: number
+//   totalScore: number
+//   maxScore: number
+//   hasUngraded: boolean
+// }
+//
+// export function StatisticsPage() {
+//   const [lectures, setLectures] = useState<LectureListItem[]>([]);
+//   const [selectedLectureId, setSelectedLectureId] = useState<number>(0);
+//   const [students, setStudents] = useState<StudentDto[]>([]);
+//   const [exams, setExams] = useState<ExamRow[]>([]);
+//   const [surveys, setSurveys] = useState<SurveyRow[]>([]);
+//   const [loading, setLoading] = useState(false);
+//
+//
+//   useEffect(() => {
+//     listLectures()
+//       .then(setLectures)
+//       .catch(() => toast.error("Не удалось загрузить список лекций"));
+//   }, []);
+//
+//   useEffect(() => {
+//     if (!selectedLectureId) { setStudents([]); setExams([]); setSurveys([]); return; }
+//     setLoading(true);
+//
+//     Promise.all([
+//       getLectureStudents(String(selectedLectureId)).catch(() => []),
+//       getExamsByLecture(String(selectedLectureId)).catch(() => []),
+//     ]).then(async ([studentList, examList]: [StudentDto[], any[]]) => {
+//       setStudents(studentList);
+//
+//       const examRows: ExamRow[] = [];
+//       const surveyRows: SurveyRow[] = [];
+//
+//       await Promise.all(examList.map(async (exam: any) => {
+//         if (exam.status === 'DRAFT') {
+//           if (exam.examType === 'SURVEY') return;
+//           examRows.push({ id: exam.id, title: exam.title, status: exam.status, submissionCount: 0, avgScore: null, maxScore: null, submissions: [], expanded: false });
+//           return;
+//         }
+//
+//         const subs: any[] = await getExamSubmissions(exam.id).catch(() => []);
+//
+//         if (exam.examType === 'SURVEY') {
+//           const ratings = subs
+//             .flatMap((s: any) => s.answers ?? [])
+//             .map((a: any) => parseInt(a.selectedOptionText))
+//             .filter((n: number) => !isNaN(n) && n >= 1 && n <= 5);
+//           const avgRating = ratings.length > 0
+//             ? ratings.reduce((s: number, r: number) => s + r, 0) / ratings.length
+//             : null;
+//           surveyRows.push({ id: exam.id, title: exam.title, status: exam.status, responseCount: subs.length, avgRating });
+//         } else {
+//           const submissions: SubmRow[] = subs.map((s: any) => ({ chatId: s.chatId, totalScore: s.totalScore, maxScore: s.maxScore, hasUngraded: s.hasUngraded }));
+//           const gradedSubs = submissions.filter(s => s.maxScore > 0);
+//           const avgScore = gradedSubs.length > 0
+//             ? gradedSubs.reduce((sum, s) => sum + (s.totalScore / s.maxScore) * 100, 0) / gradedSubs.length
+//             : null;
+//           examRows.push({ id: exam.id, title: exam.title, status: exam.status, submissionCount: submissions.length, avgScore, maxScore: gradedSubs[0]?.maxScore ?? null, submissions, expanded: false });
+//         }
+//       }));
+//
+//       setExams(examRows);
+//       setSurveys(surveyRows);
+//     }).finally(() => setLoading(false));
+//   }, [selectedLectureId]);
+//
+//   const toggleExam = (id: string) => {
+//     setExams(prev => prev.map(e => e.id === id ? { ...e, expanded: !e.expanded } : e));
+//   };
+//
+//   const conductedExams = exams.filter(e => e.status !== 'DRAFT');
+//   const allAvg = conductedExams.filter(e => e.avgScore !== null);
+//   const overallAvg = allAvg.length > 0
+//     ? Math.round(allAvg.reduce((s, e) => s + e.avgScore!, 0) / allAvg.length)
+//     : null;
+//   const satisfactionSurveys = surveys.filter(s => s.avgRating !== null);
+//   const overallSatisfaction = satisfactionSurveys.length > 0
+//     ? satisfactionSurveys.reduce((s, sr) => s + sr.avgRating!, 0) / satisfactionSurveys.length
+//     : null;
+//
+//   return (
+//     <div className="p-4 sm:p-6 lg:p-8">
+//       <div className="mb-6">
+//         <h1 className="mb-1">Статистика</h1>
+//         <p className="text-sm text-neutral-500">Студенты и результаты тестов по лекции</p>
+//       </div>
+//
+//       <div className="mb-6">
+//         <select
+//           value={selectedLectureId}
+//           onChange={e => setSelectedLectureId(Number(e.target.value))}
+//           className="px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+//         >
+//           <option value={0}>Выберите лекцию</option>
+//           {lectures.map(l => (
+//             <option key={l.id} value={l.id}>{l.name} ({l.status})</option>
+//           ))}
+//         </select>
+//       </div>
+//
+//       {!selectedLectureId && (
+//         <div className="bg-white rounded-xl p-12 border border-neutral-200 text-center text-neutral-400 text-sm">
+//           Выберите лекцию для просмотра статистики
+//         </div>
+//       )}
+//
+//       {selectedLectureId > 0 && loading && (
+//         <div className="text-center py-12 text-neutral-400 text-sm">Загрузка...</div>
+//       )}
+//
+//       {selectedLectureId > 0 && !loading && (
+//         <>
+//           {/* Сводные карточки */}
+//           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+//             {[
+//               { icon: Users, color: "bg-orange-100 text-orange-600", val: String(students.length), label: "Студентов" },
+//               { icon: ClipboardList, color: "bg-blue-100 text-blue-600", val: String(conductedExams.length), label: "Тестов проведено" },
+//               { icon: CheckCircle, color: "bg-green-100 text-green-600", val: overallAvg !== null ? `${overallAvg}%` : "—", label: "Средний балл" },
+//               { icon: Star, color: "bg-yellow-100 text-yellow-600", val: overallSatisfaction !== null ? overallSatisfaction.toFixed(1) + " ⭐" : "—", label: "Удовлетворённость" },
+//             ].map((s, i) => (
+//               <div key={i} className="bg-white rounded-xl p-4 border border-neutral-200">
+//                 <div className="flex items-center gap-3">
+//                   <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${s.color}`}>
+//                     <s.icon className="w-4 h-4" />
+//                   </div>
+//                   <div>
+//                     <div className="text-xl font-semibold">{s.val}</div>
+//                     <div className="text-xs text-neutral-500">{s.label}</div>
+//                   </div>
+//                 </div>
+//               </div>
+//             ))}
+//           </div>
+//
+//           {/* Список студентов */}
+//           <div className="bg-white rounded-xl p-5 border border-neutral-200 mb-6">
+//             <h3 className="text-sm font-medium mb-3">Студенты ({students.length})</h3>
+//             {students.length === 0 ? (
+//               <p className="text-sm text-neutral-400">Нет данных о студентах</p>
+//             ) : (
+//               <div className="overflow-x-auto">
+//                 <table className="w-full">
+//                   <thead>
+//                     <tr className="border-b border-neutral-200">
+//                       <th className="text-left py-2 px-3 text-xs text-neutral-500">Студент</th>
+//                       <th className="text-left py-2 px-3 text-xs text-neutral-500">Telegram Username</th>
+//                       <th className="text-left py-2 px-3 text-xs text-neutral-500">Chat ID</th>
+//                     </tr>
+//                   </thead>
+//                   <tbody>
+//                     {students.map((s) => (
+//                       <tr key={s.chatId} className="border-b border-neutral-100 hover:bg-neutral-50">
+//                         <td className="py-2 px-3 text-sm flex items-center gap-2">
+//                           <div className="w-6 h-6 rounded-full bg-neutral-200 flex items-center justify-center text-xs font-medium text-neutral-600">
+//                             {s.firstName?.[0] || 'С'}
+//                           </div>
+//                           <span className="font-medium">{s.firstName ? `${s.firstName} ${s.lastName || ''}` : 'Студент'}</span>
+//                         </td>
+//                         <td className="py-2 px-3 text-sm text-neutral-500">{s.username ? `@${s.username}` : '—'}</td>
+//                         <td className="py-2 px-3 text-sm font-mono text-neutral-400">{s.chatId}</td>
+//                       </tr>
+//                     ))}
+//                   </tbody>
+//                 </table>
+//               </div>
+//             )}
+//           </div>
+//
+//           {/* Опросы удовлетворённости */}
+//           {surveys.length > 0 && (
+//             <div className="bg-white rounded-xl p-5 border border-neutral-200 mb-6">
+//               <h3 className="text-sm font-medium mb-3">Удовлетворённость ({surveys.length})</h3>
+//               <div className="space-y-2">
+//                 {surveys.map(s => (
+//                   <div key={s.id} className="flex items-center justify-between px-4 py-3 border border-neutral-200 rounded-lg">
+//                     <div>
+//                       <div className="text-sm font-medium">{s.title}</div>
+//                       <div className="text-xs text-neutral-400 mt-0.5">{s.responseCount} ответов</div>
+//                     </div>
+//                     <div className="text-right">
+//                       {s.avgRating !== null ? (
+//                         <div className="text-lg font-semibold text-yellow-600">{s.avgRating.toFixed(1)} ⭐</div>
+//                       ) : (
+//                         <div className="text-sm text-neutral-400">Нет ответов</div>
+//                       )}
+//                     </div>
+//                   </div>
+//                 ))}
+//               </div>
+//             </div>
+//           )}
+//
+//           {/* Тесты */}
+//           <div className="bg-white rounded-xl p-5 border border-neutral-200">
+//             <h3 className="text-sm font-medium mb-3">Тесты ({exams.length})</h3>
+//             {exams.length === 0 ? (
+//               <p className="text-sm text-neutral-400">Нет тестов для этой лекции</p>
+//             ) : (
+//               <div className="space-y-2">
+//                 {exams.map(exam => (
+//                   <div key={exam.id} className="border border-neutral-200 rounded-lg overflow-hidden">
+//                     <button
+//                       onClick={() => toggleExam(exam.id)}
+//                       className="w-full flex items-center justify-between px-4 py-3 hover:bg-neutral-50 text-left"
+//                     >
+//                       <div className="flex items-center gap-3">
+//                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+//                           exam.status === 'ACTIVE' ? 'bg-green-100 text-green-700' :
+//                           exam.status === 'CLOSED' ? 'bg-neutral-100 text-neutral-600' :
+//                           'bg-yellow-100 text-yellow-700'
+//                         }`}>{exam.status}</span>
+//                         <span className="text-sm font-medium">{exam.title}</span>
+//                       </div>
+//                       <div className="flex items-center gap-4">
+//                         <span className="text-sm text-neutral-500">{exam.submissionCount} ответов</span>
+//                         {exam.avgScore !== null && (
+//                           <span className="text-sm font-medium text-orange-600">{Math.round(exam.avgScore)}%</span>
+//                         )}
+//                         {exam.expanded ? <ChevronUp className="w-4 h-4 text-neutral-400" /> : <ChevronDown className="w-4 h-4 text-neutral-400" />}
+//                       </div>
+//                     </button>
+//
+//                     {exam.expanded && exam.submissions.length > 0 && (
+//                       <div className="border-t border-neutral-200 px-4 py-3">
+//                         <table className="w-full">
+//                           <thead>
+//                             <tr className="border-b border-neutral-100">
+//                               <th className="text-left py-1.5 text-xs text-neutral-500">Студент</th>
+//                               <th className="text-left py-1.5 text-xs text-neutral-500">Баллы</th>
+//                               <th className="text-left py-1.5 text-xs text-neutral-500">Результат</th>
+//                             </tr>
+//                           </thead>
+//                           <tbody>
+//                             {exam.submissions.map((sub, i) => {
+//                               const pct = sub.maxScore > 0 ? Math.round(sub.totalScore / sub.maxScore * 100) : 0;
+//                               const st = students.find(x => x.chatId === sub.chatId);
+//                               return (
+//                                 <tr key={i} className="border-b border-neutral-50">
+//                                   <td className="py-1.5 text-sm">
+//                                     <div className="flex flex-col">
+//                                       <span className="font-medium">{st?.firstName ? `${st.firstName} ${st.lastName || ''}` : 'Студент'}</span>
+//                                       <span className="text-xs text-neutral-400 font-mono">{sub.chatId}</span>
+//                                     </div>
+//                                   </td>
+//                                   <td className="py-1.5 text-sm">{sub.totalScore}/{sub.maxScore}</td>
+//                                   <td className="py-1.5 text-sm">
+//                                     {sub.hasUngraded ? (
+//                                       <span className="text-yellow-600">Не проверено</span>
+//                                     ) : (
+//                                       <span className={pct >= 60 ? 'text-green-600' : 'text-red-500'}>{pct}%</span>
+//                                     )}
+//                                   </td>
+//                                 </tr>
+//                               );
+//                             })}
+//                           </tbody>
+//                         </table>
+//                       </div>
+//                     )}
+//                     {exam.expanded && exam.submissions.length === 0 && (
+//                       <div className="border-t border-neutral-200 px-4 py-3 text-sm text-neutral-400">
+//                         Нет ответов
+//                       </div>
+//                     )}
+//                   </div>
+//                 ))}
+//               </div>
+//             )}
+//           </div>
+//         </>
+//       )}
+//     </div>
+//   );
+// }

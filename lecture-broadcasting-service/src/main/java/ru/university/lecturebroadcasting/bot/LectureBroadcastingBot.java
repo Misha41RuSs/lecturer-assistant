@@ -540,6 +540,13 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                     .caption("Слайд " + slideNumber)
                     .build());
             lastStudentPhotoMessageId.put(chatId, sent.getMessageId());
+            // Отправляем событие в аналитику
+            studentRepository.findByChatId(chatId).ifPresent(student -> {
+                if (student.getLecture() != null) {
+                    analyticsServiceClient.sendSlideRequestedEvent(
+                            student.getLecture().getId(), chatId, slideNumber);
+                }
+            });
         } catch (TelegramApiException e) {
             log.error("sendPhoto failed chatId={}", chatId, e);
         }

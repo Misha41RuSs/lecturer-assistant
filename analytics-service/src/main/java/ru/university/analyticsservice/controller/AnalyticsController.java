@@ -54,4 +54,8 @@ public class AnalyticsController {
     public ResponseEntity<Map<String, Object>> report(@PathVariable Long lectureId) {
         return ResponseEntity.ok(analyticsService.getReport(lectureId));
     }
+    @GetMapping("/lectures/{lectureId}/slide-request-stats")
+    public ResponseEntity<Map<String, Object>> slideRequestStats(@PathVariable Long lectureId) {
+        return ResponseEntity.ok(analyticsService.getSlideRequestStats(lectureId));
+    }
 }
