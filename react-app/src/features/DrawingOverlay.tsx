@@ -368,24 +368,24 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
           </div>
         )}
 
-        {(active || totalAnnotations > 0) && (
-          <div className="relative z-30 flex items-center justify-between mt-2 gap-2">
-            <div className="text-neutral-500 text-xs">
-              {hasAnnotations ? `${annotations.length} элементов на слайде` : "Рисуйте прямо поверх слайда"}
-              {totalAnnotations > 0 && ` · ${totalAnnotations} всего`}
-            </div>
-            <div className="flex gap-2">
-              <button onClick={handleExportSlide} disabled={!hasAnnotations}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 text-neutral-300 rounded-lg text-xs hover:bg-neutral-700 disabled:opacity-30">
-                <Download className="w-3.5 h-3.5" /> Экспорт слайда
-              </button>
-              <button onClick={handleSaveAnnotations} disabled={totalAnnotations === 0}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs hover:bg-orange-600 disabled:opacity-30">
-                <Save className="w-3.5 h-3.5" /> Сохранить для студентов
-              </button>
-            </div>
-          </div>
-        )}
+          {(active && totalAnnotations > 0) && (
+              <div className="relative z-30 flex items-center justify-between mt-2 gap-2">
+                  <div className="text-neutral-500 text-xs">
+                      {hasAnnotations ? `${annotations.length} элементов на слайде` : "Рисуйте прямо поверх слайда"}
+                      {totalAnnotations > 0 && ` · ${totalAnnotations} всего`}
+                  </div>
+                  <div className="flex gap-2">
+                      <button onClick={handleExportSlide} disabled={!hasAnnotations}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 text-neutral-300 rounded-lg text-xs hover:bg-neutral-700 disabled:opacity-30">
+                          <Download className="w-3.5 h-3.5" /> Экспорт слайда
+                      </button>
+                      <button onClick={handleSaveAnnotations} disabled={totalAnnotations === 0}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs hover:bg-orange-600 disabled:opacity-30">
+                          <Save className="w-3.5 h-3.5" /> Сохранить для студентов
+                      </button>
+                  </div>
+              </div>
+          )}
       </>
     );
   }
