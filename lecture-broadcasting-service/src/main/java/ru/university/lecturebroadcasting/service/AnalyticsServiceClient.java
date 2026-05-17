@@ -47,6 +47,8 @@ public class AnalyticsServiceClient {
         }
     }
 
+
+
     @Async
     public void sendSlideRequestedEvent(Long lectureId, Long chatId, int slideNumber) {
         try {

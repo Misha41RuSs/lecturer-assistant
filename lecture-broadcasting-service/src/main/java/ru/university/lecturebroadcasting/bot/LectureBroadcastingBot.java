@@ -460,6 +460,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             pendingPasswordJoin.remove(chatId);
             sendText(chatId, "Вы подключились к лекции: " + student.getLecture().getName());
             analyticsServiceClient.sendStudentJoinedEvent(student.getLecture().getId(), chatId);
+
         } catch (PasswordRequiredException e) {
             pendingPasswordJoin.put(chatId, lectureName);
             sendText(chatId, "🔒 Лекция защищена паролем. Введите пароль:");
