@@ -91,6 +91,20 @@ public class LectureService {
      * Завершает лекцию, отвязывает всех студентов в БД (для /join и колбеков бота).
      * Список chatId отдаётся наружу для уведомления в Telegram после коммита транзакции.
      */
+//    @Transactional
+//    public StopLectureResult stopLecture(Long id) {
+//        Lecture lecture = lectureRepository.findById(id)
+//                .orElseThrow(() -> new IllegalArgumentException("Lecture not found: " + id));
+//        lecture.setStatus(LectureStatus.STOPPED);
+//        lectureRepository.save(lecture);
+//
+//        List<Student> attached = studentRepository.findByLecture_Id(id);
+//        List<Long> chatIds = attached.stream().map(Student::getChatId).toList();
+//
+//        log.info("Lecture stopped: id={} name={} disconnectedStudents={}",
+//                lecture.getId(), lecture.getName(), chatIds.size());
+//        return new StopLectureResult(lecture, chatIds);
+//    }
     @Transactional
     public StopLectureResult stopLecture(Long id) {
         Lecture lecture = lectureRepository.findById(id)
@@ -100,6 +114,10 @@ public class LectureService {
 
         List<Student> attached = studentRepository.findByLecture_Id(id);
         List<Long> chatIds = attached.stream().map(Student::getChatId).toList();
+
+        // Отвязываем студентов от лекции
+        attached.forEach(s -> s.setLecture(null));
+        studentRepository.saveAll(attached);
 
         log.info("Lecture stopped: id={} name={} disconnectedStudents={}",
                 lecture.getId(), lecture.getName(), chatIds.size());
