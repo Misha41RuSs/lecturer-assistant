@@ -1,14 +1,34 @@
-import { useEffect, useState } from 'react'
-import { Trash2, Eye, MessageSquare, ArrowUp, ArrowDown, X, ChevronLeft, ChevronRight, Loader2, AlertCircle } from 'lucide-react'
+import {
+	AlertCircle,
+	ArrowDown,
+	ArrowUp,
+	ChevronLeft,
+	ChevronRight,
+	FileText,
+	Loader2,
+	MessageSquare,
+	Pencil,
+	Trash2,
+	X
+} from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { toast } from 'sonner'
-import { getLecture, getSlideSequence, updateSlideSequence, BASE_URL } from '../app/api/client'
+import {
+	BASE_URL,
+	getSlidesMeta,
+	getSlideSequence,
+	getLecture,
+	updateSlideMeta,
+	updateSlideSequence
+} from '../app/api/client'
 
 interface Slide {
 	uuid: string
 	index: number
 	imageUrl: string
-	comment: string
+	title: string
+	notes: string
 }
 
 export function SlideManagerPage() {
@@ -20,7 +40,16 @@ export function SlideManagerPage() {
 	const [loadError, setLoadError] = useState<string | null>(null)
 	const [saving, setSaving] = useState(false)
 	const [selectedUuid, setSelectedUuid] = useState<string | null>(null)
-	const [commentText, setCommentText] = useState('')
+
+	// notes panel state
+	const [notesText, setNotesText] = useState('')
+	const [savingNotes, setSavingNotes] = useState(false)
+
+	// inline title editing state
+	const [editingTitle, setEditingTitle] = useState<{ uuid: string; value: string } | null>(null)
+	const titleInputRef = useRef<HTMLInputElement>(null)
+
+	// preview modal
 	const [previewOpen, setPreviewOpen] = useState(false)
 	const [previewIdx, setPreviewIdx] = useState(0)
 
@@ -39,18 +68,28 @@ export function SlideManagerPage() {
 				}
 
 				setSequenceId(lecture.sequenceId)
-				const seq = await getSlideSequence(lecture.sequenceId)
-				const uuids: string[] = seq.slides || []
+				const [seq, meta] = await Promise.all([
+					getSlideSequence(lecture.sequenceId),
+					getSlidesMeta(lecture.sequenceId)
+				])
 
-				const built: Slide[] = uuids.map((uuid, idx) => ({
-					uuid,
-					index: idx + 1,
-					imageUrl: `${BASE_URL}/slide-sequences/${lecture.sequenceId}/slide/${idx + 1}`,
-					comment: ''
-				}))
+				const uuids: string[] = seq.slides || []
+				const built: Slide[] = uuids.map((uuid, idx) => {
+					const m = meta.find(m => m.id === uuid)
+					return {
+						uuid,
+						index: idx + 1,
+						imageUrl: `${BASE_URL}/slide-sequences/${lecture.sequenceId}/slide/${idx + 1}`,
+						title: m?.title ?? '',
+						notes: m?.notes ?? ''
+					}
+				})
 
 				setSlides(built)
-				if (built.length > 0) setSelectedUuid(built[0].uuid)
+				if (built.length > 0) {
+					setSelectedUuid(built[0].uuid)
+					setNotesText(built[0].notes)
+				}
 			} catch (e) {
 				setLoadError(e instanceof Error ? e.message : 'Ошибка загрузки')
 			} finally {
@@ -59,7 +98,6 @@ export function SlideManagerPage() {
 		})()
 	}, [lectureId])
 
-	// Rebuild indices and imageUrls after any reorder/delete
 	const rebuildIndices = (list: Slide[], seqId: string): Slide[] =>
 		list.map((s, idx) => ({
 			...s,
@@ -73,7 +111,7 @@ export function SlideManagerPage() {
 			setSaving(true)
 			await updateSlideSequence(sequenceId, list.map(s => s.uuid))
 		} catch {
-			toast.error('Не удалось сохранить изменения на сервере')
+			toast.error('Не удалось сохранить порядок слайдов')
 		} finally {
 			setSaving(false)
 		}
@@ -83,16 +121,20 @@ export function SlideManagerPage() {
 
 	const selectSlide = (s: Slide) => {
 		setSelectedUuid(s.uuid)
-		setCommentText(s.comment)
+		setNotesText(s.notes)
+		setEditingTitle(null)
 	}
 
 	const deleteSlide = async (uuid: string) => {
-		if (slides.length <= 1) { toast.error('Нельзя удалить последний слайд'); return }
+		if (slides.length <= 1) {
+			toast.error('Нельзя удалить последний слайд')
+			return
+		}
 		const next = rebuildIndices(slides.filter(s => s.uuid !== uuid), sequenceId!)
 		setSlides(next)
 		if (selectedUuid === uuid) {
 			setSelectedUuid(next[0]?.uuid ?? null)
-			setCommentText(next[0]?.comment ?? '')
+			setNotesText(next[0]?.notes ?? '')
 		}
 		toast.success('Слайд удалён')
 		await persistSequence(next)
@@ -108,29 +150,76 @@ export function SlideManagerPage() {
 		await persistSequence(rebuilt)
 	}
 
-	const saveComment = () => {
-		setSlides(slides.map(s => s.uuid === selectedUuid ? { ...s, comment: commentText } : s))
-		toast.success('Комментарий сохранён')
+	// ── Title ──────────────────────────────────────────────────────────────
+
+	const startEditTitle = (uuid: string, currentTitle: string) => {
+		setEditingTitle({ uuid, value: currentTitle })
+		setTimeout(() => titleInputRef.current?.focus(), 0)
 	}
 
-	const removeComment = () => {
-		setCommentText('')
-		setSlides(slides.map(s => s.uuid === selectedUuid ? { ...s, comment: '' } : s))
-		toast.success('Комментарий удалён')
+	const commitTitle = async (uuid: string, value: string) => {
+		const trimmed = value.trim()
+		setSlides(slides.map(s => s.uuid === uuid ? { ...s, title: trimmed } : s))
+		setEditingTitle(null)
+		try {
+			await updateSlideMeta(uuid, { title: trimmed })
+		} catch {
+			toast.error('Не удалось сохранить заголовок')
+		}
 	}
 
-	const openPreview = () => {
-		setPreviewIdx(slides.findIndex(s => s.uuid === selectedUuid))
-		setPreviewOpen(true)
+	const clearTitle = async (uuid: string) => {
+		setSlides(slides.map(s => s.uuid === uuid ? { ...s, title: '' } : s))
+		setEditingTitle(null)
+		try {
+			await updateSlideMeta(uuid, { title: '' })
+			toast.success('Заголовок удалён')
+		} catch {
+			toast.error('Не удалось удалить заголовок')
+		}
 	}
 
-	// Full-screen preview modal
+	// ── Notes ──────────────────────────────────────────────────────────────
+
+	const saveNotes = async () => {
+		if (!selectedUuid) return
+		setSavingNotes(true)
+		setSlides(slides.map(s => s.uuid === selectedUuid ? { ...s, notes: notesText } : s))
+		try {
+			await updateSlideMeta(selectedUuid, { notes: notesText })
+			toast.success('Заметки сохранены')
+		} catch {
+			toast.error('Не удалось сохранить заметки')
+		} finally {
+			setSavingNotes(false)
+		}
+	}
+
+	const clearNotes = async () => {
+		if (!selectedUuid) return
+		setNotesText('')
+		setSlides(slides.map(s => s.uuid === selectedUuid ? { ...s, notes: '' } : s))
+		try {
+			await updateSlideMeta(selectedUuid, { notes: '' })
+			toast.success('Заметки очищены')
+		} catch {
+			toast.error('Не удалось очистить заметки')
+		}
+	}
+
+	// ── Preview modal ──────────────────────────────────────────────────────
+
 	if (previewOpen) {
 		const slide = slides[previewIdx]
 		return (
 			<div className="fixed inset-0 bg-black z-50 flex flex-col">
 				<div className="flex items-center justify-between px-4 py-3 bg-neutral-900">
-					<span className="text-white text-sm">Предпросмотр — слайд {slide.index}</span>
+					<div>
+						<span className="text-white text-sm">Предпросмотр — слайд {slide.index}</span>
+						{slide.title && (
+							<span className="text-neutral-400 text-sm ml-2">· {slide.title}</span>
+						)}
+					</div>
 					<div className="flex items-center gap-3">
 						<span className="text-neutral-400 text-sm">{previewIdx + 1} / {slides.length}</span>
 						<button onClick={() => setPreviewOpen(false)} className="text-neutral-400 hover:text-white">
@@ -145,7 +234,13 @@ export function SlideManagerPage() {
 						className="max-w-full max-h-full object-contain"
 					/>
 				</div>
-				<div className="flex items-center justify-center gap-4 pb-6 bg-black">
+				{slide.notes && (
+					<div className="px-6 py-3 bg-neutral-900 border-t border-neutral-800 text-sm text-neutral-300 max-h-24 overflow-y-auto">
+						<span className="text-neutral-500 text-xs mr-2">Заметки:</span>
+						{slide.notes}
+					</div>
+				)}
+				<div className="flex items-center justify-center gap-4 py-4 bg-black">
 					<button
 						onClick={() => setPreviewIdx(Math.max(0, previewIdx - 1))}
 						disabled={previewIdx === 0}
@@ -155,8 +250,13 @@ export function SlideManagerPage() {
 					</button>
 					<div className="flex gap-1.5">
 						{slides.map((_, i) => (
-							<button key={i} onClick={() => setPreviewIdx(i)}
-								className={`w-2.5 h-2.5 rounded-full transition-colors ${i === previewIdx ? 'bg-orange-500' : 'bg-neutral-600 hover:bg-neutral-500'}`} />
+							<button
+								key={i}
+								onClick={() => setPreviewIdx(i)}
+								className={`w-2.5 h-2.5 rounded-full transition-colors ${
+									i === previewIdx ? 'bg-orange-500' : 'bg-neutral-600 hover:bg-neutral-500'
+								}`}
+							/>
 						))}
 					</div>
 					<button
@@ -181,6 +281,7 @@ export function SlideManagerPage() {
 
 	return (
 		<div className="p-4 sm:p-6 lg:p-8">
+			{/* Header */}
 			<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
 				<div>
 					<div className="flex items-center gap-1 text-sm text-neutral-500 mb-1">
@@ -191,22 +292,12 @@ export function SlideManagerPage() {
 					<h1 className="mb-0">Менеджер слайдов</h1>
 					<p className="text-sm text-neutral-500">{lectureName} · {slides.length} слайдов</p>
 				</div>
-				<div className="flex gap-2">
-					<Link
-						to={`/settings/${lectureId}`}
-						className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm"
-					>
-						Настройки лекции
-					</Link>
-					{selectedSlide && (
-						<button
-							onClick={openPreview}
-							className="flex items-center gap-2 px-4 py-2 border border-neutral-300 rounded-lg hover:bg-neutral-50 text-sm"
-						>
-							<Eye className="w-4 h-4" /> Предпросмотр
-						</button>
-					)}
-				</div>
+				<Link
+					to={`/settings/${lectureId}`}
+					className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm self-start"
+				>
+					Настройки лекции
+				</Link>
 			</div>
 
 			{loadError && (
@@ -228,15 +319,19 @@ export function SlideManagerPage() {
 			{slides.length > 0 && (
 				<>
 					<div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-5 text-sm text-blue-900">
-						Используйте стрелки для перемещения слайдов. Изменения сохраняются на сервере автоматически.
+						Нажмите на слайд чтобы выбрать. Заголовок и заметки редактируются в панели ниже. Стрелки — порядок слайдов.
 					</div>
 
-					{/* Slides Grid */}
+					{/* Slides grid */}
 					<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 mb-6">
 						{slides.map((slide, idx) => (
-							<div key={slide.uuid} onClick={() => selectSlide(slide)}
+							<div
+								key={slide.uuid}
+								onClick={() => selectSlide(slide)}
 								className={`relative group cursor-pointer rounded-lg transition-all ${
-									selectedUuid === slide.uuid ? 'ring-2 ring-orange-500 scale-[1.02]' : 'hover:ring-1 hover:ring-neutral-300'
+									selectedUuid === slide.uuid
+										? 'ring-2 ring-orange-500 scale-[1.02]'
+										: 'hover:ring-1 hover:ring-neutral-300'
 								}`}
 							>
 								<div className="aspect-video bg-neutral-200 rounded-lg overflow-hidden">
@@ -246,76 +341,198 @@ export function SlideManagerPage() {
 										className="w-full h-full object-cover"
 									/>
 								</div>
-								<div className="absolute bottom-2 left-2 bg-white/90 rounded px-1.5 py-0.5 text-xs">
+
+								{/* Number badge */}
+								<div className="absolute bottom-7 left-2 bg-white/90 rounded px-1.5 py-0.5 text-xs">
 									{String(idx + 1).padStart(2, '0')}
 								</div>
 
-								{slide.comment && (
+								{/* Notes indicator */}
+								{slide.notes && (
 									<div className="absolute top-1.5 left-1.5 w-5 h-5 bg-orange-500 rounded-full flex items-center justify-center">
 										<MessageSquare className="w-3 h-3 text-white" />
 									</div>
 								)}
 
+								{/* Title indicator */}
+								{slide.title && (
+									<div className="absolute top-1.5 left-8 max-w-[calc(100%-4rem)] bg-black/50 rounded px-1.5 py-0.5 text-[10px] text-white truncate">
+										{slide.title}
+									</div>
+								)}
+
+								{/* Hover controls */}
 								<div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-									<button onClick={(e) => { e.stopPropagation(); moveSlide(slide.uuid, -1) }}
+									<button
+										onClick={e => { e.stopPropagation(); moveSlide(slide.uuid, -1) }}
 										disabled={idx === 0}
-										className="w-6 h-6 bg-white rounded-full flex items-center justify-center shadow hover:bg-neutral-100 disabled:opacity-30">
+										className="w-6 h-6 bg-white rounded-full flex items-center justify-center shadow hover:bg-neutral-100 disabled:opacity-30"
+									>
 										<ArrowUp className="w-3 h-3" />
 									</button>
-									<button onClick={(e) => { e.stopPropagation(); moveSlide(slide.uuid, 1) }}
+									<button
+										onClick={e => { e.stopPropagation(); moveSlide(slide.uuid, 1) }}
 										disabled={idx === slides.length - 1}
-										className="w-6 h-6 bg-white rounded-full flex items-center justify-center shadow hover:bg-neutral-100 disabled:opacity-30">
+										className="w-6 h-6 bg-white rounded-full flex items-center justify-center shadow hover:bg-neutral-100 disabled:opacity-30"
+									>
 										<ArrowDown className="w-3 h-3" />
 									</button>
-									<button onClick={(e) => { e.stopPropagation(); deleteSlide(slide.uuid) }}
-										className="w-6 h-6 bg-white rounded-full flex items-center justify-center shadow hover:bg-red-50">
+									<button
+										onClick={e => { e.stopPropagation(); deleteSlide(slide.uuid) }}
+										className="w-6 h-6 bg-white rounded-full flex items-center justify-center shadow hover:bg-red-50"
+									>
 										<Trash2 className="w-3 h-3 text-red-600" />
 									</button>
+								</div>
+
+								{/* Title below thumbnail */}
+								<div className="mt-1 px-0.5 h-5">
+									{editingTitle?.uuid === slide.uuid ? (
+										<input
+											ref={titleInputRef}
+											value={editingTitle.value}
+											onChange={e => setEditingTitle({ uuid: slide.uuid, value: e.target.value })}
+											onBlur={() => commitTitle(slide.uuid, editingTitle.value)}
+											onKeyDown={e => {
+												if (e.key === 'Enter') commitTitle(slide.uuid, editingTitle.value)
+												if (e.key === 'Escape') setEditingTitle(null)
+											}}
+											onClick={e => e.stopPropagation()}
+											placeholder="Заголовок..."
+											className="w-full text-xs px-1 py-0.5 border border-orange-400 rounded focus:outline-none bg-white"
+										/>
+									) : (
+										<p
+											className="text-xs text-neutral-400 truncate px-0.5 cursor-text hover:text-neutral-700 transition-colors"
+											onClick={e => { e.stopPropagation(); startEditTitle(slide.uuid, slide.title) }}
+											title="Нажмите для редактирования заголовка"
+										>
+											{slide.title || <span className="italic">заголовок...</span>}
+										</p>
+									)}
 								</div>
 							</div>
 						))}
 					</div>
 
-					{/* Selected slide details + comment */}
+					{/* Detail panel */}
 					{selectedSlide && (
-						<div className="grid grid-cols-1 lg:grid-cols-[minmax(0,400px),1fr] gap-6">
+						<div className="grid grid-cols-1 lg:grid-cols-[minmax(0,420px),1fr] gap-6">
+							{/* Preview */}
 							<div>
-								<h3 className="text-sm mb-3">Слайд {selectedSlide.index}</h3>
-								<div className="aspect-video bg-neutral-100 rounded-lg overflow-hidden">
+								<h3 className="text-sm mb-3 text-neutral-700">Слайд {selectedSlide.index}</h3>
+								<div className="aspect-video bg-neutral-100 rounded-lg overflow-hidden mb-2">
 									<img
 										src={selectedSlide.imageUrl}
 										alt={`Слайд ${selectedSlide.index}`}
 										className="w-full h-full object-contain"
 									/>
 								</div>
+								<button
+									onClick={() => {
+										setPreviewIdx(slides.findIndex(s => s.uuid === selectedUuid))
+										setPreviewOpen(true)
+									}}
+									className="w-full px-4 py-2 border border-neutral-300 rounded-lg hover:bg-neutral-50 text-sm text-neutral-600"
+								>
+									Полноэкранный предпросмотр
+								</button>
 							</div>
 
-							<div className="bg-white rounded-xl p-5 border border-neutral-200">
-								<div className="flex items-center gap-2 mb-4">
-									<MessageSquare className="w-4 h-4 text-orange-500" />
-									<h3 className="text-sm">Комментарий к слайду</h3>
-								</div>
-								<p className="text-xs text-neutral-500 mb-3">
-									Комментарий виден только вам в режиме показа. Студенты и проектор его не видят.
-								</p>
-								<textarea
-									value={commentText}
-									onChange={(e) => setCommentText(e.target.value)}
-									placeholder="Добавьте заметку для себя: что рассказать, на что обратить внимание..."
-									rows={5}
-									className="w-full px-4 py-2.5 bg-neutral-50 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none mb-3"
-								/>
-								<div className="flex gap-2">
-									<button onClick={saveComment}
-										className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm">
-										Сохранить комментарий
-									</button>
-									{commentText && (
-										<button onClick={removeComment}
-											className="px-4 py-2 border border-neutral-300 rounded-lg hover:bg-neutral-50 text-sm text-neutral-600">
-											Очистить
-										</button>
+							{/* Edit panel */}
+							<div className="space-y-4">
+								{/* Title */}
+								<div className="bg-white rounded-xl p-5 border border-neutral-200">
+									<div className="flex items-center justify-between mb-3">
+										<div className="flex items-center gap-2">
+											<FileText className="w-4 h-4 text-orange-500" />
+											<h3 className="text-sm">Заголовок слайда</h3>
+										</div>
+										{selectedSlide.title && (
+											<button
+												onClick={() => clearTitle(selectedUuid!)}
+												className="text-xs text-neutral-400 hover:text-red-500 transition-colors flex items-center gap-1"
+											>
+												<X className="w-3 h-3" /> Удалить
+											</button>
+										)}
+									</div>
+									<p className="text-xs text-neutral-500 mb-3">
+										Отображается в менеджере слайдов. Студентам не виден.
+									</p>
+									{editingTitle?.uuid === selectedUuid ? (
+										<div className="flex gap-2">
+											<input
+												ref={titleInputRef}
+												value={editingTitle.value}
+												onChange={e => setEditingTitle({ uuid: selectedUuid, value: e.target.value })}
+												onKeyDown={e => {
+													if (e.key === 'Enter') commitTitle(selectedUuid, editingTitle.value)
+													if (e.key === 'Escape') setEditingTitle(null)
+												}}
+												placeholder="Введите заголовок слайда..."
+												className="flex-1 px-4 py-2.5 bg-neutral-50 border border-orange-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+											/>
+											<button
+												onClick={() => commitTitle(selectedUuid, editingTitle.value)}
+												className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm"
+											>
+												ОК
+											</button>
+											<button
+												onClick={() => setEditingTitle(null)}
+												className="px-3 py-2 border border-neutral-300 rounded-lg hover:bg-neutral-50 text-sm"
+											>
+												<X className="w-4 h-4" />
+											</button>
+										</div>
+									) : (
+										<div
+											onClick={() => startEditTitle(selectedUuid!, selectedSlide.title)}
+											className="flex items-center gap-2 px-4 py-2.5 bg-neutral-50 border border-neutral-200 rounded-lg cursor-text hover:border-orange-300 hover:bg-orange-50/30 transition-colors group"
+										>
+											<span className={`flex-1 text-sm ${selectedSlide.title ? 'text-neutral-800' : 'text-neutral-400 italic'}`}>
+												{selectedSlide.title || 'Нажмите чтобы добавить заголовок...'}
+											</span>
+											<Pencil className="w-3.5 h-3.5 text-neutral-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+										</div>
 									)}
+								</div>
+
+								{/* Notes */}
+								<div className="bg-white rounded-xl p-5 border border-neutral-200">
+									<div className="flex items-center gap-2 mb-3">
+										<MessageSquare className="w-4 h-4 text-orange-500" />
+										<h3 className="text-sm">Заметки к слайду</h3>
+									</div>
+									<p className="text-xs text-neutral-500 mb-3">
+										Видны только вам в режиме показа. Студенты и проектор их не видят.
+									</p>
+									<textarea
+										value={notesText}
+										onChange={e => setNotesText(e.target.value)}
+										placeholder="Что рассказать, на что обратить внимание, цитаты, тезисы..."
+										rows={5}
+										className="w-full px-4 py-2.5 bg-neutral-50 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none mb-3 text-sm"
+									/>
+									<div className="flex gap-2">
+										<button
+											onClick={saveNotes}
+											disabled={savingNotes}
+											className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm disabled:opacity-60 flex items-center justify-center gap-2"
+										>
+											{savingNotes && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+											Сохранить заметки
+										</button>
+										{notesText && (
+											<button
+												onClick={clearNotes}
+												className="px-4 py-2 border border-neutral-300 rounded-lg hover:bg-neutral-50 text-sm text-neutral-600"
+											>
+												Очистить
+											</button>
+										)}
+									</div>
 								</div>
 							</div>
 						</div>

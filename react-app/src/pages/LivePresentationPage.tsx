@@ -1,4 +1,5 @@
 import {
+	ArrowLeft,
 	ChevronLeft,
 	ChevronRight,
 	ClipboardList,
@@ -155,6 +156,7 @@ export function LivePresentationPage() {
 	const [sidebarOpen, setSidebarOpen] = useState(true)
 	const [elapsed, setElapsed] = useState(0)
 	const [showConfirmEnd, setShowConfirmEnd] = useState(false)
+	const [showConfirmExit, setShowConfirmExit] = useState(false)
 	const [replyTo, setReplyTo] = useState<string | null>(null)
 	const [replyText, setReplyText] = useState('')
 	const [showTestModal, setShowTestModal] = useState<number | null>(null)
@@ -507,12 +509,19 @@ export function LivePresentationPage() {
 	}
 
 	const openProjection = () => {
-		window.open(
-			`/projection/${lectureId}`,
-			'projection',
-			'width=1280,height=720'
-		)
+		if (window.electronAPI?.openProjector) {
+			window.electronAPI.openProjector(lectureId!)
+		} else {
+			window.open(`/#/projection/${lectureId}`, 'projection', 'width=1280,height=720')
+		}
 		toast.success('Окно проектора открыто. Переместите на второй экран.')
+	}
+
+	const handleExitToMenu = () => {
+		if (lectureId) {
+			localStorage.setItem('active_lecture_id', lectureId)
+		}
+		navigate('/')
 	}
 
 	const handleConfirmEndLecture = async () => {
@@ -520,6 +529,7 @@ export function LivePresentationPage() {
 		setEndingLecture(true)
 		try {
 			await stopLecture(parseInt(lectureId, 10))
+			localStorage.removeItem('active_lecture_id')
 			setShowConfirmEnd(false)
 			toast.success('Лекция завершена, студенты отключены')
 			navigate('/')
@@ -566,9 +576,20 @@ export function LivePresentationPage() {
 			{/* Top Bar */}
 			<div className="bg-neutral-900 px-3 sm:px-6 py-3 flex items-center justify-between border-b border-neutral-800 flex-shrink-0">
 				<div className="flex items-center gap-3 min-w-0">
-					<span className="text-orange-500 hidden sm:block text-sm">
-						LectureApp
-					</span>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								onClick={() => setShowConfirmExit(true)}
+								className="flex items-center gap-1 px-2 py-1 bg-neutral-800 text-neutral-300 rounded text-xs hover:bg-neutral-700 flex-shrink-0"
+							>
+								<ArrowLeft className="w-3 h-3" />
+								<span className="hidden sm:inline">Меню</span>
+							</button>
+						</TooltipTrigger>
+						<TooltipContent>
+							<p>Выйти в меню (лекция продолжается)</p>
+						</TooltipContent>
+					</Tooltip>
 					<span className="text-white text-sm truncate">{lectureName}</span>
 					<span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1 flex-shrink-0">
 						<span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />{' '}
@@ -724,6 +745,34 @@ export function LivePresentationPage() {
 							<p className="text-xs text-neutral-500">Покажите студентам</p>
 						</div>
 					)}
+				</div>
+			)}
+
+			{/* Exit to menu confirmation */}
+			{showConfirmExit && (
+				<div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+					<div className="bg-white rounded-xl p-6 max-w-sm w-full">
+						<h3 className="mb-2">Выйти в меню?</h3>
+						<p className="text-sm text-neutral-500 mb-4">
+							Лекция продолжится, студенты останутся подключены. Вы сможете вернуться через боковое меню.
+						</p>
+						<div className="flex gap-2">
+							<button
+								type="button"
+								onClick={() => setShowConfirmExit(false)}
+								className="flex-1 px-4 py-2 border border-neutral-300 rounded-lg text-sm"
+							>
+								Отмена
+							</button>
+							<button
+								type="button"
+								onClick={handleExitToMenu}
+								className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600"
+							>
+								Выйти в меню
+							</button>
+						</div>
+					</div>
 				</div>
 			)}
 

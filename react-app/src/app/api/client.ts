@@ -260,6 +260,41 @@ export async function updateSlideSequence(sequenceId: string, slideIds: string[]
 	return res.json()
 }
 
+// ---------------------------------------------------------------------------
+// Slide metadata (title + notes) — stubs until backend implements endpoints
+// ---------------------------------------------------------------------------
+
+export interface SlideMeta {
+	id: string
+	title: string
+	notes: string
+}
+
+/**
+ * TODO: replace stub with GET /slide-sequences/{sequenceId}/slides
+ * Expected response: SlideMeta[]
+ */
+export async function getSlidesMeta(_sequenceId: string): Promise<SlideMeta[]> {
+	console.warn('[stub] getSlidesMeta — endpoint not implemented yet')
+	return []
+}
+
+/**
+ * TODO: replace stub with PATCH /slides/{slideId}
+ * Expected body: { title?: string; notes?: string }
+ */
+export async function updateSlideMeta(
+	_slideId: string,
+	_patch: { title?: string; notes?: string }
+): Promise<void> {
+	console.warn('[stub] updateSlideMeta — endpoint not implemented yet', {
+		slideId: _slideId,
+		patch: _patch
+	})
+}
+
+// ---------------------------------------------------------------------------
+
 export function createLectureSocket(
 	lectureId: number,
 	onMessage: (data: any) => void
