@@ -39,6 +39,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private static final String CB_CURRENT_SLIDE = "current_slide";
     private static final String CB_GOTO_SLIDE = "goto_slide";
     private static final String CB_EXAM_OPT = "exam_opt:";
+    private static final String CB_SLIDE_OPT = "slide_opt:";
 
     private final ConcurrentHashMap<Long, String> pendingPasswordJoin = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, String> pendingCommand = new ConcurrentHashMap<>();
@@ -50,6 +51,8 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final ConcurrentHashMap<Long, Integer> studentCurrentSlide = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Boolean> pendingGoToSlide = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Timer> questionTimers = new ConcurrentHashMap<>();
+    /** chatId → sendId: студент ждёт ввода открытого ответа на вопрос слайда */
+    private final ConcurrentHashMap<Long, UUID> pendingSlideQuestionResponse = new ConcurrentHashMap<>();
 
     private final String botUsername;
     private final StudentRepository studentRepository;
@@ -128,6 +131,14 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                     tryJoinWithPassword(chatId, key, null, from);
                 }
             }
+            return;
+        }
+
+        // Ответ на открытый вопрос слайда
+        if (pendingSlideQuestionResponse.containsKey(chatId) && !cmd.startsWith("/")) {
+            UUID sendId = pendingSlideQuestionResponse.remove(chatId);
+            quizServiceClient.respondToSlideQuestion(sendId, chatId, null, text.trim());
+            sendText(chatId, "✅ Ваш ответ записан!");
             return;
         }
 
@@ -266,6 +277,20 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         if (data.startsWith(CB_EXAM_OPT)) {
             String optionId = data.substring(CB_EXAM_OPT.length());
             handleMultipleChoiceAnswer(chatId, optionId);
+            return;
+        }
+
+        if (data.startsWith(CB_SLIDE_OPT)) {
+            // формат: slide_opt:{sendId}:{optionId}
+            String payload = data.substring(CB_SLIDE_OPT.length());
+            int sep = payload.indexOf(':');
+            if (sep > 0) {
+                UUID sendId = UUID.fromString(payload.substring(0, sep));
+                UUID optionId = UUID.fromString(payload.substring(sep + 1));
+                quizServiceClient.respondToSlideQuestion(sendId, chatId, optionId, null);
+                pendingSlideQuestionResponse.remove(chatId);
+                sendText(chatId, "✅ Ответ принят!");
+            }
         }
     }
 
@@ -434,6 +459,51 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             lastQuestionMessageId.put(chatId, sent.getMessageId());
         }
         scheduleQuestionTimer(chatId, session, q, sent != null ? sent.getMessageId() : null);
+    }
+
+    public void sendSlideQuestion(long chatId, UUID sendId,
+                                  QuizServiceClient.SlideQuestionSend send) {
+        String timeHint = send.timeLimitSec() != null ? " ⏱ " + send.timeLimitSec() + " с" : "";
+        String header = "❓ Вопрос к слайду " + send.slideNumber() + timeHint;
+
+        if ("MULTIPLE".equals(send.questionType())) {
+            InlineKeyboardMarkup markup = buildSlideQuestionKeyboard(sendId, send);
+            try {
+                execute(SendMessage.builder()
+                        .chatId(chatId)
+                        .text(header + "\n\n" + send.questionText() + "\n\nВыберите ответ:")
+                        .replyMarkup(markup)
+                        .build());
+            } catch (TelegramApiException e) {
+                log.error("sendSlideQuestion MULTIPLE failed chatId={}", chatId, e);
+            }
+        } else {
+            pendingSlideQuestionResponse.put(chatId, sendId);
+            try {
+                execute(SendMessage.builder()
+                        .chatId(chatId)
+                        .text(header + "\n\n" + send.questionText() + "\n\n✏️ Напишите ответ:")
+                        .replyMarkup(ForceReplyKeyboard.builder().forceReply(true).selective(true).build())
+                        .build());
+            } catch (TelegramApiException e) {
+                log.error("sendSlideQuestion OPEN failed chatId={}", chatId, e);
+            }
+        }
+    }
+
+    private InlineKeyboardMarkup buildSlideQuestionKeyboard(UUID sendId,
+                                                             QuizServiceClient.SlideQuestionSend send) {
+        List<List<InlineKeyboardButton>> keyboard = send.options().stream()
+                .map(opt -> {
+                    String btnText = opt.text().length() > 60
+                            ? opt.text().substring(0, 57) + "..." : opt.text();
+                    return List.of(InlineKeyboardButton.builder()
+                            .text(btnText)
+                            .callbackData(CB_SLIDE_OPT + sendId + ":" + opt.id())
+                            .build());
+                })
+                .toList();
+        return InlineKeyboardMarkup.builder().keyboard(keyboard).build();
     }
 
     public void sendExamToStudent(long chatId, UUID examId) {

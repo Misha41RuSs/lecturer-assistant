@@ -16,13 +16,16 @@ public class ExamService {
     private final ExamRepository examRepository;
     private final ExamSubmissionRepository submissionRepository;
     private final ExamAnswerRepository answerRepository;
+    private final QuestionService questionService;
 
     public ExamService(ExamRepository examRepository,
                        ExamSubmissionRepository submissionRepository,
-                       ExamAnswerRepository answerRepository) {
+                       ExamAnswerRepository answerRepository,
+                       QuestionService questionService) {
         this.examRepository = examRepository;
         this.submissionRepository = submissionRepository;
         this.answerRepository = answerRepository;
+        this.questionService = questionService;
     }
 
     @Transactional
@@ -37,25 +40,21 @@ public class ExamService {
 
         int idx = 0;
         for (CreateExamDto.QuestionDto qDto : dto.questions()) {
-            ExamQuestion q = new ExamQuestion();
-            q.setExam(exam);
-            q.setOrderIndex(idx++);
-            q.setText(qDto.text());
-            q.setType(QuestionType.valueOf(qDto.type()));
-            q.setTimeLimitSec(qDto.timeLimitSec());
+            Question question = questionService.buildQuestion(new CreateQuestionDto(
+                    Long.parseLong(dto.lectureId()),
+                    qDto.text(),
+                    qDto.type(),
+                    qDto.timeLimitSec(),
+                    qDto.options() == null ? null : qDto.options().stream()
+                            .map(o -> new CreateQuestionDto.OptionDto(o.text(), o.correct()))
+                            .toList()
+            ));
 
-            if (qDto.options() != null) {
-                int optIdx = 0;
-                for (CreateExamDto.OptionDto oDto : qDto.options()) {
-                    ExamOption opt = new ExamOption();
-                    opt.setQuestion(q);
-                    opt.setOrderIndex(optIdx++);
-                    opt.setText(oDto.text());
-                    opt.setCorrect(oDto.correct());
-                    q.getOptions().add(opt);
-                }
-            }
-            exam.getQuestions().add(q);
+            ExamQuestion exq = new ExamQuestion();
+            exq.setExam(exam);
+            exq.setQuestion(question);
+            exq.setOrderIndex(idx++);
+            exam.getQuestions().add(exq);
         }
         return examRepository.save(exam);
     }
@@ -69,24 +68,24 @@ public class ExamService {
         copy.setTitle(src.getTitle() + " (копия)");
         copy.setTotalTimeSec(src.getTotalTimeSec());
         copy.setExamType(src.getExamType());
+
         int idx = 0;
-        for (ExamQuestion srcQ : src.getQuestions()) {
-            ExamQuestion q = new ExamQuestion();
-            q.setExam(copy);
-            q.setOrderIndex(idx++);
-            q.setText(srcQ.getText());
-            q.setType(srcQ.getType());
-            q.setTimeLimitSec(srcQ.getTimeLimitSec());
-            int optIdx = 0;
-            for (ExamOption srcO : srcQ.getOptions()) {
-                ExamOption opt = new ExamOption();
-                opt.setQuestion(q);
-                opt.setOrderIndex(optIdx++);
-                opt.setText(srcO.getText());
-                opt.setCorrect(srcO.isCorrect());
-                q.getOptions().add(opt);
-            }
-            copy.getQuestions().add(q);
+        for (ExamQuestion srcExq : src.getQuestions()) {
+            Question srcQ = srcExq.getQuestion();
+            Question newQ = questionService.buildQuestion(new CreateQuestionDto(
+                    srcQ.getLectureId(),
+                    srcQ.getText(),
+                    srcQ.getType().name(),
+                    srcQ.getTimeLimitSec(),
+                    srcQ.getOptions().stream()
+                            .map(o -> new CreateQuestionDto.OptionDto(o.getText(), o.isCorrect()))
+                            .toList()
+            ));
+            ExamQuestion exq = new ExamQuestion();
+            exq.setExam(copy);
+            exq.setQuestion(newQ);
+            exq.setOrderIndex(idx++);
+            copy.getQuestions().add(exq);
         }
         return examRepository.save(copy);
     }
@@ -155,16 +154,18 @@ public class ExamService {
                 throw new IllegalStateException("Exam time limit exceeded");
             }
         }
-        UUID questionId = UUID.fromString(dto.questionId());
+        UUID examQuestionId = UUID.fromString(dto.questionId());
 
-        ExamQuestion question = exam.getQuestions().stream()
-                .filter(q -> q.getId().equals(questionId))
+        ExamQuestion exq = exam.getQuestions().stream()
+                .filter(q -> q.getId().equals(examQuestionId))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Question not found: " + questionId));
+                .orElseThrow(() -> new IllegalArgumentException("Question not found: " + examQuestionId));
+
+        Question question = exq.getQuestion();
 
         ExamAnswer answer = new ExamAnswer();
         answer.setSubmission(sub);
-        answer.setQuestion(question);
+        answer.setQuestion(exq);
 
         if (question.getType() == QuestionType.MULTIPLE) {
             if (dto.selectedOptionId() != null) {
@@ -174,7 +175,7 @@ public class ExamService {
                         .anyMatch(o -> o.getId().equals(optId) && o.isCorrect());
                 answer.setScore(correct ? answer.getMaxScore() : -1);
             } else {
-                answer.setScore(-1); // таймаут или пропуск — штрафной балл
+                answer.setScore(-1);
             }
         } else {
             answer.setOpenText(dto.openText());
@@ -191,16 +192,17 @@ public class ExamService {
         return saved;
     }
 
+    @Transactional(readOnly = true)
     public List<SubmissionResultDto> getSubmissions(UUID examId) {
         Exam exam = getExam(examId);
         List<ExamSubmission> subs = submissionRepository.findByExam_IdOrderByStartedAtDesc(examId);
 
-        Map<UUID, ExamOption> optionMap = exam.getQuestions().stream()
-                .flatMap(q -> q.getOptions().stream())
-                .collect(Collectors.toMap(ExamOption::getId, o -> o));
+        Map<UUID, QuestionOption> optionMap = exam.getQuestions().stream()
+                .flatMap((ExamQuestion exq) -> exq.getQuestion().getOptions().stream())
+                .collect(Collectors.toMap(QuestionOption::getId, o -> o));
 
         Map<UUID, ExamQuestion> questionMap = exam.getQuestions().stream()
-                .collect(Collectors.toMap(ExamQuestion::getId, q -> q));
+                .collect(Collectors.toMap(ExamQuestion::getId, exq -> exq));
 
         return subs.stream().map(sub -> {
             List<ExamAnswer> answers = answerRepository.findBySubmission_Id(sub.getId());
@@ -214,8 +216,9 @@ public class ExamService {
                 if (a.getScore() != null) totalScore += a.getScore();
                 else hasUngraded = true;
 
-                ExamQuestion q = questionMap.get(a.getQuestion().getId());
-                ExamOption selectedOpt = a.getSelectedOptionId() != null
+                ExamQuestion exq = questionMap.get(a.getQuestion().getId());
+                Question q = exq != null ? exq.getQuestion() : null;
+                QuestionOption selectedOpt = a.getSelectedOptionId() != null
                         ? optionMap.get(a.getSelectedOptionId()) : null;
 
                 Boolean correct = null;
@@ -225,7 +228,7 @@ public class ExamService {
 
                 answerDtos.add(new SubmissionResultDto.AnswerDto(
                         a.getId(),
-                        q != null ? q.getId() : null,
+                        exq != null ? exq.getId() : null,
                         q != null ? q.getText() : "",
                         q != null ? q.getType().name() : "",
                         a.getSelectedOptionId(),
@@ -257,24 +260,20 @@ public class ExamService {
 
         int idx = 0;
         for (CreateExamDto.QuestionDto qDto : dto.questions()) {
-            ExamQuestion q = new ExamQuestion();
-            q.setExam(exam);
-            q.setOrderIndex(idx++);
-            q.setText(qDto.text());
-            q.setType(QuestionType.valueOf(qDto.type()));
-            q.setTimeLimitSec(qDto.timeLimitSec());
-            if (qDto.options() != null) {
-                int optIdx = 0;
-                for (CreateExamDto.OptionDto oDto : qDto.options()) {
-                    ExamOption opt = new ExamOption();
-                    opt.setQuestion(q);
-                    opt.setOrderIndex(optIdx++);
-                    opt.setText(oDto.text());
-                    opt.setCorrect(oDto.correct());
-                    q.getOptions().add(opt);
-                }
-            }
-            exam.getQuestions().add(q);
+            Question question = questionService.buildQuestion(new CreateQuestionDto(
+                    Long.parseLong(dto.lectureId()),
+                    qDto.text(),
+                    qDto.type(),
+                    qDto.timeLimitSec(),
+                    qDto.options() == null ? null : qDto.options().stream()
+                            .map(o -> new CreateQuestionDto.OptionDto(o.text(), o.correct()))
+                            .toList()
+            ));
+            ExamQuestion exq = new ExamQuestion();
+            exq.setExam(exam);
+            exq.setQuestion(question);
+            exq.setOrderIndex(idx++);
+            exam.getQuestions().add(exq);
         }
         return examRepository.save(exam);
     }
@@ -296,7 +295,7 @@ public class ExamService {
     @Transactional(readOnly = true)
     public String exportToGift(UUID examId) {
         Exam exam = getExam(examId);
-        exam.getQuestions().forEach(q -> q.getOptions().size()); // init lazy collections
+        exam.getQuestions().forEach(exq -> exq.getQuestion().getOptions().size());
         return new GiftExporter().export(exam);
     }
 
@@ -313,13 +312,16 @@ public class ExamService {
 
     private ExamDetailDto toDetail(Exam exam) {
         List<ExamDetailDto.QuestionDto> questions = exam.getQuestions().stream()
-                .map(q -> new ExamDetailDto.QuestionDto(
-                        q.getId(), q.getOrderIndex(), q.getText(), q.getType().name(),
-                        q.getTimeLimitSec(),
-                        q.getOptions().stream()
-                                .map(o -> new ExamDetailDto.OptionDto(o.getId(), o.getText(), o.isCorrect()))
-                                .toList()
-                ))
+                .map(exq -> {
+                    Question q = exq.getQuestion();
+                    return new ExamDetailDto.QuestionDto(
+                            exq.getId(), exq.getOrderIndex(),
+                            q.getText(), q.getType().name(), q.getTimeLimitSec(),
+                            q.getOptions().stream()
+                                    .map(o -> new ExamDetailDto.OptionDto(o.getId(), o.getText(), o.isCorrect()))
+                                    .toList()
+                    );
+                })
                 .toList();
 
         return new ExamDetailDto(

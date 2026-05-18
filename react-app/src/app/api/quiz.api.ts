@@ -147,6 +147,79 @@ export async function importGift(lectureId: string, title: string, file: File): 
   return res.json();
 }
 
+// ── Question Bank (standalone questions) ────────────────────────────────────
+
+export interface QuestionOptionDto {
+  id: string;
+  text: string;
+  correct?: boolean;
+}
+export interface QuestionDetailDto {
+  id: string;
+  lectureId: number | null;
+  text: string;
+  type: 'MULTIPLE' | 'OPEN';
+  timeLimitSec: number | null;
+  options: QuestionOptionDto[];
+}
+export interface QuestionSendDto {
+  sendId: string;
+  questionId: string;
+  questionText: string;
+  questionType: 'MULTIPLE' | 'OPEN';
+  timeLimitSec: number | null;
+  options: QuestionOptionDto[];
+  slideNumber: number;
+  sentAt: string;
+  totalResponses: number;
+  correctResponses: number;
+  openResponses: { chatId: number; openText: string }[];
+}
+
+export function createQuestion(dto: {
+  lectureId: number;
+  text: string;
+  type: 'MULTIPLE' | 'OPEN';
+  timeLimitSec?: number | null;
+  options?: { text: string; correct: boolean }[];
+}) {
+  return apiFetch('/questions', { method: 'POST', body: JSON.stringify(dto) });
+}
+
+export function getQuestionBank(lectureId: number): Promise<QuestionDetailDto[]> {
+  return apiFetch(`/questions?lectureId=${lectureId}`) as Promise<QuestionDetailDto[]>;
+}
+
+export function updateQuestion(
+  id: string,
+  dto: Parameters<typeof createQuestion>[0]
+) {
+  return apiFetch(`/questions/${id}`, { method: 'PUT', body: JSON.stringify(dto) });
+}
+
+export async function deleteQuestion(id: string): Promise<void> {
+  const { BASE_URL } = await import('./client');
+  const res = await fetch(`${BASE_URL}/questions/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+}
+
+/** Отправить вопрос студентам текущего слайда (через broadcasting-service) */
+export function broadcastQuestion(dto: {
+  questionId: string;
+  lectureId: number;
+  slideNumber: number;
+}) {
+  return apiFetch('/api/questions/broadcast', {
+    method: 'POST',
+    body: JSON.stringify(dto),
+  });
+}
+
+/** Получить все отправки вопросов для лекции (с аналитикой) */
+export function getQuestionSends(lectureId: number): Promise<QuestionSendDto[]> {
+  return apiFetch(`/questions/sends?lectureId=${lectureId}`) as Promise<QuestionSendDto[]>;
+}
+
 export async function exportGift(examId: string, examTitle: string): Promise<void> {
   const { BASE_URL } = await import("./client");
   const res = await fetch(`${BASE_URL}/exams/${examId}/export/gift`);

@@ -4,8 +4,8 @@ import jakarta.persistence.*;
 import java.util.UUID;
 
 @Entity
-@Table(name = "exam_options")
-public class ExamOption {
+@Table(name = "question_options")
+public class QuestionOption {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -13,7 +13,7 @@ public class ExamOption {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "question_id", nullable = false)
-    private ExamQuestion question;
+    private Question question;
 
     @Column(name = "order_index", nullable = false)
     private int orderIndex;
@@ -25,8 +25,8 @@ public class ExamOption {
     private boolean correct;
 
     public UUID getId() { return id; }
-    public ExamQuestion getQuestion() { return question; }
-    public void setQuestion(ExamQuestion question) { this.question = question; }
+    public Question getQuestion() { return question; }
+    public void setQuestion(Question question) { this.question = question; }
     public int getOrderIndex() { return orderIndex; }
     public void setOrderIndex(int orderIndex) { this.orderIndex = orderIndex; }
     public String getText() { return text; }

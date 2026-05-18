@@ -10,6 +10,7 @@ import ru.university.quizservice.entity.*;
 import ru.university.quizservice.repository.ExamAnswerRepository;
 import ru.university.quizservice.repository.ExamRepository;
 import ru.university.quizservice.repository.ExamSubmissionRepository;
+import ru.university.quizservice.service.QuestionService;
 
 import java.util.*;
 
@@ -29,6 +30,9 @@ class ExamServiceTest {
 
     @Mock
     private ExamAnswerRepository answerRepository;
+
+    @Mock
+    private QuestionService questionService;
 
     @InjectMocks
     private ExamService examService;

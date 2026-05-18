@@ -25,6 +25,11 @@ spring:
           predicates:
             - Path=/api/exams/**
 
+        - id: question-broadcast-route
+          uri: ${LECTURE_BROADCASTING_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/questions/**
+
         - id: quiz-service-slide-questions-route
           uri: ${QUIZ_SERVICE_URL:http://localhost:8083}
           predicates:

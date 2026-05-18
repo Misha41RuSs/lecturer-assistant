@@ -136,4 +136,61 @@ public class QuizServiceClient {
 
     public record SubmissionResult(String submissionId, Long chatId,
                                    int totalScore, int maxScore, boolean hasUngraded) {}
+
+    // ── Standalone questions (новая система) ──────────────────────────────────
+
+    /**
+     * Регистрирует отправку вопроса к слайду в quiz-service.
+     * POST /questions/send → возвращает QuestionSendDto (sendId + детали вопроса).
+     */
+    public SlideQuestionSend sendQuestionToSlide(UUID questionId, Long lectureId, int slideNumber) {
+        try {
+            Map<String, Object> body = Map.of(
+                    "questionId", questionId.toString(),
+                    "lectureId", lectureId,
+                    "slideNumber", slideNumber
+            );
+            return restTemplate.postForObject(
+                    baseUrl + "/questions/send",
+                    jsonEntity(body),
+                    SlideQuestionSend.class
+            );
+        } catch (Exception e) {
+            log.error("sendQuestionToSlide failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Записывает ответ студента на отправленный вопрос.
+     * POST /questions/{sendId}/respond
+     */
+    public void respondToSlideQuestion(UUID sendId, Long chatId,
+                                       UUID selectedOptionId, String openText) {
+        try {
+            Map<String, Object> body = new java.util.HashMap<>();
+            body.put("chatId", chatId);
+            if (selectedOptionId != null) body.put("selectedOptionId", selectedOptionId.toString());
+            if (openText != null) body.put("openText", openText);
+            restTemplate.postForObject(
+                    baseUrl + "/questions/" + sendId + "/respond",
+                    jsonEntity(body),
+                    Object.class
+            );
+        } catch (Exception e) {
+            log.error("respondToSlideQuestion failed sendId={}: {}", sendId, e.getMessage());
+        }
+    }
+
+    public record SlideQuestionSend(
+            String sendId,
+            String questionId,
+            String questionText,
+            String questionType,
+            Integer timeLimitSec,
+            List<SlideQuestionOption> options,
+            int slideNumber
+    ) {}
+
+    public record SlideQuestionOption(String id, String text, boolean correct) {}
 }
