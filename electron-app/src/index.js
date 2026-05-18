@@ -7,6 +7,8 @@ if (require('electron-squirrel-startup')) {
 	app.quit()
 }
 
+let projectorWindow = null
+
 const createWindow = async () => {
 	const mainWindow = new BrowserWindow({
 		width: 800,
@@ -61,6 +63,35 @@ ipcMain.handle('file:readFile', async (_event, filePath) => {
 		buffer.byteOffset,
 		buffer.byteOffset + buffer.byteLength
 	)
+})
+
+ipcMain.handle('projector:open', async (_event, lectureId) => {
+	if (projectorWindow && !projectorWindow.isDestroyed()) {
+		projectorWindow.focus()
+		return
+	}
+
+	projectorWindow = new BrowserWindow({
+		width: 1280,
+		height: 720,
+		autoHideMenuBar: true,
+		title: 'Проектор — LectureApp',
+		webPreferences: {
+			preload: path.join(__dirname, '../dist/preload.js'),
+			contextIsolation: true,
+			nodeIntegration: false
+		}
+	})
+
+	projectorWindow.setMenuBarVisibility(false)
+
+	projectorWindow.loadFile(path.join(__dirname, '../dist/index.html'), {
+		hash: `/projection/${lectureId}`
+	})
+
+	projectorWindow.on('closed', () => {
+		projectorWindow = null
+	})
 })
 
 // Creating window

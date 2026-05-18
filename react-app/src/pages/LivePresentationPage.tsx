@@ -507,11 +507,11 @@ export function LivePresentationPage() {
 	}
 
 	const openProjection = () => {
-		window.open(
-			`/projection/${lectureId}`,
-			'projection',
-			'width=1280,height=720'
-		)
+		if (window.electronAPI?.openProjector) {
+			window.electronAPI.openProjector(lectureId!)
+		} else {
+			window.open(`/#/projection/${lectureId}`, 'projection', 'width=1280,height=720')
+		}
 		toast.success('Окно проектора открыто. Переместите на второй экран.')
 	}
 
