@@ -10,7 +10,7 @@ import {
 	QrCode,
 	Save
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import {useCallback, useEffect, useState} from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import {
@@ -45,6 +45,88 @@ export function LectureSettingsPage() {
 	const [duration, setDuration] = useState('90')
 	const [allowQuestions, setAllowQuestions] = useState(true)
 	const [showQR, setShowQR] = useState(false)
+
+    // Состояние для отслеживания изменений
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+    const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
+    const [pendingStart, setPendingStart] = useState(false)
+
+
+    // Сохраняем исходные значения при загрузке
+    const [initialValues, setInitialValues] = useState({
+        lectureName: '',
+        description: '',
+        accessType: 'open' as 'open' | 'password' | 'invitation',
+        password: '',
+        duration: '90',
+        allowQuestions: true
+    })
+
+
+    // LectureSettingsPage.tsx - добавь useEffect для отслеживания изменений
+
+// Функция проверки наличия изменений
+    const checkUnsavedChanges = useCallback(() => {
+        const hasChanges =
+            lectureName !== initialValues.lectureName ||
+            description !== initialValues.description ||
+            accessType !== initialValues.accessType ||
+            password !== initialValues.password ||
+            duration !== initialValues.duration ||
+            allowQuestions !== initialValues.allowQuestions
+
+        setHasUnsavedChanges(hasChanges)
+        return hasChanges
+    }, [lectureName, description, accessType, password, duration, allowQuestions, initialValues])
+
+// Следим за изменениями всех полей
+    useEffect(() => {
+        checkUnsavedChanges()
+    }, [lectureName, description, accessType, password, duration, allowQuestions, checkUnsavedChanges])
+
+// При загрузке данных устанавливаем initialValues
+    useEffect(() => {
+        if (!loadingLecture && lectureId && lectureId !== 'new') {
+            setInitialValues({
+                lectureName,
+                description,
+                accessType,
+                password,
+                duration,
+                allowQuestions
+            })
+        }
+    }, [loadingLecture, lectureId])
+
+
+
+
+
+
+
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (hasUnsavedChanges) {
+                e.preventDefault()
+                e.returnValue = 'У вас есть несохранённые изменения. Вы уверены, что хотите покинуть страницу?'
+                return e.returnValue
+            }
+        }
+
+        window.addEventListener('beforeunload', handleBeforeUnload)
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+    }, [hasUnsavedChanges])
+
+
+
+
+
+
+
+
+
+
+
 
 	// Load lecture + restore access settings from localStorage
 	useEffect(() => {
@@ -97,66 +179,99 @@ export function LectureSettingsPage() {
 	const joinCommand = `/join ${lectureName || lectureId}`
 	const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(telegramLink)}`
 
-	const handleSave = async () => {
-		if (!lectureName.trim()) {
-			toast.error('Введите название лекции')
-			return
-		}
-		if (accessType === 'password' && !password.trim()) {
-			toast.error('Введите пароль')
-			return
-		}
-		if (!lectureId) return
+// LectureSettingsPage.tsx - обнови существующую функцию handleSave
 
-		// Save access settings locally (backend не поддерживает пароль/тип доступа)
-		localStorage.setItem(
-			`lecture_access_${lectureId}`,
-			JSON.stringify({
-				accessType,
-				password,
-				duration,
-				allowQuestions
-			})
-		)
+    const handleSave = async () => {
+        if (!lectureName.trim()) {
+            toast.error('Введите название лекции')
+            return false
+        }
+        if (accessType === 'password' && !password.trim()) {
+            toast.error('Введите пароль')
+            return false
+        }
+        if (!lectureId) return false
 
-		try {
-			setSaving(true)
-			await updateLecture(parseInt(lectureId), {
-				name: lectureName.trim(),
-				accessType: accessType.toUpperCase(),
-				password: accessType === 'password' ? password.trim() : ''
-			})
-			toast.success('Настройки сохранены')
-		} catch (e) {
-			toast.error('Ошибка при сохранении')
-		} finally {
-			setSaving(false)
-		}
-	}
+        // Save access settings locally
+        localStorage.setItem(
+            `lecture_access_${lectureId}`,
+            JSON.stringify({
+                accessType,
+                password,
+                duration,
+                allowQuestions
+            })
+        )
 
-	const handleStart = async () => {
-		if (!lectureName.trim()) {
-			toast.error('Сначала заполните название')
-			return
-		}
-		if (accessType === 'password' && !password.trim()) {
-			toast.error('Задайте пароль для лекции')
-			return
-		}
-		if (!lectureId) {
-			toast.error('ID лекции не найден')
-			return
-		}
+        try {
+            setSaving(true)
+            await updateLecture(parseInt(lectureId), {
+                name: lectureName.trim(),
+                accessType: accessType.toUpperCase(),
+                password: accessType === 'password' ? password.trim() : ''
+            })
 
-		try {
-			await startLecture(parseInt(lectureId))
-			toast.success('Лекция запущена!')
-			navigate(`/live/${lectureId}`)
-		} catch (error) {
-			console.error('Failed to start lecture:', error)
-			toast.error('Ошибка при запуске лекции')
-		}
-	}
+            // После успешного сохранения обновляем initialValues
+            setInitialValues({
+                lectureName,
+                description,
+                accessType,
+                password,
+                duration,
+                allowQuestions
+            })
+            setHasUnsavedChanges(false)
+
+            toast.success('Настройки сохранены')
+            return true
+        } catch (e) {
+            toast.error('Ошибка при сохранении')
+            return false
+        } finally {
+            setSaving(false)
+        }
+    }
+
+// LectureSettingsPage.tsx - измени существующую функцию handleStart
+
+    const handleStart = async () => {
+        if (!lectureName.trim()) {
+            toast.error('Сначала заполните название')
+            return
+        }
+        if (accessType === 'password' && !password.trim()) {
+            toast.error('Задайте пароль для лекции')
+            return
+        }
+        if (!lectureId) {
+            toast.error('ID лекции не найден')
+            return
+        }
+
+        // Проверяем наличие несохранённых изменений
+        if (hasUnsavedChanges) {
+            setPendingStart(true)
+            setShowUnsavedDialog(true)
+            return
+        }
+
+        // Если изменений нет - запускаем сразу
+        await executeStart()
+    }
+
+// Выносим логику запуска в отдельную функцию
+    const executeStart = async () => {
+        if (!lectureId) return
+
+        try {
+            await startLecture(parseInt(lectureId))
+            toast.success('Лекция запущена!')
+            navigate(`/live/${lectureId}`)
+        } catch (error) {
+            console.error('Failed to start lecture:', error)
+            toast.error('Ошибка при запуске лекции')
+        }
+    }
 
 	const copyToClipboard = (text: string) => {
 		navigator.clipboard.writeText(text).then(() => toast.success('Скопировано'))
@@ -186,6 +301,97 @@ export function LectureSettingsPage() {
 			</div>
 		)
 	}
+
+
+
+    // Модальное окно подтверждения
+    const UnsavedChangesDialog = () => {
+        if (!showUnsavedDialog) return null
+
+        const handleSaveAndStart = async () => {
+            setShowUnsavedDialog(false)
+            const saveSuccess = await handleSave()
+
+            if (saveSuccess && pendingStart) {
+                await executeStart()
+            }
+            setPendingStart(false)
+        }
+
+        const handleStartWithoutSave = async () => {
+            setShowUnsavedDialog(false)
+            if (pendingStart) {
+                await executeStart()
+            }
+            setPendingStart(false)
+        }
+
+        const handleCancel = () => {
+            setShowUnsavedDialog(false)
+            setPendingStart(false)
+        }
+
+        return (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
+                    <div className="p-6 border-b border-neutral-200">
+                        <h2 className="text-xl font-semibold text-neutral-900">
+                            Несохранённые изменения
+                        </h2>
+                        <p className="text-sm text-neutral-500 mt-1">
+                            В настройках лекции есть несохранённые изменения
+                        </p>
+                    </div>
+
+                    <div className="p-6">
+                        <div className="flex items-start gap-3 mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                            <div className="flex-shrink-0">
+                                <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-sm text-neutral-700 font-medium">
+                                    Вы хотите сохранить изменения перед запуском?
+                                </p>
+                                <p className="text-xs text-neutral-500 mt-1">
+                                    Если не сохранить, все внесённые изменения будут потеряны
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-6 border-t border-neutral-200 flex gap-3">
+                        <button
+                            onClick={handleCancel}
+                            className="flex-1 px-4 py-2 border border-neutral-300 rounded-lg text-neutral-700 hover:bg-neutral-50 transition-colors"
+                        >
+                            Отмена
+                        </button>
+                        <button
+                            onClick={handleSaveAndStart}
+                            disabled={saving}
+                            className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                            Сохранить и запустить
+                        </button>
+                        <button
+                            onClick={handleStartWithoutSave}
+                            className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                        >
+                            <Play className="w-4 h-4" />
+                            Запустить без сохранения
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
+
+
+
 
 	return (
 		<div className="p-4 sm:p-6 lg:p-8">
@@ -541,6 +747,8 @@ export function LectureSettingsPage() {
 					)}
 				</div>
 			</div>
+            {/* Модальное окно подтверждения */}
+            <UnsavedChangesDialog />
 		</div>
 	)
 }
