@@ -87,6 +87,11 @@ public class LectureController {
         return ResponseEntity.ok(lectureService.updateLecture(id, name, accessType, password));
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteLecture(@PathVariable Long id) {
+        lectureService.deleteLecture(id);
+        return ResponseEntity.noContent().build();
+    }
     /**
      * Принимает PNG-композит (слайд + рисунки) и рассылает его всем подключённым студентам.
      * Вызывается фронтом когда на слайде есть аннотации.
@@ -142,6 +147,10 @@ public class LectureController {
     public ResponseEntity<List<StudentDto>> getStudents(@PathVariable Long id) {
         return ResponseEntity.ok(lectureService.getStudents(id));
     }
+    @GetMapping("/{id}/all-students")
+    public ResponseEntity<List<StudentDto>> getAllStudents(@PathVariable Long id) {
+        return ResponseEntity.ok(lectureService.getAllStudents(id));
+    }
 
     @PostMapping("/{id}/kick/{chatId}")
     public ResponseEntity<Void> kickStudent(@PathVariable Long id, @PathVariable Long chatId) {
@@ -149,6 +158,7 @@ public class LectureController {
         bot.sendTextMessage(chatId, "Вы отключены лектором от текущей лекции.");
         return ResponseEntity.ok().build();
     }
+
 
     @PutMapping("/{id}/current-slide")
     public ResponseEntity<Void> updateCurrentSlide(

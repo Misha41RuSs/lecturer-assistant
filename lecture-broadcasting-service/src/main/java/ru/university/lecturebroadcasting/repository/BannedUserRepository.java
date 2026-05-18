@@ -5,4 +5,5 @@ import ru.university.lecturebroadcasting.entity.BannedUser;
 
 public interface BannedUserRepository extends JpaRepository<BannedUser, Long> {
     boolean existsByLectureIdAndChatId(Long lectureId, Long chatId);
+    void deleteByLectureId(Long lectureId);
 }

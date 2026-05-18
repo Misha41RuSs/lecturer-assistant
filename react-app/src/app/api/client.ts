@@ -73,6 +73,16 @@ export async function getLecture(id: number) {
 	return res.json()
 }
 
+export async function deleteLecture(lectureId: number): Promise<void> {
+	const res = await fetch(`${BASE_URL}/lectures/${lectureId}`, {
+		method: 'DELETE'
+	})
+	if (!res.ok) {
+		const t = await res.text()
+		throw new Error(`Failed to delete lecture: ${res.status} ${t}`)
+	}
+}
+
 export async function getSlideSequence(sequenceId: string) {
 	const res = await fetch(`${BASE_URL}/slide-sequences/${sequenceId}`)
 	if (!res.ok) throw new Error('Failed to load sequence')
@@ -123,7 +133,6 @@ export async function updateCurrentSlide(lectureId: number, slideId: string) {
 	if (!res.ok) {
 		throw new Error(`Failed to update slide: ${res.status} ${text}`)
 	}
-	// Backend returns 200 with empty body — res.json() would throw
 	if (!text.trim()) return null
 	try {
 		return JSON.parse(text) as unknown
@@ -161,11 +170,20 @@ export interface StudentDto {
 	firstName: string | null
 	lastName: string | null
 	username: string | null
+	kicked: boolean
 }
 
+/** Текущие студенты (только подключённые, для активной лекции) */
 export async function getLectureStudents(lectureId: string): Promise<StudentDto[]> {
 	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/students`)
 	if (!res.ok) throw new Error('Failed to load students')
+	return res.json()
+}
+
+/** Все участники лекции включая отключённых и выгнанных (для статистики) */
+export async function getAllStudents(lectureId: string): Promise<StudentDto[]> {
+	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/all-students`)
+	if (!res.ok) throw new Error('Failed to load all students')
 	return res.json()
 }
 
@@ -242,11 +260,6 @@ export async function updateSlideSequence(sequenceId: string, slideIds: string[]
 	return res.json()
 }
 
-/**
- * Создает WebSocket соединение для лекции
- * @param lectureId - id лекции
- * @param onMessage - callback на сообщение
- */
 export function createLectureSocket(
 	lectureId: number,
 	onMessage: (data: any) => void

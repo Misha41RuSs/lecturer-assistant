@@ -81,6 +81,39 @@ public class AnalyticsService {
         );
     }
 
+    public Map<String, Object> getSlideRequestStats(Long lectureId) {
+        List<ActivityLog> logs = logRepository
+                .findByLectureIdAndActionType(lectureId, "slide_requested");
+
+        // Топ запрошенных слайдов
+        Map<Integer, Long> bySlide = logs.stream()
+                .map(l -> extractSlideNumber(l.getPayload()))
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.groupingBy(Integer::parseInt, Collectors.counting()));
+
+        List<Map<String, Object>> topSlides = bySlide.entrySet().stream()
+                .sorted(Map.Entry.<Integer, Long>comparingByValue().reversed())
+                .map(e -> Map.<String, Object>of("slideNumber", e.getKey(), "count", e.getValue()))
+                .toList();
+
+        // Запросы по студентам
+        Map<Long, Long> byStudent = logs.stream()
+                .filter(l -> l.getUserId() != null)
+                .collect(Collectors.groupingBy(ActivityLog::getUserId, Collectors.counting()));
+
+        List<Map<String, Object>> studentStats = byStudent.entrySet().stream()
+                .sorted(Map.Entry.<Long, Long>comparingByValue().reversed())
+                .map(e -> Map.<String, Object>of("chatId", e.getKey(), "requestCount", e.getValue()))
+                .toList();
+
+        return Map.of(
+                "lectureId", lectureId,
+                "totalRequests", logs.size(),
+                "topSlides", topSlides,
+                "byStudent", studentStats
+        );
+    }
+
     private String extractSlideNumber(String payload) {
         if (payload == null) return "";
         var m = java.util.regex.Pattern.compile("\"slideNumber\":\\s*(\\d+)").matcher(payload);
