@@ -13,4 +13,5 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
     List<Student> findByLecture_Id(Long lectureId);
 
     Optional<Student> findByChatId(Long chatId);
+    void deleteByLecture_Id(Long lectureId);
 }

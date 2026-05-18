@@ -9,11 +9,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.university.lecturebroadcasting.entity.AccessType;
 import ru.university.lecturebroadcasting.entity.Lecture;
+import ru.university.lecturebroadcasting.entity.LectureParticipant;
 import ru.university.lecturebroadcasting.entity.LectureStatus;
 import ru.university.lecturebroadcasting.entity.Student;
+import ru.university.lecturebroadcasting.repository.BannedUserRepository;
+import ru.university.lecturebroadcasting.repository.LectureParticipantRepository;
 import ru.university.lecturebroadcasting.repository.LectureRepository;
 import ru.university.lecturebroadcasting.repository.StudentRepository;
-import ru.university.lecturebroadcasting.repository.BannedUserRepository;
 import ru.university.lecturebroadcasting.dto.StudentDto;
 
 import java.text.Normalizer;
@@ -28,6 +30,7 @@ public class LectureService {
     private final LectureRepository lectureRepository;
     private final StudentRepository studentRepository;
     private final BannedUserRepository bannedUserRepository;
+    private final LectureParticipantRepository participantRepository;
     private final ContentServiceClient contentServiceClient;
     private final AnalyticsServiceClient analyticsServiceClient;
     private final EntityManager entityManager;
@@ -52,6 +55,21 @@ public class LectureService {
         return saved;
     }
 
+    @Transactional
+    public void deleteLecture(Long id) {
+        Lecture lecture = lectureRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Lecture not found: " + id));
+        if (lecture.getStatus() == LectureStatus.ACTIVE) {
+            throw new IllegalStateException("Cannot delete an active lecture");
+        }
+
+        bannedUserRepository.deleteByLectureId(id);
+        studentRepository.deleteByLecture_Id(id);
+
+        log.info("Deleting lecture {}", id);
+        lectureRepository.deleteById(id);
+    }
+
     public List<Lecture> findAllOrderByIdDesc() {
         return lectureRepository.findAll(Sort.by(Sort.Direction.DESC, "id"));
     }
@@ -72,10 +90,6 @@ public class LectureService {
         return lectureRepository.save(lecture);
     }
 
-    /**
-     * Завершает лекцию, отвязывает всех студентов в БД (для /join и колбеков бота).
-     * Список chatId отдаётся наружу для уведомления в Telegram после коммита транзакции.
-     */
     @Transactional
     public StopLectureResult stopLecture(Long id) {
         Lecture lecture = lectureRepository.findById(id)
@@ -85,6 +99,9 @@ public class LectureService {
 
         List<Student> attached = studentRepository.findByLecture_Id(id);
         List<Long> chatIds = attached.stream().map(Student::getChatId).toList();
+
+        attached.forEach(s -> s.setLecture(null));
+        studentRepository.saveAll(attached);
 
         log.info("Lecture stopped: id={} name={} disconnectedStudents={}",
                 lecture.getId(), lecture.getName(), chatIds.size());
@@ -105,7 +122,6 @@ public class LectureService {
             throw new IllegalArgumentException("Lecture name or id is empty");
         }
 
-        // Ищем сначала по имени — это основной путь (работает и для "123", и для "Алгебра")
         Optional<Long> joinableByName = findJoinableLectureIdByNameNative(key);
         Lecture lecture;
         if (joinableByName.isPresent()) {
@@ -114,7 +130,6 @@ public class LectureService {
         } else if (findAnyLectureIdByNameNative(key).isPresent()) {
             throw new IllegalStateException("Lecture has ended (STOPPED): " + key);
         } else if (key.chars().allMatch(Character::isDigit)) {
-            // Имя не нашли — пробуем как числовой id (запасной путь)
             long id = Long.parseLong(key);
             var joinableById = lectureRepository.findByIdAndStatusIn(
                     id, List.of(LectureStatus.CREATED, LectureStatus.ACTIVE));
@@ -131,7 +146,6 @@ public class LectureService {
             throw new IllegalArgumentException("Active lecture not found: " + key);
         }
 
-        // Проверка пароля
         if (lecture.getAccessType() == AccessType.PASSWORD) {
             String lp = lecture.getPassword();
             if (lp != null && !lp.isBlank()) {
@@ -144,7 +158,6 @@ public class LectureService {
             }
         }
 
-        // Check banned users
         if (bannedUserRepository.existsByLectureIdAndChatId(lecture.getId(), chatId)) {
             throw new IllegalArgumentException("Вы отключены от этой лекции (доступ запрещён).");
         }
@@ -155,7 +168,19 @@ public class LectureService {
         if (firstName != null) student.setFirstName(firstName);
         if (lastName != null) student.setLastName(lastName);
         if (username != null) student.setUsername(username);
-        return studentRepository.save(student);
+        Student saved = studentRepository.save(student);
+
+        // Сохраняем или обновляем снимок участника
+        LectureParticipant participant = participantRepository
+                .findByLectureIdAndChatId(lecture.getId(), chatId)
+                .orElse(new LectureParticipant(lecture.getId(), chatId, null, null, null));
+        participant.setFirstName(saved.getFirstName());
+        participant.setLastName(saved.getLastName());
+        participant.setUsername(saved.getUsername());
+        participant.setKicked(false); // если переподключился — сбрасываем флаг кика
+        participantRepository.save(participant);
+
+        return saved;
     }
 
     @Transactional
@@ -183,9 +208,6 @@ public class LectureService {
         return lectureRepository.save(lecture);
     }
 
-    /**
-     * Прямой SQL через Hibernate — обходит сбои маппинга scalar id у Spring Data native query в PostgreSQL.
-     */
     private Optional<Long> findJoinableLectureIdByNameNative(String nameKey) {
         Query q = entityManager.createNativeQuery(
                 "SELECT id FROM lectures WHERE lower(trim(name)) = lower(trim(:n)) "
@@ -217,10 +239,6 @@ public class LectureService {
                 + (cell == null ? "null" : cell.getClass().getName()));
     }
 
-    /**
-     * Same rules for names from web and Telegram: strip unicode whitespace, NFC normalization,
-     * remove zero-width / BOM so /join matches what lecturers type in the UI.
-     */
     public static String normalizeLectureJoinKey(String raw) {
         if (raw == null) {
             return "";
@@ -230,11 +248,6 @@ public class LectureService {
         return s.strip();
     }
 
-    /**
-     * Updates current slide, fetches image from content-service,
-     * broadcasts to all subscribed students via Telegram bot.
-     * Returns (lecture, slideImageBytes) for the caller (bot) to send.
-     */
     @Transactional
     public SlideUpdateResult updateCurrentSlide(Long lectureId, int slideNumber) {
         Lecture lecture = lectureRepository.findById(lectureId)
@@ -283,8 +296,19 @@ public class LectureService {
     public List<StudentDto> getStudents(Long lectureId) {
         return studentRepository.findByLecture_Id(lectureId)
                 .stream()
-                .map(s -> new StudentDto(s.getChatId(), s.getFirstName(), s.getLastName(), s.getUsername()))
+                .map(s -> new StudentDto(s.getChatId(), s.getFirstName(), s.getLastName(), s.getUsername(), false))
                 .toList();
+    }
+
+    public List<StudentDto> getAllStudents(Long lectureId) {
+        List<LectureParticipant> participants = participantRepository.findByLectureId(lectureId);
+        if (!participants.isEmpty()) {
+            return participants.stream()
+                    .map(p -> new StudentDto(p.getChatId(), p.getFirstName(), p.getLastName(), p.getUsername(), p.isKicked()))
+                    .toList();
+        }
+        // Если participants пусты — лекция активна и никто ещё не заджойнился через новый код
+        return getStudents(lectureId);
     }
 
     @Transactional
@@ -298,5 +322,11 @@ public class LectureService {
                 studentRepository.save(student);
             }
         });
+        // Помечаем как выгнанного
+        participantRepository.findByLectureIdAndChatId(lectureId, chatId)
+                .ifPresent(p -> {
+                    p.setKicked(true);
+                    participantRepository.save(p);
+                });
     }
 }

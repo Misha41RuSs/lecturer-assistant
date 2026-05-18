@@ -36,6 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class LectureBroadcastingBot extends TelegramLongPollingBot {
 
     private static final String CB_PREV_SLIDE = "prev_slide";
+    private static final String CB_CURRENT_SLIDE = "current_slide";
     private static final String CB_GOTO_SLIDE = "goto_slide";
     private static final String CB_EXAM_OPT = "exam_opt:";
 
@@ -43,7 +44,9 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final ConcurrentHashMap<Long, String> pendingCommand = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, ExamSession> examSessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Integer> lastSlideMessageId = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Integer> lastStudentPhotoMessageId = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Integer> lastQuestionMessageId = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Integer> lectureCurrentSlide = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Integer> studentCurrentSlide = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Boolean> pendingGoToSlide = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Timer> questionTimers = new ConcurrentHashMap<>();
@@ -56,7 +59,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final StudentQuestionService studentQuestionService;
 
     public LectureBroadcastingBot(
-            DefaultBotOptions options, // <--- 1. ДОБАВЛЯЕМ ЭТОТ ПАРАМЕТР
+            DefaultBotOptions options,
             @Value("${telegram.bot.token}") String botToken,
             @Value("${telegram.bot.username}") String botUsername,
             StudentRepository studentRepository,
@@ -64,9 +67,9 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             QuizServiceClient quizServiceClient,
             AnalyticsServiceClient analyticsServiceClient,
             StudentQuestionService studentQuestionService) {
-        
-        super(options, botToken); // <--- 2. ПЕРЕДАЕМ options СЮДА ВМЕСТО super(botToken)
-        
+
+        super(options, botToken);
+
         this.botUsername = botUsername;
         this.studentRepository = studentRepository;
         this.lectureService = lectureService;
@@ -143,10 +146,11 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             }
             sendText(chatId,
                     "Привет! Я бот для лекций.\n\n" +
-                    "/join — подключиться к лекции\n" +
-                    "/question — задать вопрос преподавателю\n" +
-                    "/ping — проверка связи\n\n" +
-                    "Когда преподаватель запустит тест, вопросы придут автоматически.");
+                            "/join — подключиться к лекции\n" +
+                            "/question — задать вопрос преподавателю\n" +
+                            "/current — просмотр текущего слайда\n" +
+                            "/ping — проверка связи\n\n" +
+                            "Когда преподаватель запустит тест, вопросы придут автоматически.");
             return;
         }
 
@@ -181,7 +185,25 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
 
-        sendText(chatId, "Команды:\n/join — подключиться к лекции\n/question — задать вопрос\n/ping — проверка");
+        if ("/current".equals(cmd)) {
+            studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
+                if (student.getLecture() == null ||
+                        student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
+                    sendText(chatId, "Вы не подключены к активной лекции.");
+                    return;
+                }
+                int slideNum = lectureCurrentSlide.getOrDefault(chatId, student.getLecture().getCurrentSlide());
+                try {
+                    byte[] img = lectureService.getSlideImage(student.getLecture(), slideNum);
+                    sendPhoto(chatId, img, slideNum);
+                } catch (Exception e) {
+                    sendText(chatId, "Не удалось загрузить слайд.");
+                }
+            }, () -> sendText(chatId, "Вы не подключены. Используйте /join."));
+            return;
+        }
+
+        sendText(chatId, "Команды:\n/join — подключиться к лекции\n/question — задать вопрос\n/current — просмотр текущего слайда\n/ping — проверка");
     }
 
     private void requestInput(long chatId, String commandKey, String promptText) {
@@ -217,6 +239,24 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
 
+        if (CB_CURRENT_SLIDE.equals(data)) {
+            studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
+                if (student.getLecture() == null ||
+                        student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
+                    sendText(chatId, "Вы не подключены к активной лекции.");
+                    return;
+                }
+                int slideNum = lectureCurrentSlide.getOrDefault(chatId, student.getLecture().getCurrentSlide());
+                try {
+                    byte[] img = lectureService.getSlideImage(student.getLecture(), slideNum);
+                    sendPhoto(chatId, img, slideNum);
+                } catch (Exception e) {
+                    sendText(chatId, "Не удалось загрузить слайд.");
+                }
+            }, () -> sendText(chatId, "Вы не подключены. Используйте /join."));
+            return;
+        }
+
         if (CB_GOTO_SLIDE.equals(data)) {
             pendingGoToSlide.put(chatId, true);
             sendText(chatId, "Введите номер слайда:");
@@ -231,16 +271,18 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
 
     private void handlePrevSlide(long chatId) {
         studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
-            if (student.getLecture() == null || student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
+            if (student.getLecture() == null ||
+                    student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
                 sendText(chatId, "Вы не подключены к активной лекции.");
                 return;
             }
-            int current = studentCurrentSlide.getOrDefault(chatId, student.getLecture().getCurrentSlide());
+            int current = studentCurrentSlide.getOrDefault(chatId,
+                    lectureCurrentSlide.getOrDefault(chatId, student.getLecture().getCurrentSlide()));
             int prev = current - 1;
             if (prev < 1) { sendText(chatId, "Вы уже на первом слайде."); return; }
             try {
                 byte[] img = lectureService.getSlideImage(student.getLecture(), prev);
-                sendSlideToStudent(chatId, img, prev);
+                sendPhoto(chatId, img, prev);
             } catch (Exception e) {
                 sendText(chatId, "Не удалось загрузить слайд.");
             }
@@ -278,7 +320,6 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         String suffix = isMultiple ? "\n\nВыберите ответ:" : "\n\n✏️ Напишите ответ:";
         InlineKeyboardMarkup markup = isMultiple ? buildQuestionKeyboard(q) : null;
 
-        // Обратный отсчёт: редактируем сообщение каждые 10 секунд
         if (msgId != null) {
             for (int elapsed = 10; elapsed < totalSec; elapsed += 10) {
                 final int remaining = totalSec - elapsed;
@@ -305,7 +346,6 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             }
         }
 
-        // Таймаут — время истекло
         t.schedule(new TimerTask() {
             @Override
             public void run() {
@@ -352,7 +392,6 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     }
 
     private void sendNextQuestion(long chatId, ExamSession session) {
-        // Удаляем предыдущее сообщение с вопросом
         Integer prevId = lastQuestionMessageId.remove(chatId);
         if (prevId != null) {
             try { execute(DeleteMessage.builder().chatId(chatId).messageId(prevId).build()); }
@@ -421,6 +460,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             pendingPasswordJoin.remove(chatId);
             sendText(chatId, "Вы подключились к лекции: " + student.getLecture().getName());
             analyticsServiceClient.sendStudentJoinedEvent(student.getLecture().getId(), chatId);
+
         } catch (PasswordRequiredException e) {
             pendingPasswordJoin.put(chatId, lectureName);
             sendText(chatId, "🔒 Лекция защищена паролем. Введите пароль:");
@@ -444,20 +484,10 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         for (Long chatId : chatIds) sendText(chatId, msg);
     }
 
+    // Вызывается лектором при смене слайда — только текст, всегда последнее сообщение
     public void sendSlideToStudent(long chatId, byte[] imageBytes, int slideNumber) {
-        if (imageBytes == null || imageBytes.length == 0) {
-            log.error("Slide image is null or empty for chatId={} slideNumber={}", chatId, slideNumber);
-            sendText(chatId, "Не удалось загрузить картинку слайда " + slideNumber + ". Попробуйте позже.");
-            return;
-        }
+        lectureCurrentSlide.put(chatId, slideNumber);
 
-        // Не отправляем слайд повторно, если студент уже его смотрит
-        Integer current = studentCurrentSlide.get(chatId);
-        if (current != null && current == slideNumber) return;
-
-        studentCurrentSlide.put(chatId, slideNumber);
-
-        // Удаляем предыдущее сообщение со слайдом
         Integer prevMsgId = lastSlideMessageId.remove(chatId);
         if (prevMsgId != null) {
             try {
@@ -470,21 +500,56 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         InlineKeyboardMarkup markup = InlineKeyboardMarkup.builder()
                 .keyboardRow(List.of(
                         InlineKeyboardButton.builder().text("◀ Предыдущий").callbackData(CB_PREV_SLIDE).build(),
+                        InlineKeyboardButton.builder().text("📍 Текущий").callbackData(CB_CURRENT_SLIDE).build(),
                         InlineKeyboardButton.builder().text("🔢 Слайд №…").callbackData(CB_GOTO_SLIDE).build()
                 ))
                 .build();
 
-        SendPhoto photo = SendPhoto.builder()
-                .chatId(chatId)
-                .photo(new InputFile(new ByteArrayInputStream(imageBytes), "slide.jpg"))
-                .caption("Слайд " + slideNumber)
-                .replyMarkup(markup)
-                .build();
         try {
-            Message sent = execute(photo);
+            Message sent = execute(SendMessage.builder()
+                    .chatId(chatId)
+                    .text("Лектор показывает слайд " + slideNumber)
+                    .replyMarkup(markup)
+                    .build());
             lastSlideMessageId.put(chatId, sent.getMessageId());
         } catch (TelegramApiException e) {
-            log.error("sendSlide failed chatId={}", chatId, e);
+            log.error("sendSlideMessage failed chatId={}", chatId, e);
+        }
+    }
+
+    // Вызывается по запросу студента — картинка, удаляет предыдущую запрошенную
+    private void sendPhoto(long chatId, byte[] imageBytes, int slideNumber) {
+        if (imageBytes == null || imageBytes.length == 0) {
+            sendText(chatId, "Не удалось загрузить картинку слайда " + slideNumber);
+            return;
+        }
+        studentCurrentSlide.put(chatId, slideNumber);
+
+        Integer prevPhotoId = lastStudentPhotoMessageId.remove(chatId);
+        if (prevPhotoId != null) {
+            try {
+                execute(DeleteMessage.builder().chatId(chatId).messageId(prevPhotoId).build());
+            } catch (TelegramApiException e) {
+                log.debug("delete prev student photo failed: {}", e.getMessage());
+            }
+        }
+
+        try {
+            Message sent = execute(SendPhoto.builder()
+                    .chatId(chatId)
+                    .photo(new InputFile(new ByteArrayInputStream(imageBytes), "slide.jpg"))
+                    .caption("Слайд " + slideNumber)
+                    .build());
+            lastStudentPhotoMessageId.put(chatId, sent.getMessageId());
+            // Отправляем событие в аналитику
+            studentRepository.findByChatId(chatId).ifPresent(student -> {
+                if (student.getLecture() != null) {
+                    analyticsServiceClient.sendSlideRequestedEvent(
+                            student.getLecture().getId(), chatId, slideNumber);
+                }
+            });
+        } catch (TelegramApiException e) {
+            log.error("sendPhoto failed chatId={}", chatId, e);
         }
     }
 
@@ -497,13 +562,14 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
         studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
-            if (student.getLecture() == null || student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
+            if (student.getLecture() == null ||
+                    student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
                 sendText(chatId, "Вы не подключены к активной лекции.");
                 return;
             }
             try {
                 byte[] img = lectureService.getSlideImage(student.getLecture(), slideNum);
-                sendSlideToStudent(chatId, img, slideNum);
+                sendPhoto(chatId, img, slideNum);
             } catch (Exception e) {
                 sendText(chatId, "Слайд " + slideNum + " не найден.");
             }
@@ -522,3 +588,4 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         }
     }
 }
+

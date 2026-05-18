@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Users, ClipboardList, CheckCircle, ChevronDown, ChevronUp, Star } from "lucide-react";
 import { toast } from "sonner";
-import { listLectures, LectureListItem, getLectureStudents, StudentDto } from "../app/api/client";
-import { getLectureDashboard } from "../app/api/analytics.api";
+import { listLectures, LectureListItem, getAllStudents, StudentDto } from "../app/api/client";
+import { getSlideRequestStats } from "../app/api/analytics.api";
 import { getExamsByLecture, getExamSubmissions } from "../app/api/quiz.api";
+
 interface ExamRow {
   id: string
   title: string
@@ -27,6 +28,12 @@ interface SubmRow {
   maxScore: number
   hasUngraded: boolean
 }
+interface SlideStats {
+  lectureId: number
+  totalRequests: number
+  topSlides: { slideNumber: number; count: number }[]
+  byStudent: { chatId: number; requestCount: number }[]
+}
 
 export function StatisticsPage() {
   const [lectures, setLectures] = useState<LectureListItem[]>([]);
@@ -34,6 +41,7 @@ export function StatisticsPage() {
   const [students, setStudents] = useState<StudentDto[]>([]);
   const [exams, setExams] = useState<ExamRow[]>([]);
   const [surveys, setSurveys] = useState<SurveyRow[]>([]);
+  const [slideStats, setSlideStats] = useState<SlideStats | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -43,14 +51,22 @@ export function StatisticsPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedLectureId) { setStudents([]); setExams([]); setSurveys([]); return; }
+    if (!selectedLectureId) {
+      setStudents([]);
+      setExams([]);
+      setSurveys([]);
+      setSlideStats(null);
+      return;
+    }
     setLoading(true);
 
     Promise.all([
-      getLectureStudents(String(selectedLectureId)).catch(() => []),
+      getAllStudents(String(selectedLectureId)).catch(() => []),
       getExamsByLecture(String(selectedLectureId)).catch(() => []),
-    ]).then(async ([studentList, examList]: [StudentDto[], any[]]) => {
+      getSlideRequestStats(String(selectedLectureId)).catch(() => null),
+    ]).then(async ([studentList, examList, slideStatsData]: [StudentDto[], any[], any]) => {
       setStudents(studentList);
+      setSlideStats(slideStatsData);
 
       const examRows: ExamRow[] = [];
       const surveyRows: SurveyRow[] = [];
@@ -90,6 +106,12 @@ export function StatisticsPage() {
 
   const toggleExam = (id: string) => {
     setExams(prev => prev.map(e => e.id === id ? { ...e, expanded: !e.expanded } : e));
+  };
+
+  const getStudentName = (chatId: number) => {
+    const st = students.find(x => x.chatId === chatId);
+    if (st?.firstName) return `${st.firstName} ${st.lastName || ''}`.trim();
+    return `ID ${chatId}`;
   };
 
   const conductedExams = exams.filter(e => e.status !== 'DRAFT');
@@ -168,7 +190,7 @@ export function StatisticsPage() {
                     <tr className="border-b border-neutral-200">
                       <th className="text-left py-2 px-3 text-xs text-neutral-500">Студент</th>
                       <th className="text-left py-2 px-3 text-xs text-neutral-500">Telegram Username</th>
-                      <th className="text-left py-2 px-3 text-xs text-neutral-500">Chat ID</th>
+                      <th className="text-left py-2 px-3 text-xs text-neutral-500">Статус</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -178,10 +200,15 @@ export function StatisticsPage() {
                           <div className="w-6 h-6 rounded-full bg-neutral-200 flex items-center justify-center text-xs font-medium text-neutral-600">
                             {s.firstName?.[0] || 'С'}
                           </div>
-                          <span className="font-medium">{s.firstName ? `${s.firstName} ${s.lastName || ''}` : 'Студент'}</span>
+                          <span className="font-medium">{s.firstName ? `${s.firstName} ${s.lastName || ''}`.trim() : 'Студент'}</span>
                         </td>
                         <td className="py-2 px-3 text-sm text-neutral-500">{s.username ? `@${s.username}` : '—'}</td>
-                        <td className="py-2 px-3 text-sm font-mono text-neutral-400">{s.chatId}</td>
+                        <td className="py-2 px-3 text-sm">
+                          {s.kicked
+                            ? <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600">Выгнан</span>
+                            : <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-600">Участвовал</span>
+                          }
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -189,6 +216,39 @@ export function StatisticsPage() {
               </div>
             )}
           </div>
+
+          {/* Статистика запросов слайдов */}
+          {slideStats && slideStats.totalRequests > 0 && (
+            <div className="bg-white rounded-xl p-5 border border-neutral-200 mb-6">
+              <h3 className="text-sm font-medium mb-3">
+                Запросы слайдов ({slideStats.totalRequests})
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <div className="text-xs text-neutral-500 mb-2">Топ запрошенных слайдов</div>
+                  <div className="space-y-1">
+                    {slideStats.topSlides.slice(0, 5).map((s) => (
+                      <div key={s.slideNumber} className="flex items-center justify-between py-1.5 px-3 bg-neutral-50 rounded-lg">
+                        <span className="text-sm">Слайд {s.slideNumber}</span>
+                        <span className="text-sm font-medium text-orange-600">{s.count} раз</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-neutral-500 mb-2">Запросы по студентам</div>
+                  <div className="space-y-1">
+                    {slideStats.byStudent.map((s) => (
+                      <div key={s.chatId} className="flex items-center justify-between py-1.5 px-3 bg-neutral-50 rounded-lg">
+                        <span className="text-sm">{getStudentName(s.chatId)}</span>
+                        <span className="text-sm font-medium text-orange-600">{s.requestCount} запросов</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Опросы удовлетворённости */}
           {surveys.length > 0 && (
@@ -257,14 +317,10 @@ export function StatisticsPage() {
                           <tbody>
                             {exam.submissions.map((sub, i) => {
                               const pct = sub.maxScore > 0 ? Math.round(sub.totalScore / sub.maxScore * 100) : 0;
-                              const st = students.find(x => x.chatId === sub.chatId);
                               return (
                                 <tr key={i} className="border-b border-neutral-50">
                                   <td className="py-1.5 text-sm">
-                                    <div className="flex flex-col">
-                                      <span className="font-medium">{st?.firstName ? `${st.firstName} ${st.lastName || ''}` : 'Студент'}</span>
-                                      <span className="text-xs text-neutral-400 font-mono">{sub.chatId}</span>
-                                    </div>
+                                    <span className="font-medium">{getStudentName(sub.chatId)}</span>
                                   </td>
                                   <td className="py-1.5 text-sm">{sub.totalScore}/{sub.maxScore}</td>
                                   <td className="py-1.5 text-sm">
