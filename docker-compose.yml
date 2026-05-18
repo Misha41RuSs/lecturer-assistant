@@ -1,5 +1,4 @@
 name: digital-lecturer
-
 services:
   postgres:
     image: postgres:15-alpine
@@ -99,20 +98,6 @@ services:
       - analytics-service
     networks:
       - app-network
-
-  # Фронтенд - используем готовый образ nginx с локальной сборкой
-  frontend:
-    image: nginx:alpine
-    container_name: react_frontend
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./react-app/dist:/usr/share/nginx/html:ro
-    depends_on:
-      - admin-gateway
-    networks:
-      - app-network
-    restart: unless-stopped
 
 networks:
   app-network:
