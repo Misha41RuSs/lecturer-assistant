@@ -1,11 +1,25 @@
-import { BarChart3, BookOpen, ClipboardList, Home, Menu, X } from 'lucide-react'
-import { useState } from 'react'
-import { Link, Outlet, useLocation } from 'react-router'
+import { BarChart3, BookOpen, ClipboardList, Home, Menu, Radio, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../shared/tooltip'
 
 export function MainLayout() {
 	const location = useLocation()
+	const navigate = useNavigate()
 	const [sidebarOpen, setSidebarOpen] = useState(false)
+	const [activeLectureId, setActiveLectureId] = useState<string | null>(
+		() => localStorage.getItem('active_lecture_id')
+	)
+
+	useEffect(() => {
+		const handler = (e: StorageEvent) => {
+			if (e.key === 'active_lecture_id') {
+				setActiveLectureId(e.newValue)
+			}
+		}
+		window.addEventListener('storage', handler)
+		return () => window.removeEventListener('storage', handler)
+	}, [])
 
 	const navItems = [
 		{ path: '/', icon: Home, label: 'Главная' },
@@ -50,6 +64,21 @@ export function MainLayout() {
 						<X className="w-5 h-5" />
 					</button>
 				</div>
+
+				{activeLectureId && (
+					<div className="px-3 pt-3">
+						<button
+							onClick={() => {
+								setSidebarOpen(false)
+								navigate(`/live/${activeLectureId}`)
+							}}
+							className="w-full flex items-center gap-2 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 hover:bg-red-100 transition-colors"
+						>
+							<Radio className="w-4 h-4 flex-shrink-0 animate-pulse" />
+							<span className="truncate font-medium">Вернуться в лекцию</span>
+						</button>
+					</div>
+				)}
 
 				<nav className="flex-1 p-3">
 					{navItems.map(item => {
