@@ -3,7 +3,7 @@ name: Build and Push to GHCR
 on:
   push:
     branches:
-      - main
+      - master
     # Вы можете добавить paths, чтобы сборка запускалась только при изменении кода
     # paths:
     #   - 'admin-gateway/**'
