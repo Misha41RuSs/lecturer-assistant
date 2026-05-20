@@ -3,5 +3,6 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('electronAPI', {
   selectFile: () => ipcRenderer.invoke('dialog:openFile'),
   readFile: (filePath: string) => ipcRenderer.invoke('file:readFile', filePath),
-  openProjector: (lectureId: string | number) => ipcRenderer.invoke('projector:open', String(lectureId))
+  openProjector: (lectureId: string | number) => ipcRenderer.invoke('projector:open', String(lectureId)),
+  closeProjector: () => ipcRenderer.invoke('projector:close')
 });

@@ -179,6 +179,7 @@ export function LivePresentationPage() {
 
 	const drawingRef = useRef<DrawingOverlayHandle>(null)
 	const broadcastChannelRef = useRef<BroadcastChannel | null>(null)
+	const projectorWindowRef = useRef<Window | null>(null)
 
 	const [accessType, setAccessType] = useState<
 		'open' | 'password' | 'invitation'
@@ -545,12 +546,25 @@ export function LivePresentationPage() {
 	}
 
 	const openProjection = () => {
-		window.open(
-			`/projection/${lectureId}`,
-			'projection',
-			'width=1280,height=720'
-		)
+		if (window.electronAPI?.openProjector) {
+			window.electronAPI.openProjector(lectureId!)
+		} else {
+			projectorWindowRef.current = window.open(
+				`#/projection/${lectureId}`,
+				'projection',
+				'width=1280,height=720'
+			)
+		}
 		toast.success('Окно проектора открыто. Переместите на второй экран.')
+	}
+
+	const closeProjection = () => {
+		if (window.electronAPI?.closeProjector) {
+			window.electronAPI.closeProjector()
+		} else if (projectorWindowRef.current && !projectorWindowRef.current.closed) {
+			projectorWindowRef.current.close()
+			projectorWindowRef.current = null
+		}
 	}
 
 	const handleConfirmEndLecture = async () => {
@@ -558,6 +572,7 @@ export function LivePresentationPage() {
 		setEndingLecture(true)
 		try {
 			await stopLecture(parseInt(lectureId, 10))
+			closeProjection()
 			setShowConfirmEnd(false)
 			toast.success('Лекция завершена, студенты отключены')
 			navigate('/')

@@ -87,6 +87,12 @@ ipcMain.handle('file:readFile', async (_event, filePath) => {
 	)
 })
 
+ipcMain.handle('projector:close', async () => {
+	if (projectorWindow && !projectorWindow.isDestroyed()) {
+		projectorWindow.close()
+	}
+})
+
 ipcMain.handle('projector:open', async (_event, lectureId) => {
 	if (projectorWindow && !projectorWindow.isDestroyed()) {
 		projectorWindow.focus()
