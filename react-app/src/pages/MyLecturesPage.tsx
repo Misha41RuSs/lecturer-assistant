@@ -212,14 +212,18 @@ export function MyLecturesPage() {
 								</span>
 							</div>
 							<div className="flex gap-2 flex-wrap">
-								{l.sequenceId && (
-									<Link
-										to={`/slide-manager/${l.id}`}
-										className="flex-1 text-center px-3 py-2 border border-neutral-300 rounded-lg hover:bg-neutral-50 text-xs"
-									>
-										Слайды
-									</Link>
-								)}
+								<button
+									type="button"
+									onClick={() =>
+										copyText(
+											'Команда для Telegram скопирована',
+											`/join ${l.name}`
+										)
+									}
+									className="flex-1 text-center px-3 py-2 border border-neutral-300 rounded-lg hover:bg-neutral-50 text-xs"
+								>
+									Копировать /join
+								</button>
 								{isRunning(l.status) && (
 									<button
 										type="button"
@@ -236,20 +240,6 @@ export function MyLecturesPage() {
 								>
 									Настроить
 								</Link>
-							</div>
-							<div className="mt-2">
-								<button
-									type="button"
-									onClick={() =>
-										copyText(
-											'Команда для Telegram скопирована',
-											`/join ${l.name}`
-										)
-									}
-									className="w-full text-center px-3 py-2 border border-neutral-300 rounded-lg hover:bg-neutral-50 text-xs text-neutral-500"
-								>
-									Копировать /join
-								</button>
 							</div>
 						</div>
 					))}
