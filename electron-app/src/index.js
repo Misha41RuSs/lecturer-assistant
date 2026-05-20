@@ -3,13 +3,10 @@ const path = require('node:path')
 const fs = require('fs')
 
 const buildAppMenu = () => {
-	if (process.platform !== 'darwin') {
-		Menu.setApplicationMenu(null)
-		return
-	}
-	// macOS: минимальное меню — только стандартные системные пункты
-	Menu.setApplicationMenu(Menu.buildFromTemplate([
-		{
+	const template = []
+
+	if (process.platform === 'darwin') {
+		template.push({
 			label: app.name,
 			submenu: [
 				{ role: 'about' },
@@ -20,8 +17,25 @@ const buildAppMenu = () => {
 				{ type: 'separator' },
 				{ role: 'quit' }
 			]
-		}
-	]))
+		})
+	}
+
+	template.push({
+		label: 'View',
+		submenu: [
+			{ role: 'reload' },
+			{ role: 'forceReload' },
+			{ role: 'toggleDevTools' },
+			{ type: 'separator' },
+			{ role: 'resetZoom' },
+			{ role: 'zoomIn' },
+			{ role: 'zoomOut' },
+			{ type: 'separator' },
+			{ role: 'togglefullscreen' }
+		]
+	})
+
+	Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -57,8 +71,19 @@ const createWindow = async () => {
 		`)
 	})
 
-	// Open DevTools for debugging (disabled in production)
+	// Open DevTools for debugging (disable in production)
 	// mainWindow.webContents.openDevTools()
+
+	// Keyboard shortcut for DevTools: Ctrl+Shift+I or F12
+	mainWindow.webContents.on('before-input-event', (event, input) => {
+		if (
+			(input.control && input.shift && input.key.toLowerCase() === 'i') ||
+			input.key === 'F12'
+		) {
+			mainWindow.webContents.toggleDevTools()
+			event.preventDefault()
+		}
+	})
 
 	// Log any errors
 	mainWindow.webContents.on(
