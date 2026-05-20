@@ -96,6 +96,10 @@ export function getExamSubmissions(examId: string) {
   return apiFetch(`/exams/${examId}/submissions`);
 }
 
+export function getExamAnalytics(examId: string) {
+  return apiFetch(`/exams/${examId}/analytics`);
+}
+
 export function gradeAnswer(answerId: string, score: number) {
   return apiFetch(`/answers/${answerId}/grade`, {
     method: "PUT",

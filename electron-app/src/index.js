@@ -1,11 +1,35 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron')
 const path = require('node:path')
 const fs = require('fs')
+
+const buildAppMenu = () => {
+	if (process.platform !== 'darwin') {
+		Menu.setApplicationMenu(null)
+		return
+	}
+	// macOS: минимальное меню — только стандартные системные пункты
+	Menu.setApplicationMenu(Menu.buildFromTemplate([
+		{
+			label: app.name,
+			submenu: [
+				{ role: 'about' },
+				{ type: 'separator' },
+				{ role: 'hide' },
+				{ role: 'hideOthers' },
+				{ role: 'unhide' },
+				{ type: 'separator' },
+				{ role: 'quit' }
+			]
+		}
+	]))
+}
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
 	app.quit()
 }
+
+let projectorWindow = null
 
 const createWindow = async () => {
 	const mainWindow = new BrowserWindow({
@@ -20,8 +44,8 @@ const createWindow = async () => {
 
 	// ! Development
 	// mainWindow.loadURL('http://localhost:5173')
-	// !Production
-	mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
+	// ! Production
+	mainWindow.loadFile(path.join(__dirname, 'index.html'))
 
 	// Navigate to root path after loading to fix initial 404
 	mainWindow.webContents.once('did-finish-load', () => {
@@ -63,8 +87,38 @@ ipcMain.handle('file:readFile', async (_event, filePath) => {
 	)
 })
 
+ipcMain.handle('projector:open', async (_event, lectureId) => {
+	if (projectorWindow && !projectorWindow.isDestroyed()) {
+		projectorWindow.focus()
+		return
+	}
+
+	projectorWindow = new BrowserWindow({
+		width: 1280,
+		height: 720,
+		autoHideMenuBar: true,
+		title: 'Проектор — LectureApp',
+		webPreferences: {
+			preload: path.join(__dirname, '../dist/preload.js'),
+			contextIsolation: true,
+			nodeIntegration: false
+		}
+	})
+
+	projectorWindow.setMenuBarVisibility(false)
+
+	projectorWindow.loadFile(path.join(__dirname, 'index.html'), {
+		hash: `/projection/${lectureId}`
+	})
+
+	projectorWindow.on('closed', () => {
+		projectorWindow = null
+	})
+})
+
 // Creating window
 app.whenReady().then(() => {
+	buildAppMenu()
 	createWindow()
 
 	app.on('activate', () => {

@@ -179,3 +179,14 @@
     line-height: 1.5;
   }
 }
+
+/* Sonner toasts text selection prevention and cursor */
+[data-sonner-toast],
+[data-sonner-toast] * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+[data-sonner-toast] {
+  cursor: pointer !important;
+}

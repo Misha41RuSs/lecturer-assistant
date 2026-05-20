@@ -1,6 +1,7 @@
 export interface ElectronAPI {
   selectFile: () => Promise<string | null>;
   readFile: (filePath: string) => Promise<Buffer>;
+  openProjector: (lectureId: string | number) => Promise<void>;
 }
 
 declare global {

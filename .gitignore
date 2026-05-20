@@ -37,10 +37,11 @@ buildNumber.properties
 .gradle
 build/
 
-# React / Node
+# React / Node / Electron
 node_modules/
 dist/
 build/
+out/
 .vite/
 npm-debug.log*
 yarn-debug.log*

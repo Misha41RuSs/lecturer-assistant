@@ -1,4 +1,4 @@
-name: digital-lecturer
+name: digital-lecturer-prod
 services:
   postgres:
     image: postgres:15-alpine
@@ -17,7 +17,7 @@ services:
     restart: unless-stopped
 
   content-service:
-    build: ./content-service
+    image: ghcr.io/misha41russ/lecturer-assistant/content-service:${IMAGE_TAG:-latest}
     container_name: content_service
     ports:
       - "8081:8081"
@@ -32,7 +32,7 @@ services:
       - app-network
 
   lecture-broadcasting-service:
-    build: ./lecture-broadcasting-service
+    image: ghcr.io/misha41russ/lecturer-assistant/lecture-broadcasting-service:${IMAGE_TAG:-latest}
     container_name: lecture_broadcasting_service
     ports:
       - "8082:8082"
@@ -52,7 +52,7 @@ services:
       - app-network
 
   quiz-service:
-    build: ./quiz-service
+    image: ghcr.io/misha41russ/lecturer-assistant/quiz-service:${IMAGE_TAG:-latest}
     container_name: quiz_service
     ports:
       - "8083:8083"
@@ -67,7 +67,7 @@ services:
       - app-network
 
   analytics-service:
-    build: ./analytics-service
+    image: ghcr.io/misha41russ/lecturer-assistant/analytics-service:${IMAGE_TAG:-latest}
     container_name: analytics_service
     ports:
       - "8084:8084"
@@ -82,7 +82,7 @@ services:
       - app-network
 
   admin-gateway:
-    build: ./admin-gateway
+    image: ghcr.io/misha41russ/lecturer-assistant/admin-gateway:${IMAGE_TAG:-latest}
     container_name: admin_gateway
     ports:
       - "8080:8080"

@@ -1,0 +1,44 @@
+name: Manual Deploy to Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Docker image tag to deploy (e.g., latest or commit hash)'
+        required: true
+        default: 'latest'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Deploy to University Server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }} # Либо используйте ключ: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
+          script: |
+            # Переходим в директорию с проектом
+            # ВАЖНО: Укажите реальный путь до проекта на сервере!
+            cd /path/to/your/project/lecturer-assistant
+            
+            # Логинимся в GHCR (необходимо для скачивания приватных образов, если они приватные, или для лимитов)
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # Подтягиваем docker-compose.prod.yml из репозитория
+            git pull origin main
+            
+            # Устанавливаем переменную версии для compose-файла
+            export IMAGE_TAG=${{ github.event.inputs.version }}
+            
+            # Скачиваем указанную версию образов
+            docker compose -f docker-compose.prod.yml pull
+            
+            # Перезапускаем контейнеры
+            docker compose -f docker-compose.prod.yml up -d
+            
+            # Опционально: очищаем старые образы
+            docker image prune -f
