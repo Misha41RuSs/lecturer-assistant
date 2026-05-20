@@ -131,4 +131,9 @@ public class ExamController {
             @RequestBody Map<String, Integer> body) {
         return ResponseEntity.ok(examService.gradeAnswer(answerId, body.get("score")));
     }
+
+    @GetMapping("/exams/{examId}/analytics")
+    public ResponseEntity<ExamAnalyticsDto> getAnalytics(@PathVariable UUID examId) {
+        return ResponseEntity.ok(examService.getAnalytics(examId));
+    }
 }

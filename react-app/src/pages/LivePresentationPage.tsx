@@ -9,6 +9,7 @@ import {
 	Lock,
 	MessageSquare,
 	Monitor,
+	NotebookPen,
 	Pencil,
 	QrCode,
 	Send,
@@ -45,6 +46,7 @@ import {
 	DrawingOverlay,
 	DrawingOverlayHandle
 } from '../features/DrawingOverlay'
+import { SlideNotesPanel } from '../features/SlideNotesPanel'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../shared/tooltip'
 
 interface SlideData {
@@ -170,6 +172,8 @@ export function LivePresentationPage() {
 	const [drawingActive, setDrawingActive] = useState(false)
 	const [endingLecture, setEndingLecture] = useState(false)
 	const [isChangingSlide, setIsChangingSlide] = useState(false)
+	const [showNotes, setShowNotes] = useState(false)
+	const [isMessageCoolingDown, setIsMessageCoolingDown] = useState(false)
 
 	const drawingRef = useRef<DrawingOverlayHandle>(null)
 	const broadcastChannelRef = useRef<BroadcastChannel | null>(null)
@@ -367,43 +371,51 @@ export function LivePresentationPage() {
 			.padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`
 	const slide = slidesData[currentSlide]
 
-	const handleSendMessage = async () => {
-		if (!quickMessage.trim() || !lectureId) return
-		try {
-			await broadcastMessage(lectureId, quickMessage.trim())
-			toast.success('Сообщение отправлено всем студентам')
-			setQuickMessage('')
-		} catch {
-			toast.error('Не удалось отправить сообщение')
-		}
+	const handleSendMessage = () => {
+		if (!quickMessage.trim() || !lectureId || isMessageCoolingDown) return
+		const msg = quickMessage.trim()
+		
+		setQuickMessage('')
+		setIsMessageCoolingDown(true)
+		setTimeout(() => setIsMessageCoolingDown(false), 1000)
+
+		broadcastMessage(lectureId, msg)
+			.then(() => toast.success('Сообщение отправлено всем студентам'))
+			.catch(() => toast.error('Не удалось отправить сообщение'))
 	}
 
-	const handleReplyToStudent = async (qId: string) => {
-		if (!replyText.trim() || !lectureId) return
+	const handleReplyToStudent = (qId: string) => {
+		if (!replyText.trim() || !lectureId || isMessageCoolingDown) return
+		const text = replyText.trim()
 		const q = questions.find(x => x.id === qId)
-		try {
-			await sendPrivateReply(lectureId, qId, replyText)
-			toast.success(`Ответ отправлен в Telegram: ${q?.student}`)
-		} catch {
-			toast.error('Не удалось отправить ответ')
-		}
+		
 		setQuestions(questions.filter(x => x.id !== qId))
 		setReplyTo(null)
 		setReplyText('')
+		
+		setIsMessageCoolingDown(true)
+		setTimeout(() => setIsMessageCoolingDown(false), 1000)
+
+		sendPrivateReply(lectureId, qId, text)
+			.then(() => toast.success(`Ответ отправлен в Telegram: ${q?.student}`))
+			.catch(() => toast.error('Не удалось отправить ответ'))
 	}
 
-	const handleAnswerBroadcast = async (qId: string) => {
-		if (!replyText.trim() || !lectureId) return
+	const handleAnswerBroadcast = (qId: string) => {
+		if (!replyText.trim() || !lectureId || isMessageCoolingDown) return
+		const text = replyText.trim()
 		const q = questions.find(x => x.id === qId)
-		try {
-			await sendBroadcastReply(lectureId, qId, replyText)
-			toast.success(`Ответ на "${q?.text}" отправлен всем студентам`)
-		} catch {
-			toast.error('Не удалось отправить ответ')
-		}
+		
 		setQuestions(questions.filter(x => x.id !== qId))
 		setReplyTo(null)
 		setReplyText('')
+
+		setIsMessageCoolingDown(true)
+		setTimeout(() => setIsMessageCoolingDown(false), 1000)
+
+		sendBroadcastReply(lectureId, qId, text)
+			.then(() => toast.success(`Ответ на "${q?.text}" отправлен всем студентам`))
+			.catch(() => toast.error('Не удалось отправить ответ'))
 	}
 
 	const handleDismissQuestion = (qId: string) => {
@@ -672,6 +684,21 @@ export function LivePresentationPage() {
 					<Tooltip>
 						<TooltipTrigger asChild>
 							<button
+								id="slide-notes-toggle-btn"
+								onClick={() => setShowNotes(v => !v)}
+								className={`snp-trigger-btn ${showNotes ? 'snp-trigger-btn--on' : 'snp-trigger-btn--off'}`}
+							>
+								<NotebookPen className="w-3 h-3" />{' '}
+								<span className="hidden sm:inline">Заметки</span>
+							</button>
+						</TooltipTrigger>
+						<TooltipContent>
+							<p>Заметки к слайду</p>
+						</TooltipContent>
+					</Tooltip>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
 								onClick={() => setSidebarOpen(!sidebarOpen)}
 								className="p-1.5 text-neutral-400 hover:text-white hidden lg:block"
 							>
@@ -812,6 +839,15 @@ export function LivePresentationPage() {
 					<div className="w-full max-w-5xl">
 						{/* Slide */}
 						<div className="relative">
+							{/* Notes panel — anchored to slide container */}
+							{showNotes && lectureId && slide && (
+								<SlideNotesPanel
+									lectureId={lectureId}
+									slideId={slide.id}
+									slideIndex={slide.isQrSlide ? 0 : slide.index}
+									onClose={() => setShowNotes(false)}
+								/>
+							)}
 							<div className="aspect-video bg-neutral-900 rounded-lg shadow-2xl overflow-hidden flex items-center justify-center">
 								{slide.isQrSlide ? (
 									<div className="flex flex-col items-center justify-center gap-4 text-white p-8">
@@ -993,6 +1029,11 @@ export function LivePresentationPage() {
 														<textarea
 															value={replyText}
 															onChange={e => setReplyText(e.target.value)}
+															onKeyDown={e => {
+																if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+																	handleReplyToStudent(q.id)
+																}
+															}}
 															placeholder="Введите ответ..."
 															className="w-full px-3 py-2 bg-neutral-700 text-white border border-neutral-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
 															rows={2}
@@ -1000,13 +1041,15 @@ export function LivePresentationPage() {
 														<div className="flex gap-1">
 															<button
 																onClick={() => handleReplyToStudent(q.id)}
-																className="flex-1 px-2 py-1.5 bg-orange-500 text-white text-xs rounded hover:bg-orange-600"
+																disabled={isMessageCoolingDown}
+																className="flex-1 px-2 py-1.5 bg-orange-500 text-white text-xs rounded hover:bg-orange-600 disabled:opacity-50"
 															>
 																Лично
 															</button>
 															<button
 																onClick={() => handleAnswerBroadcast(q.id)}
-																className="flex-1 px-2 py-1.5 bg-neutral-600 text-white text-xs rounded hover:bg-neutral-500"
+																disabled={isMessageCoolingDown}
+																className="flex-1 px-2 py-1.5 bg-neutral-600 text-white text-xs rounded hover:bg-neutral-500 disabled:opacity-50"
 															>
 																Всем
 															</button>
@@ -1145,13 +1188,20 @@ export function LivePresentationPage() {
 									type="text"
 									value={quickMessage}
 									onChange={e => setQuickMessage(e.target.value)}
-									onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
+									onKeyDown={e => {
+										if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+											handleSendMessage()
+										} else if (e.key === 'Enter') {
+											handleSendMessage()
+										}
+									}}
 									placeholder="Написать..."
 									className="flex-1 px-3 py-2 bg-neutral-800 text-white border border-neutral-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
 								/>
 								<button
 									onClick={handleSendMessage}
-									className="bg-orange-500 text-white p-2 rounded-lg hover:bg-orange-600"
+									disabled={isMessageCoolingDown}
+									className="bg-orange-500 text-white p-2 rounded-lg hover:bg-orange-600 disabled:opacity-50"
 								>
 									<Send className="w-4 h-4" />
 								</button>

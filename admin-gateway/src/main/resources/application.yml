@@ -35,6 +35,12 @@ spring:
           predicates:
             - Path=/lectures/*/questions,/lectures/*/exams
 
+        # Заметки к слайдам — должен быть ВЫШЕ lecture-broadcasting-service-route
+        - id: content-service-notes-route
+          uri: ${CONTENT_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/lectures/*/notes,/lectures/*/notes/**
+
         - id: content-service-route
           uri: ${CONTENT_SERVICE_URL:http://localhost:8081}
           predicates:
