@@ -244,35 +244,6 @@ const handleDelete = async (id: number) => {
 							</div>
 
 							<div className="flex gap-2">
-								{lecture.sequenceId ? (
-									<Tooltip>
-										<TooltipTrigger asChild>
-											<Link
-												to={`/slide-manager/${lecture.id}`}
-												className="flex-1 text-center px-3 py-2 border border-neutral-300 rounded-lg hover:bg-neutral-50 transition-colors text-sm"
-											>
-												Слайды
-											</Link>
-										</TooltipTrigger>
-										<TooltipContent>
-											<p>Управление слайдами презентации</p>
-										</TooltipContent>
-									</Tooltip>
-								) : (
-									<Tooltip>
-										<TooltipTrigger asChild>
-											<button
-												disabled
-												className="flex-1 text-center px-3 py-2 border border-neutral-200 rounded-lg text-neutral-400 text-sm cursor-not-allowed"
-											>
-												Слайды
-											</button>
-										</TooltipTrigger>
-										<TooltipContent>
-											<p>Сначала загрузите презентацию</p>
-										</TooltipContent>
-									</Tooltip>
-								)}
 								{lecture.status === 'ACTIVE' ? (
 									<Tooltip>
 										<TooltipTrigger asChild>

@@ -7,7 +7,6 @@ import { LectureSettingsPage } from '../pages/LectureSettingsPage'
 import { LivePresentationPage } from '../pages/LivePresentationPage'
 import { MyLecturesPage } from '../pages/MyLecturesPage'
 import { ProjectionPage } from '../pages/ProjectionPage'
-import { SlideManagerPage } from '../pages/SlideManagerPage'
 import { StatisticsPage } from '../pages/StatisticsPage'
 import { TestsPage } from '../pages/TestsPage'
 import { UploadPresentationPage } from '../pages/UploadPresentationPage'
@@ -24,7 +23,6 @@ export const router = createHashRouter([
             { path: 'settings/:lectureId', Component: LectureSettingsPage },
             { path: 'tests', Component: TestsPage },
             { path: 'statistics', Component: StatisticsPage },
-            { path: 'slide-manager/:lectureId', Component: SlideManagerPage }
         ]
     },
     {

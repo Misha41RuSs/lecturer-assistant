@@ -54,6 +54,9 @@ public class Slide {
 
     private String title;
 
+    @Column(columnDefinition = "TEXT")
+    private String notes;
+
     @Column(name = "file_path")
     private String filePath;
 

@@ -1,30 +1,43 @@
 import {
+	ArrowDown,
+	ArrowUp,
 	Copy,
 	Eye,
 	EyeOff,
+	FileText,
 	Globe,
 	Loader2,
 	Lock,
 	Mail,
+	MessageSquare,
+	Pencil,
 	Play,
 	QrCode,
-	Save
+	Save,
+	Trash2,
+	X
 } from 'lucide-react'
-import {useCallback, useEffect, useState} from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import {
 	BASE_URL,
 	getLecture,
 	getSlideSequence,
+	getSlidesMeta,
 	startLecture,
-	updateLecture
+	updateLecture,
+	updateSlideMeta,
+	updateSlideSequence
 } from '../app/api/client'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../shared/tooltip'
 
-interface SlidePreview {
+interface SlideItem {
+	uuid: string
 	index: number
 	imageUrl: string
+	title: string
+	notes: string
 }
 
 export function LectureSettingsPage() {
@@ -32,9 +45,18 @@ export function LectureSettingsPage() {
 	const { lectureId } = useParams<{ lectureId: string }>()
 	const [lectureName, setLectureName] = useState('')
 	const [description, setDescription] = useState('')
-	const [slidePreviews, setSlidePreviews] = useState<SlidePreview[]>([])
+	const [slides, setSlides] = useState<SlideItem[]>([])
+	const [sequenceId, setSequenceId] = useState<string | null>(null)
 	const [loadingLecture, setLoadingLecture] = useState(true)
 	const [saving, setSaving] = useState(false)
+	const [savingOrder, setSavingOrder] = useState(false)
+
+	// slide meta editing
+	const [selectedUuid, setSelectedUuid] = useState<string | null>(null)
+	const [notesText, setNotesText] = useState('')
+	const [savingNotes, setSavingNotes] = useState(false)
+	const [editingTitle, setEditingTitle] = useState<{ uuid: string; value: string } | null>(null)
+	const titleInputRef = useRef<HTMLInputElement>(null)
 
 	const [startSlide, setStartSlide] = useState('1')
 	const [accessType, setAccessType] = useState<
@@ -155,15 +177,28 @@ export function LectureSettingsPage() {
 				setLectureName(lecture.name || '')
 
 				if (lecture.sequenceId) {
-					const seq = await getSlideSequence(lecture.sequenceId)
-					const slides: SlidePreview[] = (seq.slides || []).map(
-						(_: string, idx: number) => ({
+					setSequenceId(lecture.sequenceId)
+					const [seq, meta] = await Promise.all([
+						getSlideSequence(lecture.sequenceId),
+						getSlidesMeta(lecture.sequenceId)
+					])
+					const uuids: string[] = seq.slides || []
+					const built: SlideItem[] = uuids.map((uuid: string, idx: number) => {
+						const m = meta.find((m: { id: string }) => m.id === uuid)
+						return {
+							uuid,
 							index: idx + 1,
-							imageUrl: `${BASE_URL}/slide-sequences/${lecture.sequenceId}/slide/${idx + 1}`
-						})
-					)
-					setSlidePreviews(slides)
+							imageUrl: `${BASE_URL}/slide-sequences/${lecture.sequenceId}/slide/${idx + 1}`,
+							title: m?.title ?? '',
+							notes: m?.notes ?? ''
+						}
+					})
+					setSlides(built)
 					setStartSlide('1')
+					if (built.length > 0) {
+						setSelectedUuid(built[0].uuid)
+						setNotesText(built[0].notes)
+					}
 				}
 			} catch (e) {
 				toast.error('Не удалось загрузить лекцию')
@@ -272,6 +307,90 @@ export function LectureSettingsPage() {
             toast.error('Ошибка при запуске лекции')
         }
     }
+
+	const rebuildIndices = (list: SlideItem[]): SlideItem[] =>
+		list.map((s, idx) => ({
+			...s,
+			index: idx + 1,
+			imageUrl: `${BASE_URL}/slide-sequences/${sequenceId}/slide/${idx + 1}`
+		}))
+
+	const persistOrder = async (list: SlideItem[]) => {
+		if (!sequenceId) return
+		try {
+			setSavingOrder(true)
+			await updateSlideSequence(sequenceId, list.map(s => s.uuid))
+		} catch {
+			toast.error('Не удалось сохранить порядок слайдов')
+		} finally {
+			setSavingOrder(false)
+		}
+	}
+
+	const moveSlide = async (uuid: string, dir: -1 | 1) => {
+		const idx = slides.findIndex(s => s.uuid === uuid)
+		if (idx + dir < 0 || idx + dir >= slides.length) return
+		const next = [...slides]
+		;[next[idx], next[idx + dir]] = [next[idx + dir], next[idx]]
+		const rebuilt = rebuildIndices(next)
+		setSlides(rebuilt)
+		await persistOrder(rebuilt)
+	}
+
+	const deleteSlide = async (uuid: string) => {
+		if (slides.length <= 1) { toast.error('Нельзя удалить последний слайд'); return }
+		const next = rebuildIndices(slides.filter(s => s.uuid !== uuid))
+		setSlides(next)
+		if (selectedUuid === uuid) {
+			setSelectedUuid(next[0]?.uuid ?? null)
+			setNotesText(next[0]?.notes ?? '')
+		}
+		toast.success('Слайд удалён')
+		await persistOrder(next)
+	}
+
+	const startEditTitle = (uuid: string, current: string) => {
+		setEditingTitle({ uuid, value: current })
+		setTimeout(() => titleInputRef.current?.focus(), 0)
+	}
+
+	const commitTitle = async (uuid: string, value: string) => {
+		const trimmed = value.trim()
+		setSlides(slides.map(s => s.uuid === uuid ? { ...s, title: trimmed } : s))
+		setEditingTitle(null)
+		try { await updateSlideMeta(uuid, { title: trimmed }) }
+		catch { toast.error('Не удалось сохранить заголовок') }
+	}
+
+	const clearTitle = async (uuid: string) => {
+		setSlides(slides.map(s => s.uuid === uuid ? { ...s, title: '' } : s))
+		setEditingTitle(null)
+		try { await updateSlideMeta(uuid, { title: '' }); toast.success('Заголовок удалён') }
+		catch { toast.error('Не удалось удалить заголовок') }
+	}
+
+	const selectSlide = (s: SlideItem) => {
+		setSelectedUuid(s.uuid)
+		setNotesText(s.notes)
+		setEditingTitle(null)
+	}
+
+	const saveNotes = async () => {
+		if (!selectedUuid) return
+		setSavingNotes(true)
+		setSlides(slides.map(s => s.uuid === selectedUuid ? { ...s, notes: notesText } : s))
+		try { await updateSlideMeta(selectedUuid, { notes: notesText }); toast.success('Заметки сохранены') }
+		catch { toast.error('Не удалось сохранить заметки') }
+		finally { setSavingNotes(false) }
+	}
+
+	const clearNotes = async () => {
+		if (!selectedUuid) return
+		setNotesText('')
+		setSlides(slides.map(s => s.uuid === selectedUuid ? { ...s, notes: '' } : s))
+		try { await updateSlideMeta(selectedUuid, { notes: '' }); toast.success('Заметки очищены') }
+		catch { toast.error('Не удалось очистить заметки') }
+	}
 
 	const copyToClipboard = (text: string) => {
 		navigator.clipboard.writeText(text).then(() => toast.success('Скопировано'))
@@ -464,29 +583,170 @@ export function LectureSettingsPage() {
 						</div>
 					</div>
 
-					{/* Real slide previews */}
-					{slidePreviews.length > 0 && (
+					{/* Slide manager */}
+					{slides.length > 0 && (
 						<div className="bg-white rounded-xl p-5 border border-neutral-200">
-							<h3 className="text-sm mb-4">Слайды ({slidePreviews.length})</h3>
-							<div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-								{slidePreviews.slice(0, 8).map(s => (
+							<div className="flex items-center justify-between mb-4">
+								<h3 className="text-sm">Слайды ({slides.length})</h3>
+								{savingOrder && (
+									<span className="flex items-center gap-1 text-xs text-neutral-500">
+										<Loader2 className="w-3 h-3 animate-spin" /> Сохраняем порядок...
+									</span>
+								)}
+							</div>
+
+							{/* Grid */}
+							<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-5">
+								{slides.map((slide, idx) => (
 									<div
-										key={s.index}
-										className="aspect-video bg-neutral-100 rounded-lg overflow-hidden"
+										key={slide.uuid}
+										onClick={() => selectSlide(slide)}
+										className={`relative group cursor-pointer rounded-lg transition-all ${
+											selectedUuid === slide.uuid
+												? 'ring-2 ring-orange-500 scale-[1.02]'
+												: 'hover:ring-1 hover:ring-neutral-300'
+										}`}
 									>
-										<img
-											src={s.imageUrl}
-											alt={`Слайд ${s.index}`}
-											className="w-full h-full object-cover"
-										/>
+										<div className="aspect-video bg-neutral-200 rounded-lg overflow-hidden">
+											<img src={slide.imageUrl} alt={`Слайд ${slide.index}`} className="w-full h-full object-cover" />
+										</div>
+
+										<div className="absolute bottom-7 left-2 bg-white/90 rounded px-1.5 py-0.5 text-xs">
+											{String(idx + 1).padStart(2, '0')}
+										</div>
+
+										{slide.notes && (
+											<div className="absolute top-1.5 left-1.5 w-5 h-5 bg-orange-500 rounded-full flex items-center justify-center">
+												<MessageSquare className="w-3 h-3 text-white" />
+											</div>
+										)}
+
+										{slide.title && (
+											<div className="absolute top-1.5 left-8 max-w-[calc(100%-4rem)] bg-black/50 rounded px-1.5 py-0.5 text-[10px] text-white truncate">
+												{slide.title}
+											</div>
+										)}
+
+										<div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+											<button onClick={e => { e.stopPropagation(); moveSlide(slide.uuid, -1) }} disabled={idx === 0}
+												className="w-6 h-6 bg-white rounded-full flex items-center justify-center shadow hover:bg-neutral-100 disabled:opacity-30">
+												<ArrowUp className="w-3 h-3" />
+											</button>
+											<button onClick={e => { e.stopPropagation(); moveSlide(slide.uuid, 1) }} disabled={idx === slides.length - 1}
+												className="w-6 h-6 bg-white rounded-full flex items-center justify-center shadow hover:bg-neutral-100 disabled:opacity-30">
+												<ArrowDown className="w-3 h-3" />
+											</button>
+											<button onClick={e => { e.stopPropagation(); deleteSlide(slide.uuid) }}
+												className="w-6 h-6 bg-white rounded-full flex items-center justify-center shadow hover:bg-red-50">
+												<Trash2 className="w-3 h-3 text-red-600" />
+											</button>
+										</div>
+
+										<div className="mt-1 px-0.5 h-5">
+											{editingTitle?.uuid === slide.uuid ? (
+												<input
+													ref={titleInputRef}
+													value={editingTitle.value}
+													onChange={e => setEditingTitle({ uuid: slide.uuid, value: e.target.value })}
+													onBlur={() => commitTitle(slide.uuid, editingTitle.value)}
+													onKeyDown={e => {
+														if (e.key === 'Enter') commitTitle(slide.uuid, editingTitle.value)
+														if (e.key === 'Escape') setEditingTitle(null)
+													}}
+													onClick={e => e.stopPropagation()}
+													placeholder="Заголовок..."
+													className="w-full text-xs px-1 py-0.5 border border-orange-400 rounded focus:outline-none bg-white"
+												/>
+											) : (
+												<p
+													className="text-xs text-neutral-400 truncate px-0.5 cursor-text hover:text-neutral-700 transition-colors"
+													onClick={e => { e.stopPropagation(); startEditTitle(slide.uuid, slide.title) }}
+												>
+													{slide.title || <span className="italic">заголовок...</span>}
+												</p>
+											)}
+										</div>
 									</div>
 								))}
 							</div>
-							{slidePreviews.length > 8 && (
-								<p className="text-xs text-neutral-500 mt-2">
-									и ещё {slidePreviews.length - 8} слайдов...
-								</p>
-							)}
+
+							{/* Detail panel for selected slide */}
+							{(() => {
+								const sel = slides.find(s => s.uuid === selectedUuid)
+								if (!sel) return null
+								return (
+									<div className="border-t border-neutral-100 pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+										{/* Title */}
+										<div>
+											<div className="flex items-center justify-between mb-2">
+												<div className="flex items-center gap-1.5">
+													<FileText className="w-4 h-4 text-orange-500" />
+													<span className="text-xs text-neutral-600">Заголовок слайда {sel.index}</span>
+												</div>
+												{sel.title && (
+													<button onClick={() => clearTitle(selectedUuid!)} className="text-xs text-neutral-400 hover:text-red-500 flex items-center gap-1">
+														<X className="w-3 h-3" /> Удалить
+													</button>
+												)}
+											</div>
+											{editingTitle?.uuid === selectedUuid ? (
+												<div className="flex gap-2">
+													<input
+														ref={titleInputRef}
+														value={editingTitle.value}
+														onChange={e => setEditingTitle({ uuid: selectedUuid, value: e.target.value })}
+														onKeyDown={e => {
+															if (e.key === 'Enter') commitTitle(selectedUuid, editingTitle.value)
+															if (e.key === 'Escape') setEditingTitle(null)
+														}}
+														placeholder="Введите заголовок..."
+														className="flex-1 px-3 py-2 bg-neutral-50 border border-orange-400 rounded-lg focus:outline-none text-sm"
+													/>
+													<button onClick={() => commitTitle(selectedUuid, editingTitle.value)} className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm">ОК</button>
+													<button onClick={() => setEditingTitle(null)} className="px-2 py-2 border border-neutral-300 rounded-lg"><X className="w-4 h-4" /></button>
+												</div>
+											) : (
+												<div
+													onClick={() => startEditTitle(selectedUuid!, sel.title)}
+													className="flex items-center gap-2 px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg cursor-text hover:border-orange-300 group"
+												>
+													<span className={`flex-1 text-sm ${sel.title ? 'text-neutral-800' : 'text-neutral-400 italic'}`}>
+														{sel.title || 'Нажмите чтобы добавить заголовок...'}
+													</span>
+													<Pencil className="w-3.5 h-3.5 text-neutral-400 opacity-0 group-hover:opacity-100" />
+												</div>
+											)}
+										</div>
+
+										{/* Notes */}
+										<div>
+											<div className="flex items-center gap-1.5 mb-2">
+												<MessageSquare className="w-4 h-4 text-orange-500" />
+												<span className="text-xs text-neutral-600">Заметки к слайду {sel.index}</span>
+											</div>
+											<textarea
+												value={notesText}
+												onChange={e => setNotesText(e.target.value)}
+												placeholder="Тезисы, что рассказать, на что обратить внимание..."
+												rows={3}
+												className="w-full px-3 py-2 bg-neutral-50 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none text-sm mb-2"
+											/>
+											<div className="flex gap-2">
+												<button onClick={saveNotes} disabled={savingNotes}
+													className="flex-1 px-3 py-2 bg-orange-500 text-white rounded-lg text-sm disabled:opacity-60 flex items-center justify-center gap-1.5">
+													{savingNotes && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+													Сохранить
+												</button>
+												{notesText && (
+													<button onClick={clearNotes} className="px-3 py-2 border border-neutral-300 rounded-lg text-sm text-neutral-600 hover:bg-neutral-50">
+														Очистить
+													</button>
+												)}
+											</div>
+										</div>
+									</div>
+								)
+							})()}
 						</div>
 					)}
 
@@ -669,7 +929,7 @@ export function LectureSettingsPage() {
 				<div className="space-y-6">
 					<div className="bg-white rounded-xl p-5 border border-neutral-200">
 						<h3 className="text-sm mb-4">Параметры</h3>
-						{slidePreviews.length > 0 && (
+						{slides.length > 0 && (
 							<div className="mb-4">
 								<label className="block text-sm mb-1.5">Начать со слайда</label>
 								<select
@@ -677,12 +937,9 @@ export function LectureSettingsPage() {
 									onChange={e => setStartSlide(e.target.value)}
 									className="w-full px-4 py-2.5 bg-neutral-50 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
 								>
-									{slidePreviews.map(s => (
-										<option
-											key={s.index}
-											value={s.index}
-										>
-											Слайд {s.index}
+									{slides.map(s => (
+										<option key={s.index} value={s.index}>
+											{s.title ? `Слайд ${s.index} — ${s.title}` : `Слайд ${s.index}`}
 										</option>
 									))}
 								</select>

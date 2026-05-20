@@ -260,37 +260,28 @@ export async function updateSlideSequence(sequenceId: string, slideIds: string[]
 	return res.json()
 }
 
-// ---------------------------------------------------------------------------
-// Slide metadata (title + notes) — stubs until backend implements endpoints
-// ---------------------------------------------------------------------------
-
 export interface SlideMeta {
 	id: string
 	title: string
 	notes: string
 }
 
-/**
- * TODO: replace stub with GET /slide-sequences/{sequenceId}/slides
- * Expected response: SlideMeta[]
- */
-export async function getSlidesMeta(_sequenceId: string): Promise<SlideMeta[]> {
-	console.warn('[stub] getSlidesMeta — endpoint not implemented yet')
-	return []
+export async function getSlidesMeta(sequenceId: string): Promise<SlideMeta[]> {
+	const res = await fetch(`${BASE_URL}/slide-sequences/${sequenceId}/slides`)
+	if (!res.ok) throw new Error(`Failed to load slides meta: ${res.status}`)
+	return res.json()
 }
 
-/**
- * TODO: replace stub with PATCH /slides/{slideId}
- * Expected body: { title?: string; notes?: string }
- */
 export async function updateSlideMeta(
-	_slideId: string,
-	_patch: { title?: string; notes?: string }
+	slideId: string,
+	patch: { title?: string; notes?: string }
 ): Promise<void> {
-	console.warn('[stub] updateSlideMeta — endpoint not implemented yet', {
-		slideId: _slideId,
-		patch: _patch
+	const res = await fetch(`${BASE_URL}/slides/${slideId}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(patch)
 	})
+	if (!res.ok) throw new Error(`Failed to update slide: ${res.status}`)
 }
 
 // ---------------------------------------------------------------------------

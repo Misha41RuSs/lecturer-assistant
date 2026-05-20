@@ -1,5 +1,7 @@
 package ru.university.contentservice.controller;
 
+import ru.university.contentservice.dto.SlideMeta;
+import ru.university.contentservice.dto.SlideMetaPatch;
 import ru.university.contentservice.entity.SlideSequence;
 import ru.university.contentservice.service.ContentService;
 import ru.university.contentservice.service.ContentUploadService;
@@ -80,5 +82,16 @@ public class ContentController {
     @GetMapping("/slide-sequences/{sequenceId}")
     public ResponseEntity<?> getSequence(@PathVariable UUID sequenceId) {
         return ResponseEntity.ok(uploadService.getSequence(sequenceId));
+    }
+
+    @GetMapping("/slide-sequences/{sequenceId}/slides")
+    public ResponseEntity<java.util.List<SlideMeta>> getSlidesMeta(@PathVariable UUID sequenceId) {
+        return ResponseEntity.ok(contentService.getSlidesMeta(sequenceId));
+    }
+
+    @PatchMapping("/slides/{slideId}")
+    public ResponseEntity<SlideMeta> updateSlideMeta(@PathVariable UUID slideId,
+                                                      @RequestBody SlideMetaPatch patch) {
+        return ResponseEntity.ok(contentService.updateSlideMeta(slideId, patch));
     }
 }
