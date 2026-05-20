@@ -55,4 +55,22 @@ public class ContentService {
                 sequenceId, slideIndex, slideId, imageBytes.length);
         return imageBytes;
     }
+
+    public List<ru.university.contentservice.dto.SlideMetaDto> getSlidesMeta(UUID sequenceId) {
+        SlideSequence sequence = sequenceRepository.findById(sequenceId)
+                .orElseThrow(() -> new RuntimeException("Sequence not found"));
+
+        return sequence.getSlides().stream()
+                .map(slideId -> {
+                    Slide slide = slideRepository.findById(slideId)
+                            .orElseThrow(() -> new RuntimeException("Slide not found: " + slideId));
+
+                    return new ru.university.contentservice.dto.SlideMetaDto(
+                            slide.getId(),
+                            slide.getTitle()
+                    );
+                })
+                .toList();
+    }
+
 }

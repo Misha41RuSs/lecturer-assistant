@@ -77,6 +77,11 @@ public class ContentController {
         }
     }
 
+    @GetMapping("/slide-sequences/{sequenceId}/slides")
+    public ResponseEntity<?> getSlidesMeta(@PathVariable UUID sequenceId) {
+        return ResponseEntity.ok(contentService.getSlidesMeta(sequenceId));
+    }
+
     @GetMapping("/slide-sequences/{sequenceId}")
     public ResponseEntity<?> getSequence(@PathVariable UUID sequenceId) {
         return ResponseEntity.ok(uploadService.getSequence(sequenceId));

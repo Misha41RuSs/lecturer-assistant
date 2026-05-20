@@ -274,9 +274,22 @@ export interface SlideMeta {
  * TODO: replace stub with GET /slide-sequences/{sequenceId}/slides
  * Expected response: SlideMeta[]
  */
-export async function getSlidesMeta(_sequenceId: string): Promise<SlideMeta[]> {
-	console.warn('[stub] getSlidesMeta — endpoint not implemented yet')
-	return []
+export async function getSlidesMeta(sequenceId: string): Promise<SlideMeta[]> {
+    const res = await fetch(`${BASE_URL}/slide-sequences/${sequenceId}/slides`)
+
+    if (!res.ok) {
+        const t = await res.text()
+        throw new Error(`Failed to load slides meta: ${res.status} ${t}`)
+    }
+
+    const data = await res.json()
+
+    // backend пока title only, notes добавляем пустыми
+    return data.map((slide: any) => ({
+        id: slide.id,
+        title: slide.title ?? '',
+        notes: ''
+    }))
 }
 
 /**

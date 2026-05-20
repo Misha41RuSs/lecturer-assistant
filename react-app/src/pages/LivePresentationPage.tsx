@@ -48,10 +48,11 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '../shared/tooltip'
 
 interface SlideData {
-	id: string
-	index: number
-	imageUrl: string
-	isQrSlide?: boolean
+    id: string
+    index: number
+    imageUrl: string
+    title?: string
+    isQrSlide?: boolean
 }
 
 interface Question {
@@ -173,6 +174,7 @@ export function LivePresentationPage() {
 
 	const drawingRef = useRef<DrawingOverlayHandle>(null)
 	const broadcastChannelRef = useRef<BroadcastChannel | null>(null)
+    const thumbnailsRef = useRef<(HTMLButtonElement | null)[]>([])
 
 	const [accessType, setAccessType] = useState<
 		'open' | 'password' | 'invitation'
@@ -210,13 +212,14 @@ export function LivePresentationPage() {
 					const sequence = await getSlideSequence(seqId)
 					const slideIds: string[] = sequence.slides || []
 
-					const realSlides: SlideData[] = slideIds.map(
-						(id: string, idx: number) => ({
-							id,
-							index: idx + 1,
-							imageUrl: `${BASE_URL}/slide-sequences/${seqId}/slide/${idx + 1}`
-						})
-					)
+                    const realSlides: SlideData[] = slideIds.map(
+                        (id: string, idx: number) => ({
+                            id,
+                            index: idx + 1,
+                            imageUrl: `${BASE_URL}/slide-sequences/${seqId}/slide/${idx + 1}`,
+                            title: `Слайд ${idx + 1}` // временная заглушка
+                        })
+                    )
 
 					const isInvitation = lecture.accessType === 'INVITATION'
 					const slides: SlideData[] = isInvitation
@@ -360,6 +363,17 @@ export function LivePresentationPage() {
 		window.addEventListener('keydown', handler)
 		return () => window.removeEventListener('keydown', handler)
 	}, [currentSlide, slidesData.length])
+
+    useEffect(() => {
+        const activeThumb = thumbnailsRef.current[currentSlide]
+        if (activeThumb) {
+            activeThumb.scrollIntoView({
+                behavior: 'smooth',
+                inline: 'center',
+                block: 'nearest'
+            })
+        }
+    }, [currentSlide])
 
 	const formatTime = (s: number) =>
 		`${Math.floor(s / 60)
@@ -896,32 +910,39 @@ export function LivePresentationPage() {
 						{/* Thumbnails */}
 						<div className="flex gap-2 mt-4 overflow-x-auto pb-2">
 							{slidesData.map((s, i) => (
-								<button
-									key={s.id}
-									onClick={() => handleSlideChange(i)}
-									disabled={isChangingSlide}
-									className={`flex-shrink-0 w-20 aspect-video bg-neutral-800 rounded border-2 transition-all relative overflow-hidden ${
-										i === currentSlide
-											? 'border-orange-500 scale-105'
-											: 'border-neutral-700 opacity-50 hover:opacity-80 disabled:cursor-wait'
-									}`}
-								>
-									{s.isQrSlide ? (
-										<div className="w-full h-full flex items-center justify-center bg-neutral-700">
-											<QrCode className="w-5 h-5 text-white opacity-60" />
-										</div>
-									) : (
-										<img
-											src={s.imageUrl}
-											alt={`Слайд ${s.index}`}
-											loading="lazy"
-											className="w-full h-full object-cover"
-										/>
-									)}
-									<div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[8px] py-0.5 text-center">
-										{s.isQrSlide ? 'QR' : s.index}
-									</div>
-								</button>
+                                <button
+                                    key={s.id}
+                                    ref={el => {
+                                        thumbnailsRef.current[i] = el
+                                    }}
+                                    onClick={() => handleSlideChange(i)}
+                                    disabled={isChangingSlide}
+                                    className={`flex-shrink-0 w-24 rounded border-2 transition-all relative overflow-hidden ${
+                                        i === currentSlide
+                                            ? 'border-orange-500 scale-105'
+                                            : 'border-neutral-700 opacity-70 hover:opacity-100'
+                                    }`}
+                                >
+                                    {/* Миниатюра */}
+                                    <div className="aspect-video bg-neutral-800 overflow-hidden">
+                                        {s.isQrSlide ? (
+                                            <div className="w-full h-full flex items-center justify-center text-xs text-white">
+                                                QR
+                                            </div>
+                                        ) : (
+                                            <img
+                                                src={s.imageUrl}
+                                                alt={`Слайд ${s.index}`}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        )}
+                                    </div>
+
+                                    {/* Заголовок */}
+                                    <div className="px-1 py-1 bg-neutral-900 text-[10px] text-white text-center truncate">
+                                        {s.title || `Слайд ${s.index}`}
+                                    </div>
+                                </button>
 							))}
 						</div>
 					</div>
