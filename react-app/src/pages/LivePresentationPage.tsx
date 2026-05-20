@@ -1,4 +1,4 @@
-﻿import {
+import {
 	ChevronLeft,
 	ChevronRight,
 	ClipboardList,
@@ -94,7 +94,7 @@ function QuizLaunchForm({
 		<div className="space-y-3 mb-4">
 			{exams.length === 0 ? (
 				<p className="text-sm text-neutral-500">
-					РќРµС‚ С‚РµСЃС‚РѕРІ. РЎРѕР·РґР°Р№С‚Рµ С‚РµСЃС‚ РІ СЂР°Р·РґРµР»Рµ В«РўРµСЃС‚С‹В».
+					Нет тестов. Создайте тест в разделе «Тесты».
 				</p>
 			) : (
 				<select
@@ -119,7 +119,7 @@ function QuizLaunchForm({
 				disabled={!selectedId}
 				className="w-full px-4 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 disabled:opacity-40"
 			>
-				{isPersonal ? 'Р’С‹РґР°С‚СЊ Р»РёС‡РЅРѕ' : `Р—Р°РїСѓСЃС‚РёС‚СЊ РґР»СЏ РІСЃРµС… (${studentsCount})`}
+				{isPersonal ? 'Выдать лично' : `Запустить для всех (${studentsCount})`}
 			</button>
 		</div>
 	)
@@ -131,12 +131,12 @@ function mapStudentQuestion(
 ): Question {
 	const created = new Date(q.createdAt)
 	const mins = Math.round((Date.now() - created.getTime()) / 60000)
-	const time = mins < 1 ? 'С‚РѕР»СЊРєРѕ С‡С‚Рѕ' : `${mins} РјРёРЅ.`
+	const time = mins < 1 ? 'только что' : `${mins} мин.`
 	const num = idx + 1
 	return {
 		id: q.id,
-		student: `РЎС‚СѓРґРµРЅС‚ #${num}`,
-		initials: `РЎ${num}`,
+		student: `Студент #${num}`,
+		initials: `С${num}`,
 		time,
 		text: q.text,
 		isNew: mins < 2,
@@ -165,7 +165,7 @@ export function LivePresentationPage() {
 	const [showAccessInfo, setShowAccessInfo] = useState(false)
 	const [showSatisfactionModal, setShowSatisfactionModal] = useState(false)
 	const [satisfactionPreset, setSatisfactionPreset] = useState(
-		'РћС†РµРЅРёС‚Рµ Р»РµРєС†РёСЋ РѕС‚ 1 РґРѕ 5. РќР°СЃРєРѕР»СЊРєРѕ РїРѕРЅСЏС‚РЅРѕ Рё РїРѕР»РµР·РЅРѕ Р±С‹Р»Рѕ СЃРµРіРѕРґРЅСЏС€РЅРµРµ Р·Р°РЅСЏС‚РёРµ?'
+		'Оцените лекцию от 1 до 5. Насколько понятно и полезно было сегодняшнее занятие?'
 	)
 	const [editingSatisfaction, setEditingSatisfaction] = useState(false)
 	const [satisfactionDraft, setSatisfactionDraft] = useState(satisfactionPreset)
@@ -199,7 +199,7 @@ export function LivePresentationPage() {
 			try {
 				setIsLoading(true)
 				const lecture = await getLecture(parseInt(lectureId))
-				setLectureName(lecture.name || 'Р›РµРєС†РёСЏ')
+				setLectureName(lecture.name || 'Лекция')
 				if (lecture.accessType === 'PASSWORD') {
 					setAccessType('password')
 					setPassword(lecture.password || '')
@@ -244,7 +244,7 @@ export function LivePresentationPage() {
 				}
 			} catch (error) {
 				console.error('Failed to load lecture:', error)
-				toast.error('РћС€РёР±РєР° РїСЂРё Р·Р°РіСЂСѓР·РєРµ Р»РµРєС†РёРё')
+				toast.error('Ошибка при загрузке лекции')
 			} finally {
 				setIsLoading(false)
 			}
@@ -253,7 +253,7 @@ export function LivePresentationPage() {
 		loadLecture()
 	}, [lectureId])
 
-	// Polling РІРѕРїСЂРѕСЃРѕРІ СЃС‚СѓРґРµРЅС‚РѕРІ РёР· Р±РѕС‚Р° РєР°Р¶РґС‹Рµ 10 СЃРµРєСѓРЅРґ
+	// Polling вопросов студентов из бота каждые 10 секунд
 	useEffect(() => {
 		if (!lectureId) return
 		const load = () => {
@@ -266,7 +266,7 @@ export function LivePresentationPage() {
 		return () => clearInterval(interval)
 	}, [lectureId])
 
-	// Р РµР°Р»СЊРЅРѕРµ С‡РёСЃР»Рѕ СЃС‚СѓРґРµРЅС‚РѕРІ РёР· lecture-broadcasting-service
+	// Реальное число студентов из lecture-broadcasting-service
 	useEffect(() => {
 		if (!lectureId) return
 		const load = () => {
@@ -323,7 +323,7 @@ export function LivePresentationPage() {
 			const slideData = slidesData[idx]
 			if (!slideData || !drawingRef.current) return
 			if (!drawingRef.current.hasAnnotations(idx)) {
-				toast.info('РќРµС‚ СЂРёСЃСѓРЅРєРѕРІ РґР»СЏ РѕС‚РїСЂР°РІРєРё')
+				toast.info('Нет рисунков для отправки')
 				return
 			}
 			// Telegram: full composite
@@ -334,9 +334,9 @@ export function LivePresentationPage() {
 			if (compositeBlob) {
 				try {
 					await broadcastSlideImage(parseInt(lectureId!), compositeBlob)
-					toast.success('РЎР»Р°Р№Рґ СЃ СЂРёСЃСѓРЅРєР°РјРё РѕС‚РїСЂР°РІР»РµРЅ СЃС‚СѓРґРµРЅС‚Р°Рј')
+					toast.success('Слайд с рисунками отправлен студентам')
 				} catch {
-					toast.error('РћС€РёР±РєР° РїСЂРё РѕС‚РїСЂР°РІРєРµ СЃР»Р°Р№РґР°')
+					toast.error('Ошибка при отправке слайда')
 				}
 			}
 			// Projector: annotations layer
@@ -377,10 +377,10 @@ export function LivePresentationPage() {
 		if (!quickMessage.trim() || !lectureId) return
 		try {
 			await broadcastMessage(lectureId, quickMessage.trim())
-			toast.success('РЎРѕРѕР±С‰РµРЅРёРµ РѕС‚РїСЂР°РІР»РµРЅРѕ РІСЃРµРј СЃС‚СѓРґРµРЅС‚Р°Рј')
+			toast.success('Сообщение отправлено всем студентам')
 			setQuickMessage('')
 		} catch {
-			toast.error('РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РїСЂР°РІРёС‚СЊ СЃРѕРѕР±С‰РµРЅРёРµ')
+			toast.error('Не удалось отправить сообщение')
 		}
 	}
 
@@ -389,9 +389,9 @@ export function LivePresentationPage() {
 		const q = questions.find(x => x.id === qId)
 		try {
 			await sendPrivateReply(lectureId, qId, replyText)
-			toast.success(`РћС‚РІРµС‚ РѕС‚РїСЂР°РІР»РµРЅ РІ Telegram: ${q?.student}`)
+			toast.success(`Ответ отправлен в Telegram: ${q?.student}`)
 		} catch {
-			toast.error('РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РїСЂР°РІРёС‚СЊ РѕС‚РІРµС‚')
+			toast.error('Не удалось отправить ответ')
 		}
 		setQuestions(questions.filter(x => x.id !== qId))
 		setReplyTo(null)
@@ -403,9 +403,9 @@ export function LivePresentationPage() {
 		const q = questions.find(x => x.id === qId)
 		try {
 			await sendBroadcastReply(lectureId, qId, replyText)
-			toast.success(`РћС‚РІРµС‚ РЅР° "${q?.text}" РѕС‚РїСЂР°РІР»РµРЅ РІСЃРµРј СЃС‚СѓРґРµРЅС‚Р°Рј`)
+			toast.success(`Ответ на "${q?.text}" отправлен всем студентам`)
 		} catch {
-			toast.error('РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РїСЂР°РІРёС‚СЊ РѕС‚РІРµС‚')
+			toast.error('Не удалось отправить ответ')
 		}
 		setQuestions(questions.filter(x => x.id !== qId))
 		setReplyTo(null)
@@ -415,7 +415,7 @@ export function LivePresentationPage() {
 	const handleDismissQuestion = (qId: string) => {
 		setQuestions(questions.filter(x => x.id !== qId))
 		setReplyTo(null)
-		toast.info('Р’РѕРїСЂРѕСЃ РѕС‚РєР»РѕРЅС‘РЅ')
+		toast.info('Вопрос отклонён')
 	}
 
 	const handleAssignTestAll = async (examId: string) => {
@@ -423,13 +423,13 @@ export function LivePresentationPage() {
 		try {
 			if (showTestModal === -1) {
 				await broadcastExam(examId, lectureId)
-				toast.success(`РўРµСЃС‚ Р·Р°РїСѓС‰РµРЅ РґР»СЏ СЃС‚СѓРґРµРЅС‚РѕРІ (${studentsCount})`)
+				toast.success(`Тест запущен для студентов (${studentsCount})`)
 			} else if (showTestModal !== null) {
 				await sendExamToUser(examId, showTestModal)
-				toast.success(`РўРµСЃС‚ РІС‹РґР°РЅ СЃС‚СѓРґРµРЅС‚Сѓ`)
+				toast.success(`Тест выдан студенту`)
 			}
 		} catch {
-			toast.error('РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РїСѓСЃС‚РёС‚СЊ С‚РµСЃС‚')
+			toast.error('Не удалось запустить тест')
 		}
 		setShowTestModal(null)
 	}
@@ -439,26 +439,26 @@ export function LivePresentationPage() {
 		try {
 			const exam = await createExam({
 				lectureId,
-				title: 'РћРїСЂРѕСЃ РѕР± СѓРґРѕРІР»РµС‚РІРѕСЂС‘РЅРЅРѕСЃС‚Рё',
+				title: 'Опрос об удовлетворённости',
 				examType: 'SURVEY',
 				questions: [
 					{
 						text: satisfactionPreset,
 						type: 'MULTIPLE',
 						options: [
-							{ text: '1 в­ђ', correct: false },
-							{ text: '2 в­ђв­ђ', correct: false },
-							{ text: '3 в­ђв­ђв­ђ', correct: false },
-							{ text: '4 в­ђв­ђв­ђв­ђ', correct: false },
-							{ text: '5 в­ђв­ђв­ђв­ђв­ђ', correct: false }
+							{ text: '1 ⭐', correct: false },
+							{ text: '2 ⭐⭐', correct: false },
+							{ text: '3 ⭐⭐⭐', correct: false },
+							{ text: '4 ⭐⭐⭐⭐', correct: false },
+							{ text: '5 ⭐⭐⭐⭐⭐', correct: false }
 						]
 					}
 				]
 			})
 			await broadcastExam(exam.id, lectureId)
-			toast.success(`РћРїСЂРѕСЃ Р·Р°РїСѓС‰РµРЅ РґР»СЏ СЃС‚СѓРґРµРЅС‚РѕРІ (${studentsCount})`)
+			toast.success(`Опрос запущен для студентов (${studentsCount})`)
 		} catch {
-			toast.error('РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РїСѓСЃС‚РёС‚СЊ РѕРїСЂРѕСЃ')
+			toast.error('Не удалось запустить опрос')
 		}
 		setShowSatisfactionModal(false)
 	}
@@ -474,7 +474,7 @@ export function LivePresentationPage() {
 			return
 		}
 
-		// РћРїС‚РёРјРёСЃС‚РёС‡РЅС‹Р№ update вЂ” UI СЂРµР°РіРёСЂСѓРµС‚ РјРіРЅРѕРІРµРЅРЅРѕ, РґРѕ РѕС‚РІРµС‚Р° СЃРµСЂРІРµСЂР°
+		// Оптимистичный update — UI реагирует мгновенно, до ответа сервера
 		setCurrentSlide(newSlideIndex)
 		localStorage.setItem('lecture_slide', String(newSlideIndex))
 
@@ -508,7 +508,7 @@ export function LivePresentationPage() {
 			}
 		} catch (error) {
 			console.error('Failed to update slide:', error)
-			toast.error('РћС€РёР±РєР° РїСЂРё РїРµСЂРµРєР»СЋС‡РµРЅРёРё СЃР»Р°Р№РґР°')
+			toast.error('Ошибка при переключении слайда')
 		} finally {
 			setIsChangingSlide(false)
 		}
@@ -521,7 +521,7 @@ export function LivePresentationPage() {
 				setQuestionBank(list)
 				setSelectedQuestionId(list.length > 0 ? list[0].id : '')
 			})
-			.catch(() => toast.error('РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ Р±Р°РЅРє РІРѕРїСЂРѕСЃРѕРІ'))
+			.catch(() => toast.error('Не удалось загрузить банк вопросов'))
 		setShowSendQuestionModal(true)
 	}
 
@@ -535,10 +535,10 @@ export function LivePresentationPage() {
 				slideNumber: slide.index
 			})
 			const count = (result as any)?.sentTo ?? studentsCount
-			toast.success(`Р’РѕРїСЂРѕСЃ РѕС‚РїСЂР°РІР»РµРЅ ${count} СЃС‚СѓРґРµРЅС‚Р°Рј`)
+			toast.success(`Вопрос отправлен ${count} студентам`)
 			setShowSendQuestionModal(false)
 		} catch {
-			toast.error('РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РїСЂР°РІРёС‚СЊ РІРѕРїСЂРѕСЃ')
+			toast.error('Не удалось отправить вопрос')
 		} finally {
 			setSendingQuestion(false)
 		}
@@ -550,7 +550,7 @@ export function LivePresentationPage() {
 			'projection',
 			'width=1280,height=720'
 		)
-		toast.success('РћРєРЅРѕ РїСЂРѕРµРєС‚РѕСЂР° РѕС‚РєСЂС‹С‚Рѕ. РџРµСЂРµРјРµСЃС‚РёС‚Рµ РЅР° РІС‚РѕСЂРѕР№ СЌРєСЂР°РЅ.')
+		toast.success('Окно проектора открыто. Переместите на второй экран.')
 	}
 
 	const handleConfirmEndLecture = async () => {
@@ -559,11 +559,11 @@ export function LivePresentationPage() {
 		try {
 			await stopLecture(parseInt(lectureId, 10))
 			setShowConfirmEnd(false)
-			toast.success('Р›РµРєС†РёСЏ Р·Р°РІРµСЂС€РµРЅР°, СЃС‚СѓРґРµРЅС‚С‹ РѕС‚РєР»СЋС‡РµРЅС‹')
+			toast.success('Лекция завершена, студенты отключены')
 			navigate('/')
 		} catch (e) {
 			console.error(e)
-			toast.error('РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РІРµСЂС€РёС‚СЊ Р»РµРєС†РёСЋ РЅР° СЃРµСЂРІРµСЂРµ')
+			toast.error('Не удалось завершить лекцию на сервере')
 		} finally {
 			setEndingLecture(false)
 		}
@@ -574,7 +574,7 @@ export function LivePresentationPage() {
 			<div className="h-screen bg-black flex items-center justify-center">
 				<div className="flex flex-col items-center gap-3">
 					<Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
-					<span className="text-neutral-400 text-sm">Р—Р°РіСЂСѓР·РєР° Р»РµРєС†РёРё...</span>
+					<span className="text-neutral-400 text-sm">Загрузка лекции...</span>
 				</div>
 			</div>
 		)
@@ -584,15 +584,15 @@ export function LivePresentationPage() {
 		return (
 			<div className="h-screen bg-black flex items-center justify-center">
 				<div className="text-neutral-400 text-center">
-					<p className="text-lg mb-2">РЎР»Р°Р№РґС‹ РЅРµ РЅР°Р№РґРµРЅС‹</p>
+					<p className="text-lg mb-2">Слайды не найдены</p>
 					<p className="text-sm">
-						РЈР±РµРґРёС‚РµСЃСЊ, С‡С‚Рѕ Рє Р»РµРєС†РёРё РїСЂРёРІСЏР·Р°РЅР° РїСЂРµР·РµРЅС‚Р°С†РёСЏ
+						Убедитесь, что к лекции привязана презентация
 					</p>
 					<Link
 						to="/"
 						className="mt-4 inline-block text-orange-500 hover:text-orange-400"
 					>
-						в†ђ РќР° РіР»Р°РІРЅСѓСЋ
+						← На главную
 					</Link>
 				</div>
 			</div>
@@ -643,8 +643,8 @@ export function LivePresentationPage() {
 							<TooltipContent>
 								<p>
 									{accessType === 'password'
-										? 'РџРѕРєР°Р·Р°С‚СЊ РїР°СЂРѕР»СЊ РґР»СЏ РїРѕРґРєР»СЋС‡РµРЅРёСЏ'
-										: 'РџРѕРєР°Р·Р°С‚СЊ QR-РєРѕРґ РґР»СЏ РїРѕРґРєР»СЋС‡РµРЅРёСЏ'}
+										? 'Показать пароль для подключения'
+										: 'Показать QR-код для подключения'}
 								</p>
 							</TooltipContent>
 						</Tooltip>
@@ -655,14 +655,14 @@ export function LivePresentationPage() {
 							<button
 								onClick={openProjection}
 								className="flex items-center gap-1 px-2 py-1 bg-neutral-800 text-neutral-300 rounded text-xs hover:bg-neutral-700"
-								title="РћС‚РєСЂС‹РІР°РµС‚ РѕС‚РґРµР»СЊРЅРѕРµ РѕРєРЅРѕ СЃ С‡РёСЃС‚С‹Рј СЃР»Р°Р№РґРѕРј РґР»СЏ РїСЂРѕРµРєС‚РѕСЂР°"
+								title="Открывает отдельное окно с чистым слайдом для проектора"
 							>
 								<Monitor className="w-3 h-3" />{' '}
-								<span className="hidden sm:inline">РџСЂРѕРµРєС‚РѕСЂ</span>
+								<span className="hidden sm:inline">Проектор</span>
 							</button>
 						</TooltipTrigger>
 						<TooltipContent>
-							<p>РћС‚РєСЂС‹С‚СЊ РѕРєРЅРѕ РїСЂРѕРµРєС‚РѕСЂР°</p>
+							<p>Открыть окно проектора</p>
 						</TooltipContent>
 					</Tooltip>
 					<Tooltip>
@@ -670,19 +670,19 @@ export function LivePresentationPage() {
 							<button
 								onClick={() => setDrawingActive(!drawingActive)}
 								className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${drawingActive ? 'bg-orange-500 text-white' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}
-								title="Р РёСЃРѕРІР°РЅРёРµ РїРѕРІРµСЂС… СЃР»Р°Р№РґР°"
+								title="Рисование поверх слайда"
 							>
 								<Pencil className="w-3 h-3" />{' '}
 								<span className="hidden sm:inline">
-									{drawingActive ? 'Р РёСЃРѕРІР°РЅРёРµ Р’РљР›' : 'Р РёСЃРѕРІР°С‚СЊ'}
+									{drawingActive ? 'Рисование ВКЛ' : 'Рисовать'}
 								</span>
 							</button>
 						</TooltipTrigger>
 						<TooltipContent>
 							<p>
 								{drawingActive
-									? 'РћС‚РєР»СЋС‡РёС‚СЊ СЂРёСЃРѕРІР°РЅРёРµ'
-									: 'Р’РєР»СЋС‡РёС‚СЊ СЂРёСЃРѕРІР°РЅРёРµ РЅР° СЃР»Р°Р№РґРµ'}
+									? 'Отключить рисование'
+									: 'Включить рисование на слайде'}
 							</p>
 						</TooltipContent>
 					</Tooltip>
@@ -713,8 +713,8 @@ export function LivePresentationPage() {
 						<TooltipContent>
 							<p>
 								{sidebarOpen
-									? 'РЎРєСЂС‹С‚СЊ С‡Р°С‚ СЃ РІРѕРїСЂРѕСЃР°РјРё'
-									: 'РџРѕРєР°Р·Р°С‚СЊ С‡Р°С‚ СЃ РІРѕРїСЂРѕСЃР°РјРё'}
+									? 'Скрыть чат с вопросами'
+									: 'Показать чат с вопросами'}
 							</p>
 						</TooltipContent>
 					</Tooltip>
@@ -724,11 +724,11 @@ export function LivePresentationPage() {
 								onClick={() => setShowConfirmEnd(true)}
 								className="bg-orange-500 text-white px-3 py-1.5 rounded-lg hover:bg-orange-600 text-sm"
 							>
-								Р—Р°РІРµСЂС€РёС‚СЊ
+								Завершить
 							</button>
 						</TooltipTrigger>
 						<TooltipContent>
-							<p>Р—Р°РІРµСЂС€РёС‚СЊ Р»РµРєС†РёСЋ</p>
+							<p>Завершить лекцию</p>
 						</TooltipContent>
 					</Tooltip>
 				</div>
@@ -740,8 +740,8 @@ export function LivePresentationPage() {
 					<div className="flex items-center justify-between mb-3">
 						<span className="text-sm">
 							{accessType === 'password'
-								? 'РџР°СЂРѕР»СЊ РґР»СЏ РїРѕРґРєР»СЋС‡РµРЅРёСЏ'
-								: 'РџРѕРґРєР»СЋС‡РµРЅРёРµ РїРѕ QR'}
+								? 'Пароль для подключения'
+								: 'Подключение по QR'}
 						</span>
 						<button onClick={() => setShowAccessInfo(false)}>
 							<X className="w-4 h-4 text-neutral-400" />
@@ -757,11 +757,11 @@ export function LivePresentationPage() {
 							<button
 								onClick={() => {
 									navigator.clipboard.writeText(password)
-									toast.success('РЎРєРѕРїРёСЂРѕРІР°РЅРѕ')
+									toast.success('Скопировано')
 								}}
 								className="flex items-center gap-1 text-sm text-orange-500 hover:text-orange-600 mx-auto"
 							>
-								<Copy className="w-3.5 h-3.5" /> РљРѕРїРёСЂРѕРІР°С‚СЊ
+								<Copy className="w-3.5 h-3.5" /> Копировать
 							</button>
 						</>
 					)}
@@ -774,7 +774,7 @@ export function LivePresentationPage() {
 									className="w-40 h-40"
 								/>
 							</div>
-							<p className="text-xs text-neutral-500">РџРѕРєР°Р¶РёС‚Рµ СЃС‚СѓРґРµРЅС‚Р°Рј</p>
+							<p className="text-xs text-neutral-500">Покажите студентам</p>
 						</div>
 					)}
 				</div>
@@ -784,9 +784,9 @@ export function LivePresentationPage() {
 			{showConfirmEnd && (
 				<div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
 					<div className="bg-white rounded-xl p-6 max-w-sm w-full">
-						<h3 className="mb-2">Р—Р°РІРµСЂС€РёС‚СЊ Р»РµРєС†РёСЋ?</h3>
+						<h3 className="mb-2">Завершить лекцию?</h3>
 						<p className="text-sm text-neutral-500 mb-4">
-							Р’СЃРµ СЃС‚СѓРґРµРЅС‚С‹ Р±СѓРґСѓС‚ РѕС‚РєР»СЋС‡РµРЅС‹.
+							Все студенты будут отключены.
 						</p>
 						<div className="flex gap-2">
 							<button
@@ -795,7 +795,7 @@ export function LivePresentationPage() {
 								onClick={() => setShowConfirmEnd(false)}
 								className="flex-1 px-4 py-2 border border-neutral-300 rounded-lg text-sm"
 							>
-								РћС‚РјРµРЅР°
+								Отмена
 							</button>
 							<button
 								type="button"
@@ -803,7 +803,7 @@ export function LivePresentationPage() {
 								onClick={handleConfirmEndLecture}
 								className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg text-center text-sm hover:bg-red-700 disabled:opacity-60"
 							>
-								{endingLecture ? 'Р—Р°РІРµСЂС€РµРЅРёРµвЂ¦' : 'Р—Р°РІРµСЂС€РёС‚СЊ'}
+								{endingLecture ? 'Завершение…' : 'Завершить'}
 							</button>
 						</div>
 					</div>
@@ -822,15 +822,15 @@ export function LivePresentationPage() {
 										<div className="bg-white rounded-2xl p-4">
 											<img
 												src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(`https://t.me/lecturer_assistant_bot?start=join_${lectureId}`)}`}
-												alt="QR РґР»СЏ РїРѕРґРєР»СЋС‡РµРЅРёСЏ"
+												alt="QR для подключения"
 												className="w-48 h-48"
 											/>
 										</div>
 										<p className="text-lg font-medium">
-											РћС‚СЃРєР°РЅРёСЂСѓР№С‚Рµ РґР»СЏ РїРѕРґРєР»СЋС‡РµРЅРёСЏ
+											Отсканируйте для подключения
 										</p>
 										<p className="text-sm text-neutral-400">
-											РёР»Рё РЅР°РїРёС€РёС‚Рµ Р±РѕС‚Сѓ:{' '}
+											или напишите боту:{' '}
 											<span className="font-mono text-orange-400">
 												/join {lectureId}
 											</span>
@@ -839,7 +839,7 @@ export function LivePresentationPage() {
 								) : (
 									<img
 										src={slide.imageUrl}
-										alt={`РЎР»Р°Р№Рґ ${slide.index}`}
+										alt={`Слайд ${slide.index}`}
 										className="w-full h-full object-contain"
 									/>
 								)}
@@ -871,7 +871,7 @@ export function LivePresentationPage() {
 									</button>
 								</TooltipTrigger>
 								<TooltipContent>
-									<p>РџСЂРµРґС‹РґСѓС‰РёР№ СЃР»Р°Р№Рґ</p>
+									<p>Предыдущий слайд</p>
 								</TooltipContent>
 							</Tooltip>
 							<span className="text-white text-sm bg-neutral-800 px-3 py-1.5 rounded-lg">
@@ -892,7 +892,7 @@ export function LivePresentationPage() {
 									</button>
 								</TooltipTrigger>
 								<TooltipContent>
-									<p>РЎР»РµРґСѓСЋС‰РёР№ СЃР»Р°Р№Рґ</p>
+									<p>Следующий слайд</p>
 								</TooltipContent>
 							</Tooltip>
 						</div>
@@ -917,7 +917,7 @@ export function LivePresentationPage() {
 									) : (
 										<img
 											src={s.imageUrl}
-											alt={`РЎР»Р°Р№Рґ ${s.index}`}
+											alt={`Слайд ${s.index}`}
 											loading="lazy"
 											className="w-full h-full object-cover"
 										/>
@@ -946,8 +946,8 @@ export function LivePresentationPage() {
 									}`}
 								>
 									{tab === 'questions'
-										? `Р’РѕРїСЂРѕСЃС‹ (${questions.length})`
-										: `РЎС‚СѓРґРµРЅС‚С‹ (${studentsCount})`}
+										? `Вопросы (${questions.length})`
+										: `Студенты (${studentsCount})`}
 									{activeTab === tab && (
 										<div className="absolute bottom-0 left-0 right-0 h-0.5 bg-orange-500" />
 									)}
@@ -959,7 +959,7 @@ export function LivePresentationPage() {
 							{activeTab === 'questions' ? (
 								questions.length === 0 ? (
 									<div className="text-neutral-500 text-sm text-center py-8">
-										РќРµС‚ РІРѕРїСЂРѕСЃРѕРІ
+										Нет вопросов
 									</div>
 								) : (
 									<div className="space-y-2">
@@ -979,7 +979,7 @@ export function LivePresentationPage() {
 															</span>
 															{q.isNew && (
 																<span className="bg-orange-500 text-white text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 ml-1">
-																	РќРѕРІС‹Р№
+																	Новый
 																</span>
 															)}
 														</div>
@@ -997,7 +997,7 @@ export function LivePresentationPage() {
 														<textarea
 															value={replyText}
 															onChange={e => setReplyText(e.target.value)}
-															placeholder="Р’РІРµРґРёС‚Рµ РѕС‚РІРµС‚..."
+															placeholder="Введите ответ..."
 															className="w-full px-3 py-2 bg-neutral-700 text-white border border-neutral-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
 															rows={2}
 														/>
@@ -1006,13 +1006,13 @@ export function LivePresentationPage() {
 																onClick={() => handleReplyToStudent(q.id)}
 																className="flex-1 px-2 py-1.5 bg-orange-500 text-white text-xs rounded hover:bg-orange-600"
 															>
-																Р›РёС‡РЅРѕ
+																Лично
 															</button>
 															<button
 																onClick={() => handleAnswerBroadcast(q.id)}
 																className="flex-1 px-2 py-1.5 bg-neutral-600 text-white text-xs rounded hover:bg-neutral-500"
 															>
-																Р’СЃРµРј
+																Всем
 															</button>
 															<button
 																onClick={() => {
@@ -1021,7 +1021,7 @@ export function LivePresentationPage() {
 																}}
 																className="px-2 py-1.5 text-neutral-400 text-xs hover:text-white"
 															>
-																вњ•
+																✕
 															</button>
 														</div>
 													</div>
@@ -1034,7 +1034,7 @@ export function LivePresentationPage() {
 															}}
 															className="flex-1 px-3 py-1.5 bg-neutral-700 text-white text-sm rounded hover:bg-neutral-600"
 														>
-															РћС‚РІРµС‚РёС‚СЊ
+															Ответить
 														</button>
 														<button
 															onClick={() => handleDismissQuestion(q.id)}
@@ -1054,7 +1054,7 @@ export function LivePresentationPage() {
 										<div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-4 py-8">
 											<Users className="w-10 h-10 text-neutral-600" />
 											<div className="text-neutral-500 text-sm">
-												РџРѕРєР° РЅРёРєС‚Рѕ РЅРµ РїРѕРґРєР»СЋС‡РёР»СЃСЏ
+												Пока никто не подключился
 											</div>
 										</div>
 									) : (
@@ -1067,13 +1067,13 @@ export function LivePresentationPage() {
 													<div className="flex items-center justify-between">
 														<div className="flex items-center gap-2 min-w-0">
 															<div className="w-8 h-8 bg-neutral-700 rounded-full flex items-center justify-center text-sm font-medium text-white flex-shrink-0">
-																{s.firstName?.[0] || 'РЎ'}
+																{s.firstName?.[0] || 'С'}
 															</div>
 															<div className="min-w-0">
 																<div className="text-white text-sm font-medium truncate">
 																	{s.firstName
 																		? `${s.firstName} ${s.lastName || ''}`
-																		: `РЎС‚СѓРґРµРЅС‚`}
+																		: `Студент`}
 																</div>
 																<div className="text-orange-400/80 text-xs truncate">
 																	{s.username
@@ -1086,7 +1086,7 @@ export function LivePresentationPage() {
 															onClick={async () => {
 																if (
 																	!window.confirm(
-																		'Р’С‹РіРЅР°С‚СЊ СЃС‚СѓРґРµРЅС‚Р° РёР· Р»РµРєС†РёРё? РћРЅ Р±РѕР»СЊС€Рµ РЅРµ СЃРјРѕР¶РµС‚ Р·Р°Р№С‚Рё.'
+																		'Выгнать студента из лекции? Он больше не сможет зайти.'
 																	)
 																)
 																	return
@@ -1095,13 +1095,13 @@ export function LivePresentationPage() {
 																	setStudents(prev =>
 																		prev.filter(x => x.chatId !== s.chatId)
 																	)
-																	toast.success('РЎС‚СѓРґРµРЅС‚ РѕС‚РєР»СЋС‡РµРЅ')
+																	toast.success('Студент отключен')
 																} catch (e) {
-																	toast.error('РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєР»СЋС‡РёС‚СЊ СЃС‚СѓРґРµРЅС‚Р°')
+																	toast.error('Не удалось отключить студента')
 																}
 															}}
 															className="p-1.5 text-neutral-500 hover:bg-red-500/10 hover:text-red-400 rounded transition-colors"
-															title="Р’С‹РіРЅР°С‚СЊ РёР· Р»РµРєС†РёРё"
+															title="Выгнать из лекции"
 														>
 															<X className="w-4 h-4" />
 														</button>
@@ -1112,7 +1112,7 @@ export function LivePresentationPage() {
 															className="w-full justify-center flex items-center gap-1.5 px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 text-white text-xs font-medium rounded transition-colors"
 														>
 															<ClipboardList className="w-3.5 h-3.5" />
-															Р’С‹РґР°С‚СЊ С‚РµСЃС‚ Р»РёС‡РЅРѕ
+															Выдать тест лично
 														</button>
 													</div>
 												</div>
@@ -1126,13 +1126,13 @@ export function LivePresentationPage() {
 											onClick={() => setShowTestModal(-1)}
 											className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm"
 										>
-											<ClipboardList className="w-4 h-4" /> Р—Р°РїСѓСЃС‚РёС‚СЊ РєРІРёР·
+											<ClipboardList className="w-4 h-4" /> Запустить квиз
 										</button>
 										<button
 											onClick={() => setShowSatisfactionModal(true)}
 											className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-neutral-800 text-neutral-300 rounded-lg hover:bg-neutral-700 text-sm"
 										>
-											<Star className="w-4 h-4" /> РЈР·РЅР°С‚СЊ РјРЅРµРЅРёРµ
+											<Star className="w-4 h-4" /> Узнать мнение
 										</button>
 									</div>
 								</div>
@@ -1142,7 +1142,7 @@ export function LivePresentationPage() {
 						{/* Quick message */}
 						<div className="p-3 border-t border-neutral-800">
 							<div className="text-neutral-400 text-xs mb-1.5">
-								РЎРѕРѕР±С‰РµРЅРёРµ РІСЃРµРј СЃС‚СѓРґРµРЅС‚Р°Рј
+								Сообщение всем студентам
 							</div>
 							<div className="flex gap-2">
 								<input
@@ -1150,7 +1150,7 @@ export function LivePresentationPage() {
 									value={quickMessage}
 									onChange={e => setQuickMessage(e.target.value)}
 									onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-									placeholder="РќР°РїРёСЃР°С‚СЊ..."
+									placeholder="Написать..."
 									className="flex-1 px-3 py-2 bg-neutral-800 text-white border border-neutral-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
 								/>
 								<button
@@ -1171,13 +1171,13 @@ export function LivePresentationPage() {
 					<div className="bg-white rounded-xl p-6 max-w-sm w-full max-h-[80vh] flex flex-col">
 						<h3 className="mb-1">
 							{showTestModal === -1
-								? 'Р—Р°РїСѓСЃС‚РёС‚СЊ РєРІРёР· РґР»СЏ РІСЃРµС…'
-								: 'Р’С‹РґР°С‚СЊ С‚РµСЃС‚ СЃС‚СѓРґРµРЅС‚Сѓ'}
+								? 'Запустить квиз для всех'
+								: 'Выдать тест студенту'}
 						</h3>
 						<p className="text-sm text-neutral-500 mb-4">
 							{showTestModal === -1
-								? 'Р’РІРµРґРёС‚Рµ РЅР°Р·РІР°РЅРёРµ РєРІРёР·Р° вЂ” РІСЃРµ СЃС‚СѓРґРµРЅС‚С‹ РїРѕР»СѓС‡Р°С‚ РµРіРѕ С‡РµСЂРµР· Telegram-Р±РѕС‚.'
-								: 'Р’С‹Р±РµСЂРёС‚Рµ С‚РµСЃС‚. РћРЅ Р±СѓРґРµС‚ РѕС‚РїСЂР°РІР»РµРЅ С‚РѕР»СЊРєРѕ СЌС‚РѕРјСѓ СЃС‚СѓРґРµРЅС‚Сѓ.'}
+								? 'Введите название квиза — все студенты получат его через Telegram-бот.'
+								: 'Выберите тест. Он будет отправлен только этому студенту.'}
 						</p>
 						<QuizLaunchForm
 							lectureId={lectureId!}
@@ -1189,7 +1189,7 @@ export function LivePresentationPage() {
 							onClick={() => setShowTestModal(null)}
 							className="w-full px-4 py-2 border border-neutral-300 rounded-lg text-sm mt-auto"
 						>
-							РћС‚РјРµРЅР°
+							Отмена
 						</button>
 					</div>
 				</div>
@@ -1201,16 +1201,16 @@ export function LivePresentationPage() {
 					<div className="bg-white rounded-xl p-6 max-w-md w-full">
 						<div className="flex items-center gap-2 mb-4">
 							<Star className="w-5 h-5 text-orange-500" />
-							<h3 className="mb-0">РЈР·РЅР°С‚СЊ РјРЅРµРЅРёРµ</h3>
+							<h3 className="mb-0">Узнать мнение</h3>
 						</div>
 						<p className="text-sm text-neutral-500 mb-4">
-							РЎС‚СѓРґРµРЅС‚С‹ РїРѕР»СѓС‡Р°С‚ РІРѕРїСЂРѕСЃ Рё РѕС†РµРЅСЏС‚ Р»РµРєС†РёСЋ РїРѕ С€РєР°Р»Рµ 1вЂ“5. РќР° РѕСЃРЅРѕРІРµ
-							РѕС†РµРЅРѕРє СЂР°СЃСЃС‡РёС‚С‹РІР°РµС‚СЃСЏ РїСЂРѕС†РµРЅС‚ СѓРґРѕРІР»РµС‚РІРѕСЂС‘РЅРЅРѕСЃС‚Рё.
+							Студенты получат вопрос и оценят лекцию по шкале 1–5. На основе
+							оценок рассчитывается процент удовлетворённости.
 						</p>
 
 						<div className="mb-4">
 							<div className="flex items-center justify-between mb-1.5">
-								<label className="text-sm">РўРµРєСЃС‚ РІРѕРїСЂРѕСЃР°</label>
+								<label className="text-sm">Текст вопроса</label>
 								{!editingSatisfaction && (
 									<button
 										onClick={() => {
@@ -1219,7 +1219,7 @@ export function LivePresentationPage() {
 										}}
 										className="flex items-center gap-1 text-xs text-orange-500 hover:text-orange-600"
 									>
-										<Pencil className="w-3 h-3" /> Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ
+										<Pencil className="w-3 h-3" /> Редактировать
 									</button>
 								)}
 							</div>
@@ -1237,17 +1237,17 @@ export function LivePresentationPage() {
 											onClick={() => {
 												setSatisfactionPreset(satisfactionDraft)
 												setEditingSatisfaction(false)
-												toast.success('РџСЂРµСЃРµС‚ РѕР±РЅРѕРІР»С‘РЅ')
+												toast.success('Пресет обновлён')
 											}}
 											className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600"
 										>
-											РЎРѕС…СЂР°РЅРёС‚СЊ
+											Сохранить
 										</button>
 										<button
 											onClick={() => setEditingSatisfaction(false)}
 											className="px-3 py-1.5 border border-neutral-300 rounded-lg text-sm"
 										>
-											РћС‚РјРµРЅР°
+											Отмена
 										</button>
 									</div>
 								</div>
@@ -1268,7 +1268,7 @@ export function LivePresentationPage() {
 								))}
 							</div>
 							<p className="text-xs text-orange-700">
-								РЎС‚СѓРґРµРЅС‚С‹ РІС‹Р±РµСЂСѓС‚ РѕС†РµРЅРєСѓ РѕС‚ 1 РґРѕ 5
+								Студенты выберут оценку от 1 до 5
 							</p>
 						</div>
 
@@ -1277,13 +1277,13 @@ export function LivePresentationPage() {
 								onClick={() => setShowSatisfactionModal(false)}
 								className="flex-1 px-4 py-2 border border-neutral-300 rounded-lg text-sm"
 							>
-								РћС‚РјРµРЅР°
+								Отмена
 							</button>
 							<button
 								onClick={handleSendSatisfaction}
 								className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm"
 							>
-								РћС‚РїСЂР°РІРёС‚СЊ ({studentsCount})
+								Отправить ({studentsCount})
 							</button>
 						</div>
 					</div>
