@@ -10,6 +10,10 @@
   "links": [],
   "panels": [
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -59,6 +63,10 @@
       "pluginVersion": "9.0.0",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
           "expr": "lecture_clarity_rating{lecture_id=\"$lecture_id\"}",
           "refId": "A"
         }
@@ -67,6 +75,10 @@
       "type": "gauge"
     },
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -112,6 +124,10 @@
       "pluginVersion": "9.0.0",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
           "expr": "lecture_question_density{lecture_id=\"$lecture_id\"}",
           "refId": "A"
         }
@@ -120,6 +136,10 @@
       "type": "gauge"
     },
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -169,6 +189,10 @@
       "pluginVersion": "9.0.0",
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
           "expr": "lecture_question_temporal_depth{lecture_id=\"$lecture_id\"}",
           "refId": "A"
         }
@@ -195,7 +219,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "prometheus"
+          "uid": "Prometheus"
         },
         "definition": "label_values(lecture_clarity_rating, lecture_id)",
         "description": null,
@@ -228,5 +252,5 @@
   "timezone": "",
   "title": "Метрики понятности лекции",
   "uid": "clarity-metrics",
-  "version": 0
+  "version": 1
 }

@@ -36,7 +36,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "Prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -109,7 +109,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "Prometheus"
           },
           "editorMode": "code",
           "expr": "sum(rate(telegram_traffic_outbound_bytes_total[1m])) by (lecture_id)",
@@ -124,7 +124,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "Prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -197,7 +197,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "Prometheus"
           },
           "editorMode": "code",
           "expr": "sum(rate(telegram_traffic_inbound_bytes_total[1m])) by (lecture_id)",
@@ -212,7 +212,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "Prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -264,7 +264,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "Prometheus"
           },
           "editorMode": "code",
           "expr": "sum(telegram_traffic_outbound_bytes_total + telegram_traffic_inbound_bytes_total) by (lecture_id)",
@@ -291,7 +291,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "Prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -343,7 +343,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "Prometheus"
           },
           "editorMode": "code",
           "expr": "sum(user_action_count_total) by (action_type)",
@@ -358,7 +358,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "Prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -433,7 +433,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "Prometheus"
           },
           "editorMode": "code",
           "expr": "sum(rate(user_action_count_total[1m])) by (lecture_id)",
