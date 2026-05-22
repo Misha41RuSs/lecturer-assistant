@@ -12,6 +12,7 @@ import ru.university.lecturebroadcasting.dto.LectureListItem;
 import ru.university.lecturebroadcasting.dto.StudentDto;
 import ru.university.lecturebroadcasting.entity.AccessType;
 import ru.university.lecturebroadcasting.entity.Lecture;
+import ru.university.lecturebroadcasting.service.DeliveryMetricsService;
 import ru.university.lecturebroadcasting.service.LectureService;
 import ru.university.lecturebroadcasting.service.QuizServiceClient;
 import ru.university.lecturebroadcasting.service.StudentQuestionService;
@@ -32,6 +33,7 @@ public class LectureController {
     private final SimpMessagingTemplate messagingTemplate;
     private final QuizServiceClient quizServiceClient;
     private final StudentQuestionService studentQuestionService;
+    private final DeliveryMetricsService deliveryMetricsService;
 
     @PostMapping
     public ResponseEntity<Lecture> createLecture(@RequestBody Map<String, String> body) {
@@ -159,6 +161,16 @@ public class LectureController {
         return ResponseEntity.ok().build();
     }
 
+
+    @GetMapping("/{id}/delivery-metrics")
+    public ResponseEntity<Map<String, Object>> getDeliveryMetrics(@PathVariable Long id) {
+        DeliveryMetricsService.DeliveryStats stats = deliveryMetricsService.getMetrics(id);
+        return ResponseEntity.ok(Map.of(
+                "totalSent", stats.totalSent(),
+                "totalFailed", stats.totalFailed(),
+                "errorRate", stats.errorRate()
+        ));
+    }
 
     @PutMapping("/{id}/current-slide")
     public ResponseEntity<Void> updateCurrentSlide(
