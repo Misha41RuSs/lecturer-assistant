@@ -79,6 +79,7 @@ public class ClarityMetricsService {
     private Double calculateQuestionTemporalDepth(Long lectureId) {
         List<XapiEvent> questions = repository.findByLectureIdAndVerb(lectureId, "asked").stream()
             .filter(e -> e.getSlideId() != null)
+            .sorted(Comparator.comparing(XapiEvent::getTimestamp))
             .collect(Collectors.toList());
 
         List<XapiEvent> slideShownEvents = repository.findByLectureIdAndVerbOrderByTimestampAsc(lectureId, "slide_shown").stream()
@@ -91,14 +92,17 @@ public class ClarityMetricsService {
 
         List<Double> depths = new ArrayList<>();
         for (XapiEvent question : questions) {
-            slideShownEvents.stream()
-                .filter(s -> s.getSlideId().equals(question.getSlideId())
-                          && s.getTimestamp().isBefore(question.getTimestamp()))
-                .max(Comparator.comparing(XapiEvent::getTimestamp))
-                .ifPresent(slideEvent -> {
-                    double seconds = Duration.between(slideEvent.getTimestamp(), question.getTimestamp()).getSeconds();
-                    depths.add(seconds);
-                });
+            for (int i = slideShownEvents.size() - 1; i >= 0; i--) {
+                XapiEvent slideEvent = slideShownEvents.get(i);
+                if (slideEvent.getSlideId().equals(question.getSlideId())
+                    && slideEvent.getTimestamp().isBefore(question.getTimestamp())) {
+                    long seconds = Duration.between(slideEvent.getTimestamp(), question.getTimestamp()).getSeconds();
+                    if (seconds > 0) {
+                        depths.add((double) seconds);
+                    }
+                    break;
+                }
+            }
         }
 
         return depths.isEmpty() ? 0.0 : depths.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);

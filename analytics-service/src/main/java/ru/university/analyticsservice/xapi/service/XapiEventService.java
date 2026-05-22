@@ -79,6 +79,7 @@ public class XapiEventService {
     private Double calculateQuestionTemporalDepth(List<XapiEvent> events) {
         List<XapiEvent> questions = events.stream()
             .filter(e -> "asked".equals(e.getVerb()) && e.getSlideId() != null)
+            .sorted(Comparator.comparing(XapiEvent::getTimestamp))
             .collect(Collectors.toList());
 
         List<XapiEvent> slideShownEvents = events.stream()
@@ -92,14 +93,17 @@ public class XapiEventService {
 
         List<Double> depths = new ArrayList<>();
         for (XapiEvent question : questions) {
-            slideShownEvents.stream()
-                .filter(s -> s.getSlideId().equals(question.getSlideId())
-                          && s.getTimestamp().isBefore(question.getTimestamp()))
-                .max(Comparator.comparing(XapiEvent::getTimestamp))
-                .ifPresent(slideEvent -> {
-                    double seconds = Duration.between(slideEvent.getTimestamp(), question.getTimestamp()).getSeconds();
-                    depths.add(seconds);
-                });
+            for (int i = slideShownEvents.size() - 1; i >= 0; i--) {
+                XapiEvent slideEvent = slideShownEvents.get(i);
+                if (slideEvent.getSlideId().equals(question.getSlideId())
+                    && slideEvent.getTimestamp().isBefore(question.getTimestamp())) {
+                    long seconds = Duration.between(slideEvent.getTimestamp(), question.getTimestamp()).getSeconds();
+                    if (seconds > 0) {
+                        depths.add((double) seconds);
+                    }
+                    break;
+                }
+            }
         }
 
         return depths.isEmpty() ? 0.0 : depths.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
