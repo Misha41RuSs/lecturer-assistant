@@ -14,13 +14,8 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.university.lecturebroadcasting.entity.Student;
 import ru.university.lecturebroadcasting.repository.StudentRepository;
-import ru.university.lecturebroadcasting.service.AnalyticsServiceClient;
-import ru.university.lecturebroadcasting.service.LectureService;
-import ru.university.lecturebroadcasting.service.PasswordRequiredException;
-import ru.university.lecturebroadcasting.service.QuizServiceClient;
+import ru.university.lecturebroadcasting.service.*;
 import ru.university.lecturebroadcasting.service.QuizServiceClient.ExamDetail.Question;
-import ru.university.lecturebroadcasting.service.StudentQuestionService;
-import ru.university.lecturebroadcasting.service.WrongPasswordException;
 
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
@@ -57,6 +52,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final QuizServiceClient quizServiceClient;
     private final AnalyticsServiceClient analyticsServiceClient;
     private final StudentQuestionService studentQuestionService;
+    private final MessageCounterService messageCounterService;
 
     public LectureBroadcastingBot(
             DefaultBotOptions options,
@@ -66,7 +62,8 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             LectureService lectureService,
             QuizServiceClient quizServiceClient,
             AnalyticsServiceClient analyticsServiceClient,
-            StudentQuestionService studentQuestionService) {
+            StudentQuestionService studentQuestionService,
+            MessageCounterService messageCounterService) {
 
         super(options, botToken);
 
@@ -76,6 +73,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         this.quizServiceClient = quizServiceClient;
         this.analyticsServiceClient = analyticsServiceClient;
         this.studentQuestionService = studentQuestionService;
+        this.messageCounterService = messageCounterService;
     }
 
     @Override
@@ -409,6 +407,9 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         String header = String.format("Вопрос %d/%d", session.currentIndex() + 1, session.total());
         String timeHint = q.timeLimitSec() != null ? " ⏱ " + q.timeLimitSec() + " с" : "";
 
+        String lectureId = session.getExamId().toString(); // или получите реальный lectureId
+        messageCounterService.incrementCounter(MessageType.QUESTION_BROADCAST, lectureId);
+
         Message sent = null;
         try {
             if (session.isMultiple()) {
@@ -497,6 +498,11 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             }
         }
 
+        studentRepository.findByChatId(chatId).ifPresent(student -> {
+            String lectureId = student.getLecture().getId().toString();
+            messageCounterService.incrementCounter(MessageType.SLIDE_PUSH, lectureId);
+        });
+
         InlineKeyboardMarkup markup = InlineKeyboardMarkup.builder()
                 .keyboardRow(List.of(
                         InlineKeyboardButton.builder().text("◀ Предыдущий").callbackData(CB_PREV_SLIDE).build(),
@@ -533,6 +539,15 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 log.debug("delete prev student photo failed: {}", e.getMessage());
             }
         }
+
+        studentRepository.findByChatId(chatId).ifPresent(student -> {
+            if (student.getLecture() != null) {
+                String lectureId = student.getLecture().getId().toString();
+                messageCounterService.incrementCounter(MessageType.SLIDE_PULL, lectureId);
+                analyticsServiceClient.sendSlideRequestedEvent(
+                        student.getLecture().getId(), chatId, slideNumber);
+            }
+        });
 
         try {
             Message sent = execute(SendPhoto.builder()
@@ -580,12 +595,37 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         sendText(chatId, text);
     }
 
+
+    //
     private void sendText(long chatId, String text) {
         try {
             execute(SendMessage.builder().chatId(chatId).text(text).build());
+
+            // Определяем тип сообщения по содержанию или контексту
+            MessageType type = determineMessageType(text);
+            studentRepository.findByChatId(chatId).ifPresent(student -> {
+                if (student.getLecture() != null) {
+                    messageCounterService.incrementCounter(type,
+                            student.getLecture().getId().toString());
+                }
+            });
         } catch (TelegramApiException e) {
             log.error("sendText failed chatId={}", chatId, e);
         }
     }
+
+    // Вспомогательный метод для определения типа сообщения
+    private MessageType determineMessageType(String text) {
+        if (text.contains("тест") || text.contains("опрос") || text.contains("📝")) {
+            return MessageType.POLL;
+        } else if (text.contains("⚠️") || text.contains("❌") || text.contains("завершена")) {
+            return MessageType.ALERT;
+        } else if (text.contains("✅") || text.contains("Время вышло")) {
+            return MessageType.CHECKPOINT;
+        }
+        return MessageType.ALERT; // default
+    }
+
+
 }
 
