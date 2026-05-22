@@ -352,7 +352,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     }
 
     private void cancelQuestionTimer(long chatId) {
-        Timer t = questionTimers.remove(chatId);
+        java.util.Timer t = questionTimers.remove(chatId);
         if (t != null) t.cancel();
     }
 
@@ -374,7 +374,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private void scheduleQuestionTimer(long chatId, ExamSession session, Question q, Integer msgId) {
         if (q.timeLimitSec() == null) return;
         int totalSec = q.timeLimitSec();
-        Timer t = new Timer(true);
+        java.util.Timer t = new java.util.Timer(true);
         questionTimers.put(chatId, t);
         int qIdx = session.currentIndex();
         String header = String.format("Вопрос %d/%d", qIdx + 1, session.total());
@@ -385,7 +385,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         if (msgId != null) {
             for (int elapsed = 10; elapsed < totalSec; elapsed += 10) {
                 final int remaining = totalSec - elapsed;
-                t.schedule(new TimerTask() {
+                t.schedule(new java.util.TimerTask() {
                     @Override
                     public void run() {
                         ExamSession cur = examSessions.get(chatId);
@@ -408,7 +408,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             }
         }
 
-        t.schedule(new TimerTask() {
+        t.schedule(new java.util.TimerTask() {
             @Override
             public void run() {
                 ExamSession cur = examSessions.get(chatId);
