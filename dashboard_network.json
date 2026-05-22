@@ -30,7 +30,7 @@
         "y": 0
       },
       "id": 1,
-      "title": "Telegram Traffic Metrics",
+      "title": "Метрики трафика Telegram",
       "type": "row"
     },
     {
@@ -118,7 +118,7 @@
           "refId": "A"
         }
       ],
-      "title": "Outbound Telegram Traffic Rate",
+      "title": "Скорость исходящего трафика Telegram",
       "type": "timeseries"
     },
     {
@@ -206,7 +206,7 @@
           "refId": "A"
         }
       ],
-      "title": "Inbound Telegram Traffic Rate",
+      "title": "Скорость входящего трафика Telegram",
       "type": "timeseries"
     },
     {
@@ -273,7 +273,7 @@
           "refId": "A"
         }
       ],
-      "title": "Total Telegram Traffic by Lecture",
+      "title": "Общий трафик Telegram по лекциям",
       "type": "bargauge"
     },
     {
@@ -285,7 +285,7 @@
         "y": 19
       },
       "id": 5,
-      "title": "User xAPI Activity Metrics",
+      "title": "Метрики xAPI активности пользователей",
       "type": "row"
     },
     {
@@ -352,7 +352,7 @@
           "refId": "A"
         }
       ],
-      "title": "User Actions Count by Action Type",
+      "title": "Количество действий пользователей по типам",
       "type": "bargauge"
     },
     {
@@ -442,7 +442,7 @@
           "refId": "A"
         }
       ],
-      "title": "User Action Intensity (Events/sec)",
+      "title": "Интенсивность действий пользователей (событий/сек)",
       "type": "timeseries"
     }
   ],
@@ -459,7 +459,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Digital Lecturer Assistant Metrics",
+  "title": "Метрики сети Telegram и активности пользователей",
   "uid": "lecturer-metrics",
   "version": 1,
   "weekStart": ""

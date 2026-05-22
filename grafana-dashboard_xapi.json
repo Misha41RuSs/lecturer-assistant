@@ -213,34 +213,23 @@
     "list": [
       {
         "current": {
-          "selected": false,
+          "selected": true,
           "text": "1",
           "value": "1"
         },
-        "datasource": {
-          "type": "prometheus",
-          "uid": "Prometheus"
-        },
-        "definition": "label_values(lecture_clarity_rating, lecture_id)",
-        "description": null,
-        "error": null,
         "hide": 0,
-        "includeAll": false,
         "label": "Lecture ID",
-        "multi": false,
         "name": "lecture_id",
-        "options": [],
-        "query": {
-          "query": "label_values(lecture_clarity_rating, lecture_id)",
-          "refId": "Prometheus-lecture_id-Variable-Query"
-        },
-        "refresh": 1,
-        "regex": "",
+        "options": [
+          {
+            "selected": true,
+            "text": "1",
+            "value": "1"
+          }
+        ],
+        "query": "1",
         "skipUrlSync": false,
-        "sort": 1,
-        "tagValuesQuery": "",
-        "tagsQuery": "",
-        "type": "query"
+        "type": "textbox"
       }
     ]
   },
