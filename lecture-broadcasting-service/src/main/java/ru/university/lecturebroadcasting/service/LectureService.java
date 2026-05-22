@@ -278,6 +278,7 @@ public class LectureService {
                 lectureId, slideNumber, chatIds.size());
 
         analyticsServiceClient.sendSlideChangedEvent(lectureId, slideNumber);
+        analyticsServiceClient.recordLecturerAction("NEXT_SLIDE", lectureId);
 
         return new SlideUpdateResult(lecture, imageBytes, chatIds);
     }

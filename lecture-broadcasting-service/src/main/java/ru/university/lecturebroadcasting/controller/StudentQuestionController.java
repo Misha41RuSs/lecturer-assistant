@@ -37,7 +37,7 @@ public class StudentQuestionController {
             @RequestBody Map<String, String> body) {
         String replyText = body.get("text");
         questionService.answer(qId, replyText).ifPresent(q ->
-                bot.sendTextMessage(q.chatId(),
+                bot.sendTextMessage(id, q.chatId(),
                         "Преподаватель ответил на ваш вопрос:\n«" + q.text() + "»\n\nОтвет: " + replyText)
         );
         return ResponseEntity.ok().build();
@@ -52,7 +52,7 @@ public class StudentQuestionController {
         questionService.answer(qId, replyText).ifPresent(q -> {
             String msg = "Ответ преподавателя на вопрос:\n«" + q.text() + "»\n\nОтвет: " + replyText;
             for (Long chatId : lectureService.getStudentChatIds(id)) {
-                bot.sendTextMessage(chatId, msg);
+                bot.sendTextMessage(id, chatId, msg);
             }
         });
         return ResponseEntity.ok().build();

@@ -12,9 +12,10 @@ import org.telegram.telegrambots.meta.api.objects.User;
 import ru.university.lecturebroadcasting.entity.Lecture;
 import ru.university.lecturebroadcasting.entity.Student;
 import ru.university.lecturebroadcasting.repository.StudentRepository;
+import ru.university.lecturebroadcasting.service.AnalyticsServiceClient;
+import ru.university.lecturebroadcasting.service.DeliveryMetricsService;
 import ru.university.lecturebroadcasting.service.LectureService;
 import ru.university.lecturebroadcasting.service.QuizServiceClient;
-import ru.university.lecturebroadcasting.service.AnalyticsServiceClient;
 import ru.university.lecturebroadcasting.service.StudentQuestionService;
 
 import java.io.Serializable;
@@ -42,6 +43,9 @@ class LectureBroadcastingBotTest {
     @Mock
     private StudentQuestionService studentQuestionService;
 
+    @Mock
+    private DeliveryMetricsService deliveryMetricsService;
+
     private LectureBroadcastingBot bot;
 
     @BeforeEach
@@ -51,6 +55,7 @@ class LectureBroadcastingBotTest {
                 "fake_token", "fake_bot",
                 studentRepository, lectureService,
                 quizServiceClient, analyticsServiceClient, studentQuestionService,
+                deliveryMetricsService,
                 new org.springframework.web.client.RestTemplate(),
                 new io.micrometer.core.instrument.simple.SimpleMeterRegistry()
         ) {

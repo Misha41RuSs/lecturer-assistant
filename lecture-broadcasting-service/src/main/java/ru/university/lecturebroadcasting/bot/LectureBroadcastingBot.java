@@ -16,7 +16,9 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.university.lecturebroadcasting.entity.Student;
 import ru.university.lecturebroadcasting.repository.StudentRepository;
+import io.micrometer.core.instrument.Timer;
 import ru.university.lecturebroadcasting.service.AnalyticsServiceClient;
+import ru.university.lecturebroadcasting.service.DeliveryMetricsService;
 import ru.university.lecturebroadcasting.service.LectureService;
 import ru.university.lecturebroadcasting.service.PasswordRequiredException;
 import ru.university.lecturebroadcasting.service.QuizServiceClient;
@@ -51,7 +53,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final ConcurrentHashMap<Long, Integer> lectureCurrentSlide = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Integer> studentCurrentSlide = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Boolean> pendingGoToSlide = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<Long, Timer> questionTimers = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, java.util.Timer> questionTimers = new ConcurrentHashMap<>();
 
     private final String botUsername;
     private final StudentRepository studentRepository;
@@ -59,6 +61,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final QuizServiceClient quizServiceClient;
     private final AnalyticsServiceClient analyticsServiceClient;
     private final StudentQuestionService studentQuestionService;
+    private final DeliveryMetricsService deliveryMetricsService;
     private final RestTemplate restTemplate;
     private final io.micrometer.core.instrument.MeterRegistry meterRegistry;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -73,6 +76,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             QuizServiceClient quizServiceClient,
             AnalyticsServiceClient analyticsServiceClient,
             StudentQuestionService studentQuestionService,
+            DeliveryMetricsService deliveryMetricsService,
             RestTemplate restTemplate,
             io.micrometer.core.instrument.MeterRegistry meterRegistry) {
 
@@ -84,8 +88,18 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         this.quizServiceClient = quizServiceClient;
         this.analyticsServiceClient = analyticsServiceClient;
         this.studentQuestionService = studentQuestionService;
+        this.deliveryMetricsService = deliveryMetricsService;
         this.restTemplate = restTemplate;
         this.meterRegistry = meterRegistry;
+    }
+
+    private Timer buildTelegramApiTimer(String method, String lectureId) {
+        return Timer.builder("telegram.api.latency")
+                .description("Telegram API latency")
+                .tag("method", method)
+                .tag("lectureId", lectureId != null ? lectureId : "unknown")
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(meterRegistry);
     }
 
 
@@ -510,7 +524,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             analyticsServiceClient.sendStudentJoinedEvent(student.getLecture().getId(), chatId);
             int currentSlide = student.getLecture().getCurrentSlide();
             if (student.getLecture().getStatus() == ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE && currentSlide > 0) {
-                sendSlideToStudent(chatId, null, currentSlide);
+                sendSlideToStudent(student.getLecture().getId(), chatId, null, currentSlide);
             }
 
         } catch (PasswordRequiredException e) {
@@ -529,21 +543,23 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         }
     }
 
-    public void notifyLectureEndedToStudents(String lectureName, List<Long> chatIds) {
+    public void notifyLectureEndedToStudents(Long lectureId, String lectureName, List<Long> chatIds) {
         if (chatIds == null || chatIds.isEmpty()) return;
         String title = Objects.requireNonNullElse(lectureName, "лекция");
         String msg = "Лекция «" + title + "» завершена. Вы отключены.\n\n/join <название> — подключиться к другой.";
-        for (Long chatId : chatIds) sendText(chatId, msg);
+        for (Long chatId : chatIds) sendTrackedText(lectureId, chatId, msg);
     }
 
     // Вызывается лектором при смене слайда — только текст, всегда последнее сообщение
-    public void sendSlideToStudent(long chatId, byte[] imageBytes, int slideNumber) {
+    public void sendSlideToStudent(Long lectureId, long chatId, byte[] imageBytes, int slideNumber) {
         lectureCurrentSlide.put(chatId, slideNumber);
 
         Integer prevMsgId = lastSlideMessageId.remove(chatId);
         if (prevMsgId != null) {
             try {
+                Timer.Sample deleteSample = Timer.start(meterRegistry);
                 execute(DeleteMessage.builder().chatId(chatId).messageId(prevMsgId).build());
+                deleteSample.stop(buildTelegramApiTimer("deleteMessage", lectureId != null ? lectureId.toString() : "unknown"));
             } catch (TelegramApiException e) {
                 log.debug("deleteMessage failed chatId={} msgId={}: {}", chatId, prevMsgId, e.getMessage());
             }
@@ -558,14 +574,18 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 .build();
 
         try {
+            Timer.Sample sample = Timer.start(meterRegistry);
             Message sent = execute(SendMessage.builder()
                     .chatId(chatId)
                     .text("Лектор показывает слайд " + slideNumber)
                     .replyMarkup(markup)
                     .build());
+            sample.stop(buildTelegramApiTimer("sendMessage", lectureId != null ? lectureId.toString() : "unknown"));
             lastSlideMessageId.put(chatId, sent.getMessageId());
+            deliveryMetricsService.recordDeliveryStatus(lectureId, true);
         } catch (TelegramApiException e) {
             log.error("sendSlideMessage failed chatId={}", chatId, e);
+            deliveryMetricsService.recordDeliveryStatus(lectureId, false);
         }
     }
 
@@ -586,14 +606,21 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             }
         }
 
+        String lecIdStr = studentRepository.findByChatId(chatId)
+                .map(s -> s.getLecture())
+                .filter(Objects::nonNull)
+                .map(l -> l.getId().toString())
+                .orElse("unknown");
+
         try {
+            Timer.Sample sample = Timer.start(meterRegistry);
             Message sent = executeSendPhoto(SendPhoto.builder()
                     .chatId(chatId)
                     .photo(new InputFile(new ByteArrayInputStream(imageBytes), "slide.jpg"))
                     .caption("Слайд " + slideNumber)
                     .build());
+            sample.stop(buildTelegramApiTimer("sendPhoto", lecIdStr));
             lastStudentPhotoMessageId.put(chatId, sent.getMessageId());
-            // Отправляем событие в аналитику
             studentRepository.findByChatId(chatId).ifPresent(student -> {
                 if (student.getLecture() != null) {
                     analyticsServiceClient.sendSlideRequestedEvent(
@@ -628,13 +655,27 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         }, () -> sendText(chatId, "Вы не подключены. Используйте /join."));
     }
 
-    public void sendTextMessage(long chatId, String text) {
-        sendText(chatId, text);
+    public void sendTextMessage(Long lectureId, long chatId, String text) {
+        sendTrackedText(lectureId, chatId, text);
+    }
+
+    private void sendTrackedText(Long lectureId, long chatId, String text) {
+        try {
+            Timer.Sample sample = Timer.start(meterRegistry);
+            execute(SendMessage.builder().chatId(chatId).text(text).build());
+            sample.stop(buildTelegramApiTimer("sendMessage", lectureId != null ? lectureId.toString() : "unknown"));
+            deliveryMetricsService.recordDeliveryStatus(lectureId, true);
+        } catch (TelegramApiException e) {
+            log.error("sendText failed chatId={}", chatId, e);
+            deliveryMetricsService.recordDeliveryStatus(lectureId, false);
+        }
     }
 
     private void sendText(long chatId, String text) {
         try {
+            Timer.Sample sample = Timer.start(meterRegistry);
             execute(SendMessage.builder().chatId(chatId).text(text).build());
+            sample.stop(buildTelegramApiTimer("sendMessage", "unknown"));
         } catch (TelegramApiException e) {
             log.error("sendText failed chatId={}", chatId, e);
         }
