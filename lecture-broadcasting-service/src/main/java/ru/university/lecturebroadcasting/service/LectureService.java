@@ -34,6 +34,7 @@ public class LectureService {
     private final ContentServiceClient contentServiceClient;
     private final AnalyticsServiceClient analyticsServiceClient;
     private final EntityManager entityManager;
+    private final CpuMonitoringService cpuMonitoringService;
 
     @Transactional
     public Lecture createLecture(String name, java.util.UUID sequenceId) {
@@ -87,6 +88,7 @@ public class LectureService {
         Lecture lecture = lectureRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Lecture not found: " + id));
         lecture.setStatus(LectureStatus.ACTIVE);
+        cpuMonitoringService.startMonitoring(id);
         return lectureRepository.save(lecture);
     }
 

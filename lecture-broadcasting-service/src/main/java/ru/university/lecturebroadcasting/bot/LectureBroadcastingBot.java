@@ -1,6 +1,7 @@
 package ru.university.lecturebroadcasting.bot;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -58,6 +59,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final AnalyticsServiceClient analyticsServiceClient;
     private final StudentQuestionService studentQuestionService;
 
+    @Autowired
     public LectureBroadcastingBot(
             DefaultBotOptions options,
             @Value("${telegram.bot.token}") String botToken,
@@ -76,6 +78,17 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         this.quizServiceClient = quizServiceClient;
         this.analyticsServiceClient = analyticsServiceClient;
         this.studentQuestionService = studentQuestionService;
+    }
+
+    public LectureBroadcastingBot(
+            String botToken,
+            String botUsername,
+            StudentRepository studentRepository,
+            LectureService lectureService,
+            QuizServiceClient quizServiceClient,
+            AnalyticsServiceClient analyticsServiceClient,
+            StudentQuestionService studentQuestionService) {
+        this(new DefaultBotOptions(), botToken, botUsername, studentRepository, lectureService, quizServiceClient, analyticsServiceClient, studentQuestionService);
     }
 
     @Override

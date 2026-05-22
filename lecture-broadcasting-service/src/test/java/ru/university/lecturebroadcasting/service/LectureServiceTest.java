@@ -40,6 +40,9 @@ class LectureServiceTest {
     @Mock
     private EntityManager entityManager;
 
+    @Mock
+    private CpuMonitoringService cpuMonitoringService;
+
     @InjectMocks
     private LectureService lectureService;
 

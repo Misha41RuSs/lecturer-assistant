@@ -114,6 +114,9 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
+    volumes:
+      - ./grafana-provisioning:/etc/grafana/provisioning
+      - ./dashboard.json:/var/lib/grafana/dashboards/dashboard.json
     ports:
       - "3000:3000"
     environment:
