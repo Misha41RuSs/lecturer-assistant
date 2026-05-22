@@ -186,4 +186,9 @@ public class LectureController {
 
         return ResponseEntity.ok().build();
     }
+
+    @GetMapping("/{id}/traffic")
+    public ResponseEntity<Double> getLectureTraffic(@PathVariable Long id) {
+        return ResponseEntity.ok(bot.getLectureTrafficMb(String.valueOf(id)));
+    }
 }

@@ -16,8 +16,10 @@ public class TestableBot extends LectureBroadcastingBot {
                        QuizServiceClient quizServiceClient,
                        AnalyticsServiceClient analyticsServiceClient,
                        StudentQuestionService studentQuestionService) {
-        super(botToken, botUsername, studentRepository, lectureService, 
-              quizServiceClient, analyticsServiceClient, studentQuestionService);
+        super(new org.telegram.telegrambots.bots.DefaultBotOptions(), botToken, botUsername, studentRepository, lectureService, 
+              quizServiceClient, analyticsServiceClient, studentQuestionService,
+              new org.springframework.web.client.RestTemplate(),
+              new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
     }
     
     public void sendText(long chatId, String text) {
