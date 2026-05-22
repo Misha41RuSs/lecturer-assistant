@@ -129,11 +129,12 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
 
-        // Ответ на двухшаговую команду (/question, /join без аргументов)
+        // Ответ на двухшаговую команду (/question, /join, /rate без аргументов)
         if (pendingCommand.containsKey(chatId) && !cmd.startsWith("/")) {
             String pending = pendingCommand.remove(chatId);
             switch (pending) {
                 case "question" -> handleQuestionText(chatId, text.trim(), from);
+                case "rate" -> handleRatingText(chatId, text.trim(), from);
                 case "join" -> {
                     String key = LectureService.normalizeLectureJoinKey(text.trim());
                     if (key.isEmpty()) { sendText(chatId, "Укажите название лекции или её id."); return; }
@@ -160,6 +161,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                     "Привет! Я бот для лекций.\n\n" +
                             "/join — подключиться к лекции\n" +
                             "/question — задать вопрос преподавателю\n" +
+                            "/rate — оценить понимание слайда (1-5)\n" +
                             "/current — просмотр текущего слайда\n" +
                             "/ping — проверка связи\n\n" +
                             "Когда преподаватель запустит тест, вопросы придут автоматически.");
@@ -193,6 +195,16 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 tryJoinWithPassword(chatId, key, null, from);
             } else {
                 requestInput(chatId, "join", "Введите название или ID лекции:");
+            }
+            return;
+        }
+
+        if ("/rate".equals(cmd)) {
+            String[] parts = text.split("\\s+", 2);
+            if (parts.length >= 2 && !parts[1].isBlank()) {
+                handleRatingText(chatId, parts[1].trim(), from);
+            } else {
+                requestInput(chatId, "rate", "Оцените понимание слайда (1-5):");
             }
             return;
         }
@@ -237,8 +249,32 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 sendText(chatId, "Вы не подключены к активной лекции.");
                 return;
             }
-            studentQuestionService.add(student.getLecture().getId(), chatId, questionText);
+            Integer slideNumber = studentCurrentSlide.get(chatId);
+            Long slideId = slideNumber != null ? (long) slideNumber : null;
+            studentQuestionService.add(student.getLecture().getId(), chatId, questionText, slideId);
             sendText(chatId, "✅ Ваш вопрос отправлен преподавателю.");
+        }, () -> sendText(chatId, "Вы не подключены. Используйте /join."));
+    }
+
+    private void handleRatingText(long chatId, String ratingText, org.telegram.telegrambots.meta.api.objects.User from) {
+        studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
+            if (student.getLecture() == null || student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
+                sendText(chatId, "Вы не подключены к активной лекции.");
+                return;
+            }
+            try {
+                int rating = Integer.parseInt(ratingText.trim());
+                if (rating < 1 || rating > 5) {
+                    sendText(chatId, "Оценка должна быть от 1 до 5.");
+                    return;
+                }
+                Integer slideNumber = studentCurrentSlide.get(chatId);
+                Long slideId = slideNumber != null ? (long) slideNumber : null;
+                studentQuestionService.sendRating(student.getLecture().getId(), chatId, rating, slideId);
+                sendText(chatId, "✅ Ваша оценка (" + rating + "/5) записана.");
+            } catch (NumberFormatException e) {
+                sendText(chatId, "Пожалуйста, введите число от 1 до 5.");
+            }
         }, () -> sendText(chatId, "Вы не подключены. Используйте /join."));
     }
 

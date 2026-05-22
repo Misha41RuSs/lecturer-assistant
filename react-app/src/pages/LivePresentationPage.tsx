@@ -20,7 +20,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
-import { sendLectureEvent } from '../app/api/analytics.api'
+import { sendLectureEvent, sendXapiSlideShown } from '../app/api/analytics.api'
 import {
 	BASE_URL,
 	broadcastMessage,
@@ -501,6 +501,9 @@ export function LivePresentationPage() {
 				actionType: 'slide_changed',
 				payload: JSON.stringify({ slideNumber: newSlide.index })
 			}).catch(() => {})
+
+			// xAPI: отправляем событие появления слайда для сбора метрик
+			sendXapiSlideShown(parseInt(lectureId), newSlide.id as any)
 
 			if (drawingRef.current?.hasAnnotations(newSlideIndex)) {
 				drawingRef.current

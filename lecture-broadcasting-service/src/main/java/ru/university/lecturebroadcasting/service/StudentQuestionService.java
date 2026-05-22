@@ -1,16 +1,25 @@
 package ru.university.lecturebroadcasting.service;
 
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Service
 public class StudentQuestionService {
+    private static final Logger logger = LoggerFactory.getLogger(StudentQuestionService.class);
 
     public record Question(String id, Long lectureId, Long chatId, String text,
                            String answer, Instant createdAt) {
@@ -21,12 +30,45 @@ public class StudentQuestionService {
 
     private final AtomicLong seq = new AtomicLong(1);
     private final ConcurrentHashMap<String, Question> store = new ConcurrentHashMap<>();
+    private final RestTemplate restTemplate;
 
-    public Question add(Long lectureId, Long chatId, String text) {
+    public StudentQuestionService(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
+
+    public Question add(Long lectureId, Long chatId, String text, Long slideId) {
         String id = String.valueOf(seq.getAndIncrement());
         Question q = new Question(id, lectureId, chatId, text, null, Instant.now());
         store.put(id, q);
+
+        // Отправляем xAPI событие "asked" для сбора метрик
+        sendXapiQuestionEvent(lectureId, slideId, chatId, text);
+
         return q;
+    }
+
+    private void sendXapiQuestionEvent(Long lectureId, Long slideId, Long chatId, String questionText) {
+        try {
+            if (slideId == null) {
+                logger.warn("Slide ID is null for question event, skipping xAPI event");
+                return;
+            }
+
+            Map<String, Object> event = new HashMap<>();
+            event.put("verb", "asked");
+            event.put("lectureId", lectureId);
+            event.put("slideId", slideId);
+            event.put("chatId", chatId);
+            event.put("questionText", questionText);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(event, headers);
+            restTemplate.postForObject("http://localhost:8084/xapi/events", request, Void.class);
+        } catch (Exception e) {
+            logger.error("Failed to send xAPI question event: " + e.getMessage());
+        }
     }
 
     public List<Question> getByLecture(Long lectureId) {
@@ -46,5 +88,29 @@ public class StudentQuestionService {
 
     public void clearByLecture(Long lectureId) {
         store.values().removeIf(q -> q.lectureId().equals(lectureId));
+    }
+
+    public void sendRating(Long lectureId, Long chatId, Integer rating, Long slideId) {
+        try {
+            if (slideId == null) {
+                logger.warn("Slide ID is null for rating event, skipping xAPI event");
+                return;
+            }
+
+            Map<String, Object> event = new HashMap<>();
+            event.put("verb", "rated");
+            event.put("lectureId", lectureId);
+            event.put("slideId", slideId);
+            event.put("chatId", chatId);
+            event.put("rating", rating);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(event, headers);
+            restTemplate.postForObject("http://localhost:8084/xapi/events", request, Void.class);
+        } catch (Exception e) {
+            logger.error("Failed to send xAPI rating event: " + e.getMessage());
+        }
     }
 }
