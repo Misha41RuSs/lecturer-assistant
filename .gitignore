@@ -18,6 +18,9 @@
 *.iml
 *.iws
 
+# Task tracking
+CHANGES_TASK5.md
+
 # VS Code
 .vscode/
 

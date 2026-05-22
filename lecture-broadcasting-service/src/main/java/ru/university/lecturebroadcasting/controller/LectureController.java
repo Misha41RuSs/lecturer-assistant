@@ -104,7 +104,7 @@ public class LectureController {
         byte[] imageBytes = image.getBytes();
         List<Long> chatIds = lectureService.getStudentChatIds(id);
         for (Long chatId : chatIds) {
-            bot.sendSlideToStudent(chatId, imageBytes, lecture.getCurrentSlide());
+            bot.sendSlideToStudent(id, chatId, imageBytes, lecture.getCurrentSlide());
         }
         return ResponseEntity.ok().build();
     }
@@ -128,7 +128,7 @@ public class LectureController {
         quizServiceClient.closeAllExamsForLecture(id);
         LectureService.StopLectureResult result = lectureService.stopLecture(id);
         studentQuestionService.clearByLecture(id);
-        bot.notifyLectureEndedToStudents(result.lecture().getName(), result.disconnectedChatIds());
+        bot.notifyLectureEndedToStudents(id, result.lecture().getName(), result.disconnectedChatIds());
         return ResponseEntity.ok(result.lecture());
     }
 
@@ -139,7 +139,7 @@ public class LectureController {
         String text = body.get("text");
         if (text == null || text.isBlank()) return ResponseEntity.badRequest().build();
         List<Long> chatIds = lectureService.getStudentChatIds(id);
-        for (Long chatId : chatIds) bot.sendTextMessage(chatId, "📢 " + text);
+        for (Long chatId : chatIds) bot.sendTextMessage(id, chatId, "📢 " + text);
         return ResponseEntity.ok().build();
     }
 
@@ -155,7 +155,7 @@ public class LectureController {
     @PostMapping("/{id}/kick/{chatId}")
     public ResponseEntity<Void> kickStudent(@PathVariable Long id, @PathVariable Long chatId) {
         lectureService.kickStudent(id, chatId);
-        bot.sendTextMessage(chatId, "Вы отключены лектором от текущей лекции.");
+        bot.sendTextMessage(id, chatId, "Вы отключены лектором от текущей лекции.");
         return ResponseEntity.ok().build();
     }
 
@@ -172,7 +172,7 @@ public class LectureController {
         if (result.imageBytes() != null) {
             log.info("Broadcasting slide {} to {} students", slideNumber, result.chatIds().size());
             for (Long chatId : result.chatIds()) {
-                bot.sendSlideToStudent(chatId, result.imageBytes(), slideNumber);
+                bot.sendSlideToStudent(id, chatId, result.imageBytes(), slideNumber);
             }
         } else {
             log.error("Failed to broadcast slide {} - imageBytes is null from content-service. lectureId={}", slideNumber, id);

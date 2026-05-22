@@ -15,6 +15,7 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.university.lecturebroadcasting.entity.Student;
 import ru.university.lecturebroadcasting.repository.StudentRepository;
 import ru.university.lecturebroadcasting.service.AnalyticsServiceClient;
+import ru.university.lecturebroadcasting.service.DeliveryMetricsService;
 import ru.university.lecturebroadcasting.service.LectureService;
 import ru.university.lecturebroadcasting.service.PasswordRequiredException;
 import ru.university.lecturebroadcasting.service.QuizServiceClient;
@@ -57,6 +58,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final QuizServiceClient quizServiceClient;
     private final AnalyticsServiceClient analyticsServiceClient;
     private final StudentQuestionService studentQuestionService;
+    private final DeliveryMetricsService deliveryMetricsService;
 
     public LectureBroadcastingBot(
             DefaultBotOptions options,
@@ -66,7 +68,8 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             LectureService lectureService,
             QuizServiceClient quizServiceClient,
             AnalyticsServiceClient analyticsServiceClient,
-            StudentQuestionService studentQuestionService) {
+            StudentQuestionService studentQuestionService,
+            DeliveryMetricsService deliveryMetricsService) {
 
         super(options, botToken);
 
@@ -76,6 +79,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         this.quizServiceClient = quizServiceClient;
         this.analyticsServiceClient = analyticsServiceClient;
         this.studentQuestionService = studentQuestionService;
+        this.deliveryMetricsService = deliveryMetricsService;
     }
 
     @Override
@@ -477,15 +481,15 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         }
     }
 
-    public void notifyLectureEndedToStudents(String lectureName, List<Long> chatIds) {
+    public void notifyLectureEndedToStudents(Long lectureId, String lectureName, List<Long> chatIds) {
         if (chatIds == null || chatIds.isEmpty()) return;
         String title = Objects.requireNonNullElse(lectureName, "лекция");
         String msg = "Лекция «" + title + "» завершена. Вы отключены.\n\n/join <название> — подключиться к другой.";
-        for (Long chatId : chatIds) sendText(chatId, msg);
+        for (Long chatId : chatIds) sendTrackedText(lectureId, chatId, msg);
     }
 
     // Вызывается лектором при смене слайда — только текст, всегда последнее сообщение
-    public void sendSlideToStudent(long chatId, byte[] imageBytes, int slideNumber) {
+    public void sendSlideToStudent(Long lectureId, long chatId, byte[] imageBytes, int slideNumber) {
         lectureCurrentSlide.put(chatId, slideNumber);
 
         Integer prevMsgId = lastSlideMessageId.remove(chatId);
@@ -512,8 +516,10 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                     .replyMarkup(markup)
                     .build());
             lastSlideMessageId.put(chatId, sent.getMessageId());
+            deliveryMetricsService.recordDeliveryStatus(lectureId, true);
         } catch (TelegramApiException e) {
             log.error("sendSlideMessage failed chatId={}", chatId, e);
+            deliveryMetricsService.recordDeliveryStatus(lectureId, false);
         }
     }
 
@@ -576,8 +582,18 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         }, () -> sendText(chatId, "Вы не подключены. Используйте /join."));
     }
 
-    public void sendTextMessage(long chatId, String text) {
-        sendText(chatId, text);
+    public void sendTextMessage(Long lectureId, long chatId, String text) {
+        sendTrackedText(lectureId, chatId, text);
+    }
+
+    private void sendTrackedText(Long lectureId, long chatId, String text) {
+        try {
+            execute(SendMessage.builder().chatId(chatId).text(text).build());
+            deliveryMetricsService.recordDeliveryStatus(lectureId, true);
+        } catch (TelegramApiException e) {
+            log.error("sendText failed chatId={}", chatId, e);
+            deliveryMetricsService.recordDeliveryStatus(lectureId, false);
+        }
     }
 
     private void sendText(long chatId, String text) {
