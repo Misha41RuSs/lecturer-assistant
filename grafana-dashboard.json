@@ -13,43 +13,58 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "thresholds"
           },
-          "custom": {
-            "hideFrom": {
-              "tooltip": false,
-              "viz": false,
-              "legend": false
-            }
+          "mappings": [],
+          "max": 5,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 2
+              },
+              {
+                "color": "yellow",
+                "value": 3
+              },
+              {
+                "color": "green",
+                "value": 4
+              }
+            ]
           },
-          "mappings": []
+          "unit": "short"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 8,
         "x": 0,
         "y": 0
       },
       "id": 2,
       "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "pieType": "pie"
+        "orientation": "auto",
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "text": {}
       },
-      "pluginVersion": "8.0.0",
+      "pluginVersion": "9.0.0",
       "targets": [
         {
           "expr": "lecture_clarity_rating{lecture_id=\"$lecture_id\"}",
           "refId": "A"
         }
       ],
-      "title": "Оценка понятности слайда",
-      "type": "piechart"
+      "title": "Оценка понятности (CR)",
+      "type": "gauge"
     },
     {
       "fieldConfig": {
@@ -58,42 +73,51 @@
             "mode": "thresholds"
           },
           "mappings": [],
+          "max": 2,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
                 "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.5
+              },
+              {
+                "color": "orange",
+                "value": 1
               }
             ]
-          }
+          },
+          "unit": "short"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
+        "w": 8,
+        "x": 8,
         "y": 0
       },
       "id": 3,
       "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
         "orientation": "auto",
-        "textMode": "auto",
-        "textSize": 100
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "text": {}
       },
-      "pluginVersion": "8.0.0",
+      "pluginVersion": "9.0.0",
       "targets": [
         {
           "expr": "lecture_question_density{lecture_id=\"$lecture_id\"}",
           "refId": "A"
         }
       ],
-      "title": "Плотность вопросов",
-      "type": "stat"
+      "title": "Плотность вопросов (QD)",
+      "type": "gauge"
     },
     {
       "fieldConfig": {
@@ -102,48 +126,65 @@
             "mode": "thresholds"
           },
           "mappings": [],
+          "max": 120,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "blue",
+                "color": "red",
                 "value": null
+              },
+              {
+                "color": "orange",
+                "value": 10
+              },
+              {
+                "color": "yellow",
+                "value": 30
+              },
+              {
+                "color": "green",
+                "value": 60
               }
             ]
-          }
+          },
+          "unit": "s"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 8
+        "w": 8,
+        "x": 16,
+        "y": 0
       },
       "id": 4,
       "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
         "orientation": "auto",
-        "textMode": "auto",
-        "textSize": 100
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "text": {}
       },
-      "pluginVersion": "8.0.0",
+      "pluginVersion": "9.0.0",
       "targets": [
         {
           "expr": "lecture_question_temporal_depth{lecture_id=\"$lecture_id\"}",
           "refId": "A"
         }
       ],
-      "title": "Среднее время от слайда до вопроса (секунды)",
-      "type": "stat"
+      "title": "Время до вопроса (QTD)",
+      "type": "gauge"
     }
   ],
   "refresh": "10s",
   "schemaVersion": 27,
   "style": "dark",
-  "tags": ["xapi", "clarity", "metrics"],
+  "tags": [
+    "xapi",
+    "clarity",
+    "metrics"
+  ],
   "templating": {
     "list": [
       {
