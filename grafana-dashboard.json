@@ -44,7 +44,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "lecture_clarity_rating",
+          "expr": "lecture_clarity_rating{lecture_id=\"$lecture_id\"}",
           "refId": "A"
         }
       ],
@@ -88,7 +88,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "lecture_question_density",
+          "expr": "lecture_question_density{lecture_id=\"$lecture_id\"}",
           "refId": "A"
         }
       ],
@@ -132,7 +132,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "lecture_question_temporal_depth",
+          "expr": "lecture_question_temporal_depth{lecture_id=\"$lecture_id\"}",
           "refId": "A"
         }
       ],
@@ -145,7 +145,39 @@
   "style": "dark",
   "tags": ["xapi", "clarity", "metrics"],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "1",
+          "value": "1"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(lecture_clarity_rating, lecture_id)",
+        "description": null,
+        "error": null,
+        "hide": 0,
+        "includeAll": false,
+        "label": "Lecture ID",
+        "multi": false,
+        "name": "lecture_id",
+        "options": [],
+        "query": {
+          "query": "label_values(lecture_clarity_rating, lecture_id)",
+          "refId": "Prometheus-lecture_id-Variable-Query"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "tagValuesQuery": "",
+        "tagsQuery": "",
+        "type": "query"
+      }
+    ]
   },
   "time": {
     "from": "now-6h",
