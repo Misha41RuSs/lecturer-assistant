@@ -25,7 +25,7 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./grafana-dashboard.json:/etc/grafana/provisioning/dashboards/dashboard.json
+      - ./grafana-dashboard_xapi.json:/etc/grafana/provisioning/dashboards/dashboard.json
       - ./grafana-datasource.json:/etc/grafana/provisioning/datasources/datasource.json
     networks:
       - monitoring
