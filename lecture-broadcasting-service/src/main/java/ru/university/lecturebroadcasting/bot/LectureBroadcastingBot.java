@@ -508,6 +508,10 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             pendingPasswordJoin.remove(chatId);
             sendText(chatId, "Вы подключились к лекции: " + student.getLecture().getName());
             analyticsServiceClient.sendStudentJoinedEvent(student.getLecture().getId(), chatId);
+            int currentSlide = student.getLecture().getCurrentSlide();
+            if (student.getLecture().getStatus() == ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE && currentSlide > 0) {
+                sendSlideToStudent(chatId, null, currentSlide);
+            }
 
         } catch (PasswordRequiredException e) {
             pendingPasswordJoin.put(chatId, lectureName);

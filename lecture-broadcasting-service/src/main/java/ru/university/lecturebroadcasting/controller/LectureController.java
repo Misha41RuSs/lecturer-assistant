@@ -169,13 +169,14 @@ public class LectureController {
         LectureService.SlideUpdateResult result = lectureService.updateCurrentSlide(id, slideNumber);
 
         // рассылка в Telegram всем подписанным студентам
-        if (result.imageBytes() != null) {
+        if (!result.chatIds().isEmpty()) {
             log.info("Broadcasting slide {} to {} students", slideNumber, result.chatIds().size());
             for (Long chatId : result.chatIds()) {
                 bot.sendSlideToStudent(chatId, result.imageBytes(), slideNumber);
             }
-        } else {
-            log.error("Failed to broadcast slide {} - imageBytes is null from content-service. lectureId={}", slideNumber, id);
+        }
+        if (result.imageBytes() == null) {
+            log.warn("Slide image unavailable for lectureId={} slide={} (content-service unreachable or no presentation)", id, slideNumber);
         }
 
         // рассылка через WebSocket проектору / интерфейсу лектора

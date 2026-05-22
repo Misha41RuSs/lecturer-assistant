@@ -2,6 +2,7 @@ package ru.university.analyticsservice.xapi.service;
 
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 import ru.university.analyticsservice.xapi.entity.XapiEvent;
 import ru.university.analyticsservice.xapi.repository.XapiEventRepository;
@@ -22,6 +23,14 @@ public class ClarityMetricsService {
     public ClarityMetricsService(MeterRegistry meterRegistry, XapiEventRepository repository) {
         this.meterRegistry = meterRegistry;
         this.repository = repository;
+    }
+
+    @PostConstruct
+    public void restoreMetricsOnStartup() {
+        repository.findAll().stream()
+            .map(XapiEvent::getLectureId)
+            .distinct()
+            .forEach(this::updateMetrics);
     }
 
     public void updateMetrics(Long lectureId) {

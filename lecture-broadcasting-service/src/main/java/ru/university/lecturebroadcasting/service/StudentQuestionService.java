@@ -1,5 +1,6 @@
 package ru.university.lecturebroadcasting.service;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.http.HttpEntity;
@@ -31,9 +32,12 @@ public class StudentQuestionService {
     private final AtomicLong seq = new AtomicLong(1);
     private final ConcurrentHashMap<String, Question> store = new ConcurrentHashMap<>();
     private final RestTemplate restTemplate;
+    private final String analyticsServiceUrl;
 
-    public StudentQuestionService(RestTemplate restTemplate) {
+    public StudentQuestionService(RestTemplate restTemplate,
+                                  @Value("${analytics-service.url}") String analyticsServiceUrl) {
         this.restTemplate = restTemplate;
+        this.analyticsServiceUrl = analyticsServiceUrl;
     }
 
     public Question add(Long lectureId, Long chatId, String text, Long slideId) {
@@ -65,7 +69,7 @@ public class StudentQuestionService {
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(event, headers);
-            restTemplate.postForObject("http://localhost:8084/xapi/events", request, Void.class);
+            restTemplate.postForObject(analyticsServiceUrl + "/xapi/events", request, Void.class);
         } catch (Exception e) {
             logger.error("Failed to send xAPI question event: " + e.getMessage());
         }
@@ -108,7 +112,7 @@ public class StudentQuestionService {
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(event, headers);
-            restTemplate.postForObject("http://localhost:8084/xapi/events", request, Void.class);
+            restTemplate.postForObject(analyticsServiceUrl + "/xapi/events", request, Void.class);
         } catch (Exception e) {
             logger.error("Failed to send xAPI rating event: " + e.getMessage());
         }
