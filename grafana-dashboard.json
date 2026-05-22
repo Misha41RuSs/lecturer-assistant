@@ -2,7 +2,7 @@
   "annotations": {
     "list": []
   },
-  "description": "xAPI Clarity Metrics Dashboard",
+  "description": "Дашборд метрик понятности лекции (xAPI)",
   "editable": true,
   "gnetId": null,
   "graphTooltip": 0,
@@ -48,7 +48,7 @@
           "refId": "A"
         }
       ],
-      "title": "Clarity Rating by Lecture",
+      "title": "Оценка понятности слайда",
       "type": "piechart"
     },
     {
@@ -92,7 +92,7 @@
           "refId": "A"
         }
       ],
-      "title": "Question Density",
+      "title": "Плотность вопросов",
       "type": "stat"
     },
     {
@@ -136,7 +136,7 @@
           "refId": "A"
         }
       ],
-      "title": "Question Temporal Depth (seconds)",
+      "title": "Среднее время от слайда до вопроса (секунды)",
       "type": "stat"
     }
   ],
@@ -153,7 +153,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Lecture Clarity Metrics",
+  "title": "Метрики понятности лекции",
   "uid": "clarity-metrics",
   "version": 0
 }
