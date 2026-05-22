@@ -1,5 +1,7 @@
 package ru.university.analyticsservice.service;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.university.analyticsservice.dto.DashboardDto;
@@ -15,9 +17,11 @@ import java.util.Objects;
 public class AnalyticsService {
 
     private final ActivityLogRepository logRepository;
+    private final MeterRegistry meterRegistry;
 
-    public AnalyticsService(ActivityLogRepository logRepository) {
+    public AnalyticsService(ActivityLogRepository logRepository, MeterRegistry meterRegistry) {
         this.logRepository = logRepository;
+        this.meterRegistry = meterRegistry;
     }
 
     @Transactional
@@ -27,6 +31,18 @@ public class AnalyticsService {
         log.setUserId(userId);
         log.setActionType(actionType);
         log.setPayload(payload);
+
+        String lectureIdTag = lectureId != null ? String.valueOf(lectureId) : "unknown";
+        String userIdTag = userId != null ? String.valueOf(userId) : "unknown";
+        String actionTypeTag = actionType != null ? actionType : "unknown";
+
+        Counter.builder("user.action.count")
+                .tag("lecture_id", lectureIdTag)
+                .tag("user_id", userIdTag)
+                .tag("action_type", actionTypeTag)
+                .register(meterRegistry)
+                .increment();
+
         return logRepository.save(log);
     }
 

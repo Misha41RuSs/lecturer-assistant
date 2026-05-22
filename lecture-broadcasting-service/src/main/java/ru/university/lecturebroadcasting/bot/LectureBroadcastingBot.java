@@ -9,6 +9,7 @@ import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.bots.DefaultBotOptions;
+import org.springframework.web.client.RestTemplate;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
@@ -57,6 +58,9 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final QuizServiceClient quizServiceClient;
     private final AnalyticsServiceClient analyticsServiceClient;
     private final StudentQuestionService studentQuestionService;
+    private final RestTemplate restTemplate;
+    private final io.micrometer.core.instrument.MeterRegistry meterRegistry;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
     public LectureBroadcastingBot(
             DefaultBotOptions options,
@@ -66,7 +70,9 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             LectureService lectureService,
             QuizServiceClient quizServiceClient,
             AnalyticsServiceClient analyticsServiceClient,
-            StudentQuestionService studentQuestionService) {
+            StudentQuestionService studentQuestionService,
+            RestTemplate restTemplate,
+            io.micrometer.core.instrument.MeterRegistry meterRegistry) {
 
         super(options, botToken);
 
@@ -76,6 +82,8 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         this.quizServiceClient = quizServiceClient;
         this.analyticsServiceClient = analyticsServiceClient;
         this.studentQuestionService = studentQuestionService;
+        this.restTemplate = restTemplate;
+        this.meterRegistry = meterRegistry;
     }
 
     @Override
@@ -535,7 +543,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         }
 
         try {
-            Message sent = execute(SendPhoto.builder()
+            Message sent = executeSendPhoto(SendPhoto.builder()
                     .chatId(chatId)
                     .photo(new InputFile(new ByteArrayInputStream(imageBytes), "slide.jpg"))
                     .caption("Слайд " + slideNumber)
@@ -586,6 +594,154 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         } catch (TelegramApiException e) {
             log.error("sendText failed chatId={}", chatId, e);
         }
+    }
+
+    private String getLectureIdFromChatId(String chatIdStr) {
+        if (chatIdStr == null || chatIdStr.trim().isEmpty()) return "unknown";
+        try {
+            long chatId = Long.parseLong(chatIdStr);
+            Optional<Student> studentOpt = studentRepository.findByChatId(chatId);
+            if (studentOpt.isPresent() && studentOpt.get().getLecture() != null) {
+                return String.valueOf(studentOpt.get().getLecture().getId());
+            }
+        } catch (Exception ignored) {}
+        return "unknown";
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T extends java.io.Serializable, Method extends org.telegram.telegrambots.meta.api.methods.BotApiMethod<T>> T execute(Method method) throws TelegramApiException {
+        String chatIdStr = null;
+        try {
+            java.lang.reflect.Method getChatIdMethod = method.getClass().getMethod("getChatId");
+            Object val = getChatIdMethod.invoke(method);
+            if (val != null) {
+                chatIdStr = String.valueOf(val);
+            }
+        } catch (Exception ignored) {}
+
+        String lectureId = getLectureIdFromChatId(chatIdStr);
+
+        try {
+            String url = getOptions().getBaseUrl() + getBotToken() + "/" + method.getMethod();
+
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+            headers.set("X-Lecture-Id", lectureId);
+
+            String requestJson = objectMapper.writeValueAsString(method);
+            org.springframework.http.HttpEntity<String> entity = new org.springframework.http.HttpEntity<>(requestJson, headers);
+
+            org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(
+                    url,
+                    org.springframework.http.HttpMethod.POST,
+                    entity,
+                    String.class
+            );
+
+            return method.deserializeResponse(response.getBody());
+        } catch (Exception e) {
+            log.error("Error executing Telegram API method: {}", e.getMessage(), e);
+            throw new TelegramApiException("Failed to execute bot method via RestTemplate", e);
+        }
+    }
+
+    public Message executeSendPhoto(SendPhoto sendPhoto) throws TelegramApiException {
+        String lectureId = getLectureIdFromChatId(sendPhoto.getChatId());
+
+        try {
+            String url = getOptions().getBaseUrl() + getBotToken() + "/sendPhoto";
+
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.setContentType(org.springframework.http.MediaType.MULTIPART_FORM_DATA);
+            headers.set("X-Lecture-Id", lectureId);
+
+            org.springframework.util.MultiValueMap<String, Object> body = new org.springframework.util.LinkedMultiValueMap<>();
+            body.add("chat_id", sendPhoto.getChatId());
+            if (sendPhoto.getCaption() != null) {
+                body.add("caption", sendPhoto.getCaption());
+            }
+            if (sendPhoto.getReplyMarkup() != null) {
+                body.add("reply_markup", objectMapper.writeValueAsString(sendPhoto.getReplyMarkup()));
+            }
+
+            InputFile photo = sendPhoto.getPhoto();
+            if (photo.getNewMediaFile() != null) {
+                body.add("photo", new org.springframework.core.io.FileSystemResource(photo.getNewMediaFile()));
+            } else if (photo.getNewMediaStream() != null) {
+                byte[] bytes = photo.getNewMediaStream().readAllBytes();
+                body.add("photo", new org.springframework.core.io.ByteArrayResource(bytes) {
+                    @Override
+                    public String getFilename() {
+                        return photo.getMediaName() != null ? photo.getMediaName() : "photo.jpg";
+                    }
+                });
+            } else {
+                body.add("photo", photo.getAttachName());
+            }
+
+            org.springframework.http.HttpEntity<org.springframework.util.MultiValueMap<String, Object>> entity =
+                    new org.springframework.http.HttpEntity<>(body, headers);
+
+            org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(
+                    url,
+                    org.springframework.http.HttpMethod.POST,
+                    entity,
+                    String.class
+            );
+
+            TelegramResponse<Message> apiResponse = objectMapper.readValue(
+                    response.getBody(),
+                    new com.fasterxml.jackson.core.type.TypeReference<TelegramResponse<Message>>() {}
+            );
+
+            if (!apiResponse.isOk()) {
+                throw new TelegramApiException("Telegram error: " + apiResponse.getDescription());
+            }
+            return apiResponse.getResult();
+        } catch (Exception e) {
+            log.error("Error executing sendPhoto: {}", e.getMessage(), e);
+            throw new TelegramApiException("Failed to execute sendPhoto via RestTemplate", e);
+        }
+    }
+
+    public double getLectureTrafficMb(String lectureId) {
+        double outboundBytes = 0;
+        double inboundBytes = 0;
+
+        try {
+            io.micrometer.core.instrument.Counter outboundCounter = meterRegistry.find("telegram.traffic.outbound.bytes")
+                    .tag("lecture_id", lectureId)
+                    .counter();
+            if (outboundCounter != null) {
+                outboundBytes = outboundCounter.count();
+            }
+        } catch (Exception ignored) {}
+
+        try {
+            io.micrometer.core.instrument.Counter inboundCounter = meterRegistry.find("telegram.traffic.inbound.bytes")
+                    .tag("lecture_id", lectureId)
+                    .counter();
+            if (inboundCounter != null) {
+                inboundBytes = inboundCounter.count();
+            }
+        } catch (Exception ignored) {}
+
+        double totalBytes = outboundBytes + inboundBytes;
+        return totalBytes / (1024.0 * 1024.0);
+    }
+
+    public static class TelegramResponse<T> {
+        private boolean ok;
+        private T result;
+        private String description;
+
+        public boolean isOk() { return ok; }
+        public void setOk(boolean ok) { this.ok = ok; }
+        public T getResult() { return result; }
+        public void setResult(T result) { this.result = result; }
+        public String getDescription() { return description; }
+        public void setDescription(String description) { this.description = description; }
     }
 }
 
