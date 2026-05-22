@@ -19,6 +19,23 @@ public class AnalyticsServiceClient {
         this.analyticsServiceUrl = analyticsServiceUrl;
     }
 
+    /**
+     * Записывает действие лектора в счётчик метрик analytics-service.
+     * @param actionType одно из ActionType: NEXT_SLIDE, ADD_ANNOTATION, START_POLL, LAUNCH_QUIZ
+     */
+    @Async
+    public void recordLecturerAction(String actionType, Long lectureId) {
+        try {
+            String url = analyticsServiceUrl + "/internal/actions";
+            Map<String, String> body = new HashMap<>();
+            body.put("type", actionType);
+            body.put("lectureId", String.valueOf(lectureId));
+            restTemplate.postForObject(url, body, Void.class);
+        } catch (Exception e) {
+            System.err.println("Failed to record lecturer action: " + e.getMessage());
+        }
+    }
+
     @Async
     public void sendSlideChangedEvent(Long lectureId, int slideNumber) {
         try {
