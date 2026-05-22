@@ -33,7 +33,7 @@ services:
       - prometheus
 
   analytics-service:
-    image: analytics-service:latest
+    image: digital-lecturer-analytics-service:latest
     container_name: analytics-service
     ports:
       - "8084:8084"
