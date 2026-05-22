@@ -4,6 +4,19 @@
 
 Модуль xAPI собирает и обрабатывает события от слушателей лекций, поступающие через Telegram-бота, и рассчитывает метрики понятности в соответствии со стандартом xAPI (Experience API).
 
+## Входные события (xAPI)
+
+Система собирает следующие события:
+
+| Тип события (verb) | Описание | Поля |
+|--------------------|---------|------|
+| `rated` | Оценка понятности слайда | slide_id, rating (1–5) |
+| `asked` | Вопрос по слайду | slide_id, question_text |
+| `answered` | Ответ на тест/опрос | quiz_id, answer, is_correct |
+| `slide_shown` | Появление слайда (системное) | slide_id, timestamp |
+
+Все события содержат: `verb`, `lectureId`, `timestamp`, `chatId` (идентификатор слушателя).
+
 ## Реализованные метрики
 
 ### 1. Clarity Rating (CR) - Оценка понятности слайда
@@ -51,27 +64,33 @@ QD = Q / (S × U)
 
 ### 3. Question Temporal Depth (QTD) - Среднее время от слайда до вопроса
 
-**Описание**: Среднее время, прошедшее между появлением слайда и первым вопросом по нему (в целях MVP временно возвращает 0).
+**Описание**: Среднее время в секундах между появлением слайда и первым вопросом по нему.
 
-**Текущий статус**: MVP реализация (возвращает 0.0)
-
-**Планируемая формула расчета**:
+**Формула расчета**:
 ```
 QTD = Σ(t_question - t_slide) / M
 ```
 где:
-- t_question - время события вопроса (verb='asked')
-- t_slide - время события появления слайда (verb='slide_shown')
-- M - количество слайдов с вопросами
+- t_question - время события вопроса (verb='asked' с определённым slideId)
+- t_slide - время последнего события появления слайда (verb='slide_shown') перед вопросом с тем же slideId
+- M - количество вопросов, для которых найдено соответствующее событие slide_shown
+
+**Алгоритм расчета**:
+1. Для каждого события "asked" (вопрос) с определённым slideId
+2. Найти последнее событие "slide_shown" (появление слайда) с тем же slideId, которое произошло ПЕРЕД вопросом
+3. Вычислить разницу во времени между событиями (в секундах)
+4. Вернуть среднее значение всех разниц
 
 **Где находится**:
-- Сервис: `ClarityMetricsService.calculateQuestionTemporalDepth()`
+- Сервис (бизнес-логика): `XapiEventService.calculateQuestionTemporalDepth(List<XapiEvent>)` — строки 75-99
+- Сервис (Prometheus метрика): `ClarityMetricsService.calculateQuestionTemporalDepth(Long lectureId)` — строки 74-98
 - Метрика Prometheus: `lecture_question_temporal_depth{lecture_id="..."}` (Gauge)
 - Эндпоинт API: `GET /xapi/lectures/{lectureId}/clarity` → `questionTemporalDepth`
+- Репозиторий: `XapiEventRepository.findByLectureIdAndVerbOrderByTimestampAsc()` — используется для загрузки событий
 
 **Единица измерения**: секунды
 
-**Примечание**: Для полной реализации требуется добавить события типа 'slide_shown' в систему сбора событий.
+**Примечание**: Если нет событий "slide_shown" или нет вопросов, метрика возвращает 0.0.
 
 ---
 
@@ -165,8 +184,8 @@ GET /xapi/lectures/{lectureId}/clarity
    - Обновляется в реальном времени
 
 3. **Среднее время от слайда до вопроса** (статистический блок)
-   - Показывает временную метрику в секундах
-   - Статус: MVP реализация
+   - Показывает среднее время в секундах между появлением слайда и первым вопросом по нему
+   - Обновляется в реальном времени
 
 Дашборд обновляется каждые 10 секунд.
 
@@ -202,10 +221,32 @@ curl -X POST http://localhost:8084/xapi/events \
   }'
 ```
 
-### Пример 3: Получение метрик лекции
+### Пример 3: Запись события появления слайда
+
+```bash
+curl -X POST http://localhost:8084/xapi/events \
+  -H "Content-Type: application/json" \
+  -d '{
+    "verb": "slide_shown",
+    "lectureId": 1,
+    "slideId": 3
+  }'
+```
+
+### Пример 4: Получение метрик лекции
 
 ```bash
 curl http://localhost:8084/xapi/lectures/1/clarity
+```
+
+**Ответ при наличии slide_shown и asked событий**:
+```json
+{
+  "lectureId": 1,
+  "clarityRating": 4.2,
+  "questionDensity": 0.35,
+  "questionTemporalDepth": 45.5
+}
 ```
 
 ---

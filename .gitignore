@@ -18,6 +18,9 @@
 *.iml
 *.iws
 
+# Claude Code
+.claude/
+
 # VS Code
 .vscode/
 
