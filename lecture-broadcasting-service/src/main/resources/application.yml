@@ -38,3 +38,15 @@ quiz-service:
 logging:
   level:
     org.telegram: DEBUG
+
+
+
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus  # Открываем эндпоинт /actuator/prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name} # Добавляет имя приложения
