@@ -12,7 +12,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "bfmteam6ocgsgb"
+        "uid": "Prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -77,7 +77,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "bfmteam6ocgsgb"
+        "uid": "Prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -138,7 +138,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "bfmteam6ocgsgb"
+        "uid": "Prometheus"
       },
       "fieldConfig": {
         "defaults": {
