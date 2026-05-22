@@ -124,6 +124,8 @@ services:
       - ./dashboard_network.json:/var/lib/grafana/dashboards/dashboard_network.json
       - ./dashboard_cpu_mem.json:/var/lib/grafana/dashboards/dashboard_cpu_mem.json
       - ./grafana-dashboard_xapi.json:/var/lib/grafana/dashboards/dashboard_xapi.json
+      - ./dashboard_telegram_latency.json:/var/lib/grafana/dashboards/dashboard_telegram_latency.json
+      - ./monitoring/grafana/provisioning/dashboards/lecturer-actions.json:/var/lib/grafana/dashboards/dashboard_lecturer_actions.json
       - grafana_data:/var/lib/grafana
     ports:
       - "3000:3000"
