@@ -1,0 +1,30 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'digital-lecturer-apps'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      # Когда сервисы запущены в Docker
+      - targets:
+          - 'lecture-broadcasting-service:8082'
+          - 'analytics-service:8084'
+          - 'content-service:8081'
+          - 'quiz-service:8083'
+          - 'admin-gateway:8080'
+        labels:
+          env: 'docker'
+      # Когда сервисы запущены локально на хосте (например, через IntelliJ IDEA или VS Code)
+      - targets:
+          - 'host.docker.internal:8082'
+          - 'host.docker.internal:8084'
+          - 'host.docker.internal:8081'
+          - 'host.docker.internal:8083'
+          - 'host.docker.internal:8080'
+        labels:
+          env: 'local'
