@@ -67,7 +67,7 @@
             "type": "prometheus",
             "uid": "Prometheus"
           },
-          "expr": "lecture_clarity_rating{lecture_id=\"$lecture_id\"}",
+          "expr": "avg(lecture_clarity_rating{lecture_id=\"$lecture_id\"})",
           "refId": "A"
         }
       ],
@@ -128,7 +128,7 @@
             "type": "prometheus",
             "uid": "Prometheus"
           },
-          "expr": "lecture_question_density{lecture_id=\"$lecture_id\"}",
+          "expr": "avg(lecture_question_density{lecture_id=\"$lecture_id\"})",
           "refId": "A"
         }
       ],
@@ -193,7 +193,7 @@
             "type": "prometheus",
             "uid": "Prometheus"
           },
-          "expr": "lecture_question_temporal_depth{lecture_id=\"$lecture_id\"}",
+          "expr": "avg(lecture_question_temporal_depth{lecture_id=\"$lecture_id\"})",
           "refId": "A"
         }
       ],

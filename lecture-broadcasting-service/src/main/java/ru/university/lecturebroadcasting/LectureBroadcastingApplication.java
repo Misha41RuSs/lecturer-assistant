@@ -15,7 +15,9 @@ public class LectureBroadcastingApplication {
     }
 
     @Bean
-    public RestTemplate restTemplate() {
-        return new RestTemplate();
+    public RestTemplate restTemplate(ru.university.lecturebroadcasting.bot.TelegramTrafficInterceptor telegramTrafficInterceptor) {
+        RestTemplate restTemplate = new RestTemplate();
+        restTemplate.setInterceptors(java.util.List.of(telegramTrafficInterceptor));
+        return restTemplate;
     }
 }

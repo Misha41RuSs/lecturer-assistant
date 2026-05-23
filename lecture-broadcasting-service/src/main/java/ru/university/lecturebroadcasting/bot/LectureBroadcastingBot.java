@@ -98,7 +98,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 .description("Telegram API latency")
                 .tag("method", method)
                 .tag("lectureId", lectureId != null ? lectureId : "unknown")
-                .publishPercentiles(0.5, 0.95, 0.99)
+                .publishPercentileHistogram(true)
                 .register(meterRegistry);
     }
 

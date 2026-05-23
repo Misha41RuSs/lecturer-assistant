@@ -8,7 +8,7 @@
   "liveNow": false,
   "panels": [
     {
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "palette-classic"},
@@ -45,7 +45,7 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "datasource": {"type": "prometheus", "uid": "Prometheus"},
           "editorMode": "code",
           "expr": "sum by (action_type) (rate(lecturer_actions_total[1m]) * 60)",
           "legendFormat": "{{action_type}}",
@@ -57,7 +57,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "thresholds"},
@@ -79,7 +79,7 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "datasource": {"type": "prometheus", "uid": "Prometheus"},
           "editorMode": "code",
           "expr": "sum by (action_type) (lecturer_actions_total)",
           "legendFormat": "{{action_type}}",
@@ -91,7 +91,7 @@
       "type": "stat"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "palette-classic"},
@@ -113,7 +113,7 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "datasource": {"type": "prometheus", "uid": "Prometheus"},
           "editorMode": "code",
           "expr": "sum by (lecture_id) (rate(lecturer_actions_total[5m]) * 60)",
           "legendFormat": "lecture {{lecture_id}}",
