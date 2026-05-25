@@ -46,6 +46,7 @@ import {
 	DrawingOverlay,
 	DrawingOverlayHandle
 } from '../features/DrawingOverlay'
+import { QRCodeSVG } from 'qrcode.react'
 import { SlideNotesPanel } from '../features/SlideNotesPanel'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../shared/tooltip'
 
@@ -183,7 +184,6 @@ export function LivePresentationPage() {
 	>('open')
 	const [password, setPassword] = useState('')
 	const telegramJoinUrl = `https://t.me/lecturer_assistant_bot?start=join_${lectureId}`
-	const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(telegramJoinUrl)}`
 
 	const [questions, setQuestions] = useState<Question[]>([])
 	const [students, setStudents] = useState<StudentDto[]>([])
@@ -766,10 +766,11 @@ export function LivePresentationPage() {
 					{accessType === 'invitation' && (
 						<div className="text-center">
 							<div className="bg-white border border-neutral-200 rounded-lg p-3 inline-block mb-2">
-								<img
-									src={qrUrl}
-									alt="QR"
-									className="w-40 h-40"
+								<QRCodeSVG
+									value={telegramJoinUrl}
+									size={160}
+									level="M"
+									aria-label="QR для подключения"
 								/>
 							</div>
 							<p className="text-xs text-neutral-500">Покажите студентам</p>
@@ -855,10 +856,11 @@ export function LivePresentationPage() {
 								{slide.isQrSlide ? (
 									<div className="flex flex-col items-center justify-center gap-4 text-white p-8">
 										<div className="bg-white rounded-2xl p-4">
-											<img
-												src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(`https://t.me/lecturer_assistant_bot?start=join_${lectureId}`)}`}
-												alt="QR для подключения"
-												className="w-48 h-48"
+											<QRCodeSVG
+												value={telegramJoinUrl}
+												size={192}
+												level="M"
+												aria-label="QR для подключения"
 											/>
 										</div>
 										<p className="text-lg font-medium">

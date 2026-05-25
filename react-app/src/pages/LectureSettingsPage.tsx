@@ -17,6 +17,7 @@ import {
 	Trash2,
 	X
 } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
@@ -212,7 +213,6 @@ export function LectureSettingsPage() {
 	const BOT_USERNAME = 'lecturer_assistant_bot'
 	const telegramLink = `https://t.me/${BOT_USERNAME}?start=join_${lectureId}`
 	const joinCommand = `/join ${lectureName || lectureId}`
-	const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(telegramLink)}`
 
 // LectureSettingsPage.tsx - обнови существующую функцию handleSave
 
@@ -912,10 +912,11 @@ export function LectureSettingsPage() {
 									</div>
 									{showQR && (
 										<div className="flex justify-center p-4 bg-white rounded-lg border border-orange-200">
-											<img
-												src={qrUrl}
-												alt="QR Code"
-												className="w-48 h-48"
+											<QRCodeSVG
+												value={telegramLink}
+												size={192}
+												level="M"
+												aria-label="QR для подключения"
 											/>
 										</div>
 									)}
@@ -983,10 +984,11 @@ export function LectureSettingsPage() {
 							<QrCode className="w-5 h-5 mx-auto mb-2" />
 							<p className="text-sm mb-2">QR → откроет бота в Telegram</p>
 							<div className="bg-white rounded-lg p-3 inline-block mb-2">
-								<img
-									src={qrUrl}
-									alt="QR"
-									className="w-32 h-32"
+								<QRCodeSVG
+									value={telegramLink}
+									size={128}
+									level="M"
+									aria-label="QR для подключения"
 								/>
 							</div>
 							<p className="text-orange-100 text-xs">
