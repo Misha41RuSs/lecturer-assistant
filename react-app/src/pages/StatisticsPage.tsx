@@ -109,6 +109,7 @@ export function StatisticsPage() {
         const subs: any[] = await getExamSubmissions(exam.id).catch(() => []);
 
         if (exam.examType === 'SURVEY') {
+          // Satisfaction options are sent as "1 ⭐"..."5 ⭐"; keep this parser in sync with LivePresentationPage.
           const ratings = subs
             .flatMap((s: any) => s.answers ?? [])
             .map((a: any) => parseInt(a.selectedOptionText))

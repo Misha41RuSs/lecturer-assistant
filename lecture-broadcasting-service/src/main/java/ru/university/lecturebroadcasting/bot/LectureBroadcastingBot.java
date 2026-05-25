@@ -57,9 +57,9 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private static final String BTN_PROFILE = "👤 Профиль";
     private static final String BTN_HELP = "ℹ️ Помощь";
     private static final java.util.regex.Pattern REAL_NAME_PATTERN =
-            java.util.regex.Pattern.compile("^[А-Яа-яA-Za-z\\-]+\\s+[А-Яа-яA-Za-z\\-]+(\\s+[А-Яа-яA-Za-z\\-]+)?$");
+            java.util.regex.Pattern.compile("^[\\p{L}\\-]+\\s+[\\p{L}\\-]+(\\s+[\\p{L}\\-]+)?$");
     private static final java.util.regex.Pattern GROUP_NAME_PATTERN =
-            java.util.regex.Pattern.compile("^[А-Яа-яA-Za-z0-9\\-]{2,16}$");
+            java.util.regex.Pattern.compile("^[\\p{L}0-9\\-]{2,16}$");
     private static final String HELP_TEXT = """
             Команды бота:
             /join <название или id> — подключиться к лекции
@@ -169,6 +169,9 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         if (pendingProfileFlow.containsKey(chatId)) {
             if ("/cancel".equals(cmd) || cmd.startsWith("/")) {
                 cancelProfileFlow(chatId);
+                if (!"/cancel".equals(cmd)) {
+                    handleTextMessage(update);
+                }
             } else {
                 handleProfileFlowAnswer(chatId, text);
             }
