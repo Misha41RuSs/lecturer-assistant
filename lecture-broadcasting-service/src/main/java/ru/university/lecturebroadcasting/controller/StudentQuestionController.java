@@ -4,11 +4,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ru.university.lecturebroadcasting.bot.LectureBroadcastingBot;
+import ru.university.lecturebroadcasting.dto.StudentDto;
 import ru.university.lecturebroadcasting.service.LectureService;
 import ru.university.lecturebroadcasting.service.StudentQuestionService;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/lectures")
@@ -21,13 +25,35 @@ public class StudentQuestionController {
 
     @GetMapping("/{id}/student-questions")
     public List<Map<String, Object>> getQuestions(@PathVariable Long id) {
+        Map<Long, StudentDto> studentsByChatId = lectureService.getAllStudents(id).stream()
+                .collect(Collectors.toMap(StudentDto::getChatId, Function.identity(), (left, right) -> left));
+
         return questionService.getByLecture(id).stream()
-                .map(q -> Map.<String, Object>of(
-                        "id", q.id(),
-                        "text", q.text(),
-                        "createdAt", q.createdAt().toString()
-                ))
+                .map(q -> {
+                    StudentDto student = studentsByChatId.get(q.chatId());
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("id", q.id());
+                    item.put("text", q.text());
+                    item.put("createdAt", q.createdAt().toString());
+                    item.put("chatId", q.chatId());
+                    if (student != null) {
+                        item.put("studentName", studentDisplayName(student));
+                        item.put("username", student.getUsername());
+                    }
+                    return item;
+                })
                 .toList();
+    }
+
+    private String studentDisplayName(StudentDto student) {
+        String firstName = student.getFirstName() != null ? student.getFirstName().trim() : "";
+        String lastName = student.getLastName() != null ? student.getLastName().trim() : "";
+        String fullName = (firstName + " " + lastName).trim();
+        if (!fullName.isBlank()) return fullName;
+        if (student.getUsername() != null && !student.getUsername().isBlank()) {
+            return "@" + student.getUsername();
+        }
+        return "ID: " + student.getChatId();
     }
 
     @PutMapping("/{id}/student-questions/{qId}/private-reply")

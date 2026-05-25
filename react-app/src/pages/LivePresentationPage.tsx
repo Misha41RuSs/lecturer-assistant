@@ -135,18 +135,38 @@ function QuizLaunchForm({
 	)
 }
 
+function questionInitials(name: string): string {
+	const normalized = name.replace(/^@/, '').trim()
+	if (!normalized) return '?'
+	const parts = normalized.split(/\s+/).filter(Boolean)
+	if (parts.length > 1) {
+		return (parts[0][0] + parts[1][0]).toUpperCase()
+	}
+	return normalized.slice(0, 2).toUpperCase()
+}
+
 function mapStudentQuestion(
-	q: { id: string; text: string; createdAt: string },
+	q: {
+		id: string
+		text: string
+		createdAt: string
+		chatId?: number
+		studentName?: string
+		username?: string
+	},
 	idx: number
 ): Question {
 	const created = new Date(q.createdAt)
 	const mins = Math.round((Date.now() - created.getTime()) / 60000)
 	const time = mins < 1 ? 'только что' : `${mins} мин.`
 	const num = idx + 1
+	const student =
+		q.studentName ||
+		(q.username ? `@${q.username}` : q.chatId ? `ID: ${q.chatId}` : `Вопрос #${num}`)
 	return {
 		id: q.id,
-		student: `Студент #${num}`,
-		initials: `С${num}`,
+		student,
+		initials: questionInitials(student),
 		time,
 		text: q.text,
 		isNew: mins < 2,

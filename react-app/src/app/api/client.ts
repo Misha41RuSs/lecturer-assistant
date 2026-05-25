@@ -204,7 +204,14 @@ export async function broadcastMessage(lectureId: string, text: string): Promise
 	}
 }
 
-export async function getStudentQuestions(lectureId: string): Promise<{ id: string; text: string; createdAt: string }[]> {
+export async function getStudentQuestions(lectureId: string): Promise<{
+	id: string
+	text: string
+	createdAt: string
+	chatId?: number
+	studentName?: string
+	username?: string
+}[]> {
 	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/student-questions`)
 	if (!res.ok) throw new Error('Failed to load questions')
 	return res.json()
