@@ -311,6 +311,10 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 sendText(chatId, "Вы не подключены к активной лекции.");
                 return;
             }
+            if (Boolean.FALSE.equals(student.getLecture().getAllowQuestions())) {
+                sendText(chatId, "Преподаватель отключил вопросы для этой лекции.");
+                return;
+            }
             Integer slideNumber = studentCurrentSlide.get(chatId);
             Long slideId = slideNumber != null ? (long) slideNumber : null;
             studentQuestionService.add(student.getLecture().getId(), chatId, questionText, slideId);

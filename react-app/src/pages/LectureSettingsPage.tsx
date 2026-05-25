@@ -151,31 +151,31 @@ export function LectureSettingsPage() {
 
 
 
-	// Load lecture + restore access settings from localStorage
+	// Load lecture settings from server
 	useEffect(() => {
 		if (!lectureId || lectureId === 'new') {
 			setLoadingLecture(false)
 			return
 		}
 
-		// Restore access settings saved locally
-		try {
-			const saved = localStorage.getItem(`lecture_access_${lectureId}`)
-			if (saved) {
-				const parsed = JSON.parse(saved)
-				if (parsed.accessType) setAccessType(parsed.accessType)
-				if (parsed.password) setPassword(parsed.password)
-				if (parsed.duration) setDuration(parsed.duration)
-				if (parsed.allowQuestions !== undefined)
-					setAllowQuestions(parsed.allowQuestions)
-			}
-		} catch {}
-
 		;(async () => {
 			try {
 				setLoadingLecture(true)
 				const lecture = await getLecture(parseInt(lectureId))
 				setLectureName(lecture.name || '')
+				const serverAccessType =
+					lecture.accessType === 'PASSWORD'
+						? 'password'
+						: lecture.accessType === 'INVITATION'
+							? 'invitation'
+							: 'open'
+				const serverPassword = lecture.password || ''
+				const serverDuration = String(lecture.durationMinutes || 90)
+				const serverAllowQuestions = lecture.allowQuestions !== false
+				setAccessType(serverAccessType)
+				setPassword(serverPassword)
+				setDuration(serverDuration)
+				setAllowQuestions(serverAllowQuestions)
 
 				if (lecture.sequenceId) {
 					setSequenceId(lecture.sequenceId)
@@ -201,6 +201,15 @@ export function LectureSettingsPage() {
 						setNotesText(built[0].notes)
 					}
 				}
+				setInitialValues({
+					lectureName: lecture.name || '',
+					description,
+					accessType: serverAccessType,
+					password: serverPassword,
+					duration: serverDuration,
+					allowQuestions: serverAllowQuestions
+				})
+				setHasUnsavedChanges(false)
 			} catch (e) {
 				toast.error('Не удалось загрузить лекцию')
 			} finally {
@@ -227,23 +236,14 @@ export function LectureSettingsPage() {
         }
         if (!lectureId) return false
 
-        // Save access settings locally
-        localStorage.setItem(
-            `lecture_access_${lectureId}`,
-            JSON.stringify({
-                accessType,
-                password,
-                duration,
-                allowQuestions
-            })
-        )
-
         try {
             setSaving(true)
             await updateLecture(parseInt(lectureId), {
                 name: lectureName.trim(),
                 accessType: accessType.toUpperCase(),
-                password: accessType === 'password' ? password.trim() : ''
+                password: accessType === 'password' ? password.trim() : '',
+                durationMinutes: Number(duration),
+                allowQuestions
             })
 
             // После успешного сохранения обновляем initialValues

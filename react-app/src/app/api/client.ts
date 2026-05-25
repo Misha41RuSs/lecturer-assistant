@@ -143,11 +143,21 @@ export async function updateCurrentSlide(lectureId: number, slideId: string) {
 
 export async function updateLecture(
 	lectureId: number,
-	body: { name: string; accessType?: string; password?: string }
+	body: {
+		name: string
+		accessType?: string
+		password?: string
+		durationMinutes?: number
+		allowQuestions?: boolean
+	}
 ) {
 	const payload: Record<string, string> = { name: body.name.trim() }
 	if (body.accessType) payload.accessType = body.accessType
 	if (body.password !== undefined) payload.password = body.password
+	if (body.durationMinutes !== undefined)
+		payload.durationMinutes = String(body.durationMinutes)
+	if (body.allowQuestions !== undefined)
+		payload.allowQuestions = String(body.allowQuestions)
 
 	const res = await fetch(`${BASE_URL}/lectures/${lectureId}`, {
 		method: 'PUT',

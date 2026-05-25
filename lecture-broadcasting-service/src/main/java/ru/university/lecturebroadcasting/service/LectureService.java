@@ -43,6 +43,12 @@ public class LectureService {
 
     @Transactional
     public Lecture createLecture(String name, java.util.UUID sequenceId, AccessType accessType, String password) {
+        return createLecture(name, sequenceId, accessType, password, null, null);
+    }
+
+    @Transactional
+    public Lecture createLecture(String name, java.util.UUID sequenceId, AccessType accessType, String password,
+                                 Integer durationMinutes, Boolean allowQuestions) {
         String cleaned = normalizeLectureJoinKey(name);
         if (cleaned.isEmpty()) {
             throw new IllegalArgumentException("Lecture name must not be blank");
@@ -50,6 +56,12 @@ public class LectureService {
         Lecture lecture = new Lecture(cleaned, sequenceId);
         lecture.setAccessType(accessType != null ? accessType : AccessType.OPEN);
         lecture.setPassword(password != null && !password.isBlank() ? password.trim() : null);
+        if (durationMinutes != null) {
+            lecture.setDurationMinutes(durationMinutes);
+        }
+        if (allowQuestions != null) {
+            lecture.setAllowQuestions(allowQuestions);
+        }
         Lecture saved = lectureRepository.save(lecture);
         log.info("Lecture created: id={} name={} status={} accessType={} sequenceId={}",
                 saved.getId(), saved.getName(), saved.getStatus(), saved.getAccessType(), saved.getSequenceId());
@@ -192,6 +204,12 @@ public class LectureService {
 
     @Transactional
     public Lecture updateLecture(Long id, String name, AccessType accessType, String password) {
+        return updateLecture(id, name, accessType, password, null, null);
+    }
+
+    @Transactional
+    public Lecture updateLecture(Long id, String name, AccessType accessType, String password,
+                                 Integer durationMinutes, Boolean allowQuestions) {
         String cleaned = normalizeLectureJoinKey(name);
         if (cleaned.isEmpty()) {
             throw new IllegalArgumentException("Lecture name must not be blank");
@@ -206,6 +224,12 @@ public class LectureService {
             lecture.setPassword(password.trim());
         } else if (accessType == AccessType.OPEN) {
             lecture.setPassword(null);
+        }
+        if (durationMinutes != null) {
+            lecture.setDurationMinutes(durationMinutes);
+        }
+        if (allowQuestions != null) {
+            lecture.setAllowQuestions(allowQuestions);
         }
         return lectureRepository.save(lecture);
     }

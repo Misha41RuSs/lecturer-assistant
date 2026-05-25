@@ -36,6 +36,12 @@ public class Lecture {
     @Column(name = "password", nullable = true)
     private String password;
 
+    @Column(name = "duration_minutes")
+    private Integer durationMinutes = 90;
+
+    @Column(name = "allow_questions")
+    private Boolean allowQuestions = true;
+
     public Lecture(String name, java.util.UUID sequenceId) {
         this.name = name;
         this.sequenceId = sequenceId;

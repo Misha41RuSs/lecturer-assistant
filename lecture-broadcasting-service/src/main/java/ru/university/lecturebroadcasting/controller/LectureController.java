@@ -39,7 +39,10 @@ public class LectureController {
         java.util.UUID sequenceId = seqString != null ? java.util.UUID.fromString(seqString) : null;
         AccessType accessType = parseAccessType(body.get("accessType"));
         String password = body.get("password");
-        Lecture lecture = lectureService.createLecture(body.get("name"), sequenceId, accessType, password);
+        Integer durationMinutes = parseInteger(body.get("durationMinutes"));
+        Boolean allowQuestions = parseBoolean(body.get("allowQuestions"));
+        Lecture lecture = lectureService.createLecture(
+                body.get("name"), sequenceId, accessType, password, durationMinutes, allowQuestions);
         return ResponseEntity.ok(lecture);
     }
 
@@ -84,7 +87,9 @@ public class LectureController {
         String name = body.get("name");
         AccessType accessType = parseAccessType(body.get("accessType"));
         String password = body.get("password");
-        return ResponseEntity.ok(lectureService.updateLecture(id, name, accessType, password));
+        Integer durationMinutes = parseInteger(body.get("durationMinutes"));
+        Boolean allowQuestions = parseBoolean(body.get("allowQuestions"));
+        return ResponseEntity.ok(lectureService.updateLecture(id, name, accessType, password, durationMinutes, allowQuestions));
     }
 
     @DeleteMapping("/{id}")
@@ -116,6 +121,16 @@ public class LectureController {
         } catch (IllegalArgumentException e) {
             return null;
         }
+    }
+
+    private static Integer parseInteger(String value) {
+        if (value == null || value.isBlank()) return null;
+        return Integer.parseInt(value.trim());
+    }
+
+    private static Boolean parseBoolean(String value) {
+        if (value == null || value.isBlank()) return null;
+        return Boolean.parseBoolean(value.trim());
     }
 
     @PostMapping("/{id}/start")
