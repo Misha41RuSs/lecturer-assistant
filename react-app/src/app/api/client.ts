@@ -183,6 +183,8 @@ export interface StudentDto {
 	firstName: string | null
 	lastName: string | null
 	username: string | null
+	realName?: string | null
+	groupName?: string | null
 	kicked: boolean
 }
 

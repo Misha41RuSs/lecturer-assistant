@@ -350,7 +350,9 @@ public class LectureService {
     public List<StudentDto> getStudents(Long lectureId) {
         return studentRepository.findByLecture_Id(lectureId)
                 .stream()
-                .map(s -> new StudentDto(s.getChatId(), s.getFirstName(), s.getLastName(), s.getUsername(), false))
+                .map(s -> new StudentDto(
+                        s.getChatId(), s.getFirstName(), s.getLastName(), s.getUsername(),
+                        s.getRealName(), s.getGroupName(), false))
                 .toList();
     }
 
@@ -358,7 +360,14 @@ public class LectureService {
         List<LectureParticipant> participants = participantRepository.findByLectureId(lectureId);
         if (!participants.isEmpty()) {
             return participants.stream()
-                    .map(p -> new StudentDto(p.getChatId(), p.getFirstName(), p.getLastName(), p.getUsername(), p.isKicked()))
+                    .map(p -> {
+                        Student student = studentRepository.findByChatId(p.getChatId()).orElse(null);
+                        return new StudentDto(
+                                p.getChatId(), p.getFirstName(), p.getLastName(), p.getUsername(),
+                                student != null ? student.getRealName() : null,
+                                student != null ? student.getGroupName() : null,
+                                p.isKicked());
+                    })
                     .toList();
         }
         // Если participants пусты — лекция активна и никто ещё не заджойнился через новый код
