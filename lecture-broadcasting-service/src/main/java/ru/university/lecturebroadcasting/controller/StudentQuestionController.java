@@ -59,6 +59,9 @@ public class StudentQuestionController {
     }
 
     private String studentDisplayName(StudentDto student) {
+        if (student.getRealName() != null && !student.getRealName().isBlank()) {
+            return student.getRealName().trim();
+        }
         String firstName = student.getFirstName() != null ? student.getFirstName().trim() : "";
         String lastName = student.getLastName() != null ? student.getLastName().trim() : "";
         String fullName = (firstName + " " + lastName).trim();
