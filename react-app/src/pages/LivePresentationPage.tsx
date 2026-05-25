@@ -41,6 +41,8 @@ import {
 import {
 	broadcastExam,
 	createExam,
+	getExam,
+	getExamSubmissions,
 	getExamsByLecture,
 	sendExamToUser
 } from '../app/api/quiz.api'
@@ -79,6 +81,27 @@ interface Question {
 	status: 'OPEN' | 'SEEN' | 'ANSWERED' | 'DISMISSED'
 	isNew: boolean
 	index: number
+}
+
+interface LiveExamOption {
+	id: string
+	text: string
+	correct: boolean
+}
+
+interface LiveExamQuestion {
+	id: string
+	text: string
+	type: 'MULTIPLE' | 'OPEN'
+	timeLimitSec?: number | null
+	options?: LiveExamOption[]
+}
+
+interface LivePollState {
+	examId: string
+	title: string
+	questionText: string
+	questionType: 'MULTIPLE' | 'OPEN'
 }
 
 function QuizLaunchForm({
@@ -192,7 +215,7 @@ export function LivePresentationPage() {
 	const [lectureStatus, setLectureStatus] = useState('')
 
 	const [quickMessage, setQuickMessage] = useState('')
-	const [activeTab, setActiveTab] = useState<'questions' | 'students'>(
+	const [activeTab, setActiveTab] = useState<'questions' | 'polls' | 'students'>(
 		'questions'
 	)
 	const [questionView, setQuestionView] = useState<'active' | 'archive'>(
@@ -241,6 +264,13 @@ export function LivePresentationPage() {
 	const archivedQuestions = questions.filter(q => !isActiveQuestion(q))
 	const visibleQuestions =
 		questionView === 'active' ? activeQuestions : archivedQuestions
+	const [bankExams, setBankExams] = useState<{ id: string; title: string; status?: string }[]>([])
+	const [selectedBankExamId, setSelectedBankExamId] = useState('')
+	const [bankQuestions, setBankQuestions] = useState<LiveExamQuestion[]>([])
+	const [loadingBankQuestions, setLoadingBankQuestions] = useState(false)
+	const [launchingQuestionId, setLaunchingQuestionId] = useState<string | null>(null)
+	const [livePoll, setLivePoll] = useState<LivePollState | null>(null)
+	const [livePollSubmissions, setLivePollSubmissions] = useState<any[]>([])
 
 	// Load lecture data and slides from backend
 	useEffect(() => {
@@ -351,6 +381,49 @@ export function LivePresentationPage() {
 	}, [lectureId])
 
 	useEffect(() => {
+		if (!lectureId) return
+		getExamsByLecture(lectureId)
+			.then((list: any[]) => {
+				setBankExams(list)
+				if (list.length > 0) setSelectedBankExamId(current => current || list[0].id)
+			})
+			.catch(() => {})
+	}, [lectureId])
+
+	useEffect(() => {
+		if (!selectedBankExamId) {
+			setBankQuestions([])
+			return
+		}
+		setLoadingBankQuestions(true)
+		getExam(selectedBankExamId)
+			.then((exam: any) => setBankQuestions(exam.questions || []))
+			.catch(() => {
+				setBankQuestions([])
+				toast.error('Не удалось загрузить вопросы теста')
+			})
+			.finally(() => setLoadingBankQuestions(false))
+	}, [selectedBankExamId])
+
+	useEffect(() => {
+		if (!livePoll) return
+		let cancelled = false
+		const load = () => {
+			getExamSubmissions(livePoll.examId)
+				.then((list: any[]) => {
+					if (!cancelled) setLivePollSubmissions(list)
+				})
+				.catch(() => {})
+		}
+		load()
+		const interval = setInterval(load, 2000)
+		return () => {
+			cancelled = true
+			clearInterval(interval)
+		}
+	}, [livePoll])
+
+	useEffect(() => {
 		const timer = setInterval(() => setElapsed(p => p + 1), 1000)
 		return () => clearInterval(timer)
 	}, [])
@@ -449,6 +522,14 @@ export function LivePresentationPage() {
 			.toString()
 			.padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`
 	const slide = slidesData[currentSlide]
+	const livePollAnswers = livePollSubmissions.flatMap(s => s.answers || [])
+	const livePollAnswered = livePollAnswers.length
+	const livePollCorrect = livePollAnswers.filter((a: any) => a.correct === true).length
+	const livePollDistribution = livePollAnswers.reduce<Record<string, number>>((acc, answer: any) => {
+		const key = answer.selectedOptionText || answer.openText || 'Без ответа'
+		acc[key] = (acc[key] || 0) + 1
+		return acc
+	}, {})
 
 	const getStudentDisplayName = (student: StudentDto) => {
 		const fullName = `${student.firstName || ''} ${student.lastName || ''}`.trim()
@@ -556,6 +637,46 @@ export function LivePresentationPage() {
 			toast.error('Не удалось запустить тест')
 		}
 		setShowTestModal(null)
+	}
+
+	const handleAskLiveQuestion = async (sourceQuestion: LiveExamQuestion) => {
+		if (!lectureId) return
+		setLaunchingQuestionId(sourceQuestion.id)
+		try {
+			const title = `Быстрый вопрос: ${sourceQuestion.text.slice(0, 60)}`
+			const exam = await createExam({
+				lectureId,
+				title,
+				examType: 'EXAM',
+				questions: [
+					{
+						text: sourceQuestion.text,
+						type: sourceQuestion.type,
+						timeLimitSec: null,
+						options:
+							sourceQuestion.type === 'MULTIPLE'
+								? (sourceQuestion.options || []).map(option => ({
+										text: option.text,
+										correct: option.correct
+									}))
+								: undefined
+					}
+				]
+			})
+			await broadcastExam(exam.id, lectureId)
+			setLivePoll({
+				examId: exam.id,
+				title,
+				questionText: sourceQuestion.text,
+				questionType: sourceQuestion.type
+			})
+			setLivePollSubmissions([])
+			toast.success(`Вопрос отправлен студентам (${studentsCount})`)
+		} catch {
+			toast.error('Не удалось отправить вопрос')
+		} finally {
+			setLaunchingQuestionId(null)
+		}
 	}
 
 	const handleSendSatisfaction = async () => {
@@ -1153,7 +1274,7 @@ export function LivePresentationPage() {
 							</button>
 						</div>
 						<div className="flex border-b border-neutral-800">
-							{(['questions', 'students'] as const).map(tab => (
+							{(['questions', 'polls', 'students'] as const).map(tab => (
 								<button
 									key={tab}
 									onClick={() => setActiveTab(tab)}
@@ -1165,7 +1286,9 @@ export function LivePresentationPage() {
 								>
 									{tab === 'questions'
 										? `Вопросы (${activeQuestions.length})`
-										: `Студенты (${studentsCount})`}
+										: tab === 'polls'
+											? 'Опросы'
+											: `Студенты (${studentsCount})`}
 									{activeTab === tab && (
 										<div className="absolute bottom-0 left-0 right-0 h-0.5 bg-orange-500" />
 									)}
@@ -1306,6 +1429,105 @@ export function LivePresentationPage() {
 									</div>
 									)}
 								</>
+							) : activeTab === 'polls' ? (
+								<div className="space-y-4">
+									{livePoll && (
+										<div className="rounded-lg border border-orange-500/40 bg-orange-500/10 p-3">
+											<div className="text-xs text-orange-300 mb-1">Идёт быстрый вопрос</div>
+											<div className="text-sm text-white mb-3">{livePoll.questionText}</div>
+											<div className="grid grid-cols-3 gap-2 text-center mb-3">
+												<div className="rounded bg-neutral-900 p-2">
+													<div className="text-lg text-white">{livePollAnswered}</div>
+													<div className="text-[11px] text-neutral-500">ответили</div>
+												</div>
+												<div className="rounded bg-neutral-900 p-2">
+													<div className="text-lg text-white">{studentsCount}</div>
+													<div className="text-[11px] text-neutral-500">студентов</div>
+												</div>
+												<div className="rounded bg-neutral-900 p-2">
+													<div className="text-lg text-white">
+														{livePoll.questionType === 'MULTIPLE' ? livePollCorrect : '—'}
+													</div>
+													<div className="text-[11px] text-neutral-500">верно</div>
+												</div>
+											</div>
+											{Object.keys(livePollDistribution).length > 0 && (
+												<div className="space-y-1.5">
+													{Object.entries(livePollDistribution).map(([answer, count]) => (
+														<div key={answer}>
+															<div className="flex justify-between text-xs text-neutral-300 mb-1">
+																<span className="truncate pr-2">{answer}</span>
+																<span>{count}</span>
+															</div>
+															<div className="h-1.5 rounded bg-neutral-800 overflow-hidden">
+																<div
+																	className="h-full bg-orange-500"
+																	style={{
+																		width: `${livePollAnswered ? Math.round((count / livePollAnswered) * 100) : 0}%`
+																	}}
+																/>
+															</div>
+														</div>
+													))}
+												</div>
+											)}
+										</div>
+									)}
+
+									<div>
+										<div className="text-sm text-white mb-2">Банк вопросов</div>
+										{bankExams.length === 0 ? (
+											<div className="text-neutral-500 text-sm py-6 text-center">
+												Нет тестов с вопросами
+											</div>
+										) : (
+											<div className="space-y-3">
+												<select
+													value={selectedBankExamId}
+													onChange={e => setSelectedBankExamId(e.target.value)}
+													className="w-full px-3 py-2 bg-neutral-800 text-white border border-neutral-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+												>
+													{bankExams.map(exam => (
+														<option
+															key={exam.id}
+															value={exam.id}
+														>
+															{exam.title}
+														</option>
+													))}
+												</select>
+
+												{loadingBankQuestions ? (
+													<div className="text-neutral-500 text-sm py-4 text-center">
+														Загрузка вопросов...
+													</div>
+												) : (
+													<div className="space-y-2">
+														{bankQuestions.map(question => (
+															<div
+																key={question.id}
+																className="rounded-lg bg-neutral-800 p-3"
+															>
+																<div className="text-sm text-neutral-200 mb-2">
+																	{question.text}
+																</div>
+																<button
+																	onClick={() => handleAskLiveQuestion(question)}
+																	disabled={launchingQuestionId === question.id}
+																	className="w-full px-3 py-1.5 bg-orange-500 text-white text-sm rounded hover:bg-orange-600 disabled:opacity-50"
+																>
+																	{launchingQuestionId === question.id
+																		? 'Отправляем...'
+																		: 'Спросить сейчас'}
+																</button>
+															</div>
+														))}
+													</div>
+												)}
+											</div>
+										)}
+									</div>
+								</div>
 							) : (
 								<div className="flex flex-col h-full">
 									{students.length === 0 ? (
