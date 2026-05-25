@@ -57,6 +57,14 @@ public class LectureService {
     @Transactional
     public Lecture createLecture(String name, java.util.UUID sequenceId, AccessType accessType, String password,
                                  Integer durationMinutes, Boolean allowQuestions, Boolean anonymousQuestions) {
+        return createLecture(name, sequenceId, accessType, password, durationMinutes, allowQuestions,
+                anonymousQuestions, null);
+    }
+
+    @Transactional
+    public Lecture createLecture(String name, java.util.UUID sequenceId, AccessType accessType, String password,
+                                 Integer durationMinutes, Boolean allowQuestions, Boolean anonymousQuestions,
+                                 Boolean requireStudentProfile) {
         String cleaned = normalizeLectureJoinKey(name);
         if (cleaned.isEmpty()) {
             throw new IllegalArgumentException("Lecture name must not be blank");
@@ -72,6 +80,9 @@ public class LectureService {
         }
         if (anonymousQuestions != null) {
             lecture.setAnonymousQuestions(anonymousQuestions);
+        }
+        if (requireStudentProfile != null) {
+            lecture.setRequireStudentProfile(requireStudentProfile);
         }
         Lecture saved = lectureRepository.save(lecture);
         log.info("Lecture created: id={} name={} status={} accessType={} sequenceId={}",
@@ -234,6 +245,14 @@ public class LectureService {
     @Transactional
     public Lecture updateLecture(Long id, String name, AccessType accessType, String password,
                                  Integer durationMinutes, Boolean allowQuestions, Boolean anonymousQuestions) {
+        return updateLecture(id, name, accessType, password, durationMinutes, allowQuestions,
+                anonymousQuestions, null);
+    }
+
+    @Transactional
+    public Lecture updateLecture(Long id, String name, AccessType accessType, String password,
+                                 Integer durationMinutes, Boolean allowQuestions, Boolean anonymousQuestions,
+                                 Boolean requireStudentProfile) {
         String cleaned = normalizeLectureJoinKey(name);
         if (cleaned.isEmpty()) {
             throw new IllegalArgumentException("Lecture name must not be blank");
@@ -257,6 +276,9 @@ public class LectureService {
         }
         if (anonymousQuestions != null) {
             lecture.setAnonymousQuestions(anonymousQuestions);
+        }
+        if (requireStudentProfile != null) {
+            lecture.setRequireStudentProfile(requireStudentProfile);
         }
         return lectureRepository.save(lecture);
     }

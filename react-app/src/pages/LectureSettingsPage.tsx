@@ -69,6 +69,7 @@ export function LectureSettingsPage() {
 	const [duration, setDuration] = useState('90')
 	const [allowQuestions, setAllowQuestions] = useState(true)
 	const [anonymousQuestions, setAnonymousQuestions] = useState(false)
+	const [requireStudentProfile, setRequireStudentProfile] = useState(true)
 	const [showQR, setShowQR] = useState(false)
 
     // Состояние для отслеживания изменений
@@ -85,7 +86,8 @@ export function LectureSettingsPage() {
         password: '',
         duration: '90',
         allowQuestions: true,
-        anonymousQuestions: false
+        anonymousQuestions: false,
+        requireStudentProfile: true
     })
 
 
@@ -100,16 +102,17 @@ export function LectureSettingsPage() {
             password !== initialValues.password ||
             duration !== initialValues.duration ||
             allowQuestions !== initialValues.allowQuestions ||
-            anonymousQuestions !== initialValues.anonymousQuestions
+            anonymousQuestions !== initialValues.anonymousQuestions ||
+            requireStudentProfile !== initialValues.requireStudentProfile
 
         setHasUnsavedChanges(hasChanges)
         return hasChanges
-    }, [lectureName, description, accessType, password, duration, allowQuestions, anonymousQuestions, initialValues])
+    }, [lectureName, description, accessType, password, duration, allowQuestions, anonymousQuestions, requireStudentProfile, initialValues])
 
 // Следим за изменениями всех полей
     useEffect(() => {
         checkUnsavedChanges()
-    }, [lectureName, description, accessType, password, duration, allowQuestions, anonymousQuestions, checkUnsavedChanges])
+    }, [lectureName, description, accessType, password, duration, allowQuestions, anonymousQuestions, requireStudentProfile, checkUnsavedChanges])
 
 // При загрузке данных устанавливаем initialValues
     useEffect(() => {
@@ -157,6 +160,7 @@ export function LectureSettingsPage() {
 					const serverDuration = String(lecture.durationMinutes || 90)
 					const serverAllowQuestions = lecture.allowQuestions !== false
 					const serverAnonymousQuestions = Boolean(lecture.anonymousQuestions)
+					const serverRequireStudentProfile = lecture.requireStudentProfile !== false
 					const serverHasPassword = Boolean(lecture.hasPassword)
 				setAccessType(serverAccessType)
 				setPassword('')
@@ -164,6 +168,7 @@ export function LectureSettingsPage() {
 					setDuration(serverDuration)
 					setAllowQuestions(serverAllowQuestions)
 					setAnonymousQuestions(serverAnonymousQuestions)
+					setRequireStudentProfile(serverRequireStudentProfile)
 
 				if (lecture.sequenceId) {
 					setSequenceId(lecture.sequenceId)
@@ -196,7 +201,8 @@ export function LectureSettingsPage() {
 						password: '',
 						duration: serverDuration,
 						allowQuestions: serverAllowQuestions,
-						anonymousQuestions: serverAnonymousQuestions
+						anonymousQuestions: serverAnonymousQuestions,
+						requireStudentProfile: serverRequireStudentProfile
 					})
 				setHasUnsavedChanges(false)
 			} catch (e) {
@@ -233,7 +239,8 @@ export function LectureSettingsPage() {
 	                password: accessType === 'password' ? password.trim() : '',
 	                durationMinutes: Number(duration),
 	                allowQuestions,
-	                anonymousQuestions
+	                anonymousQuestions,
+	                requireStudentProfile
 	            })
             const passwordExists =
                 accessType === 'password' && (hasExistingPassword || Boolean(password.trim()))
@@ -248,7 +255,8 @@ export function LectureSettingsPage() {
 	                password: '',
 	                duration,
 	                allowQuestions,
-	                anonymousQuestions
+	                anonymousQuestions,
+	                requireStudentProfile
 	            })
             setHasUnsavedChanges(false)
 
@@ -974,6 +982,18 @@ export function LectureSettingsPage() {
 									<Toggle
 										value={anonymousQuestions}
 										onChange={() => setAnonymousQuestions(!anonymousQuestions)}
+									/>
+								</div>
+								<div className="flex items-center justify-between gap-4">
+									<div>
+										<span className="text-sm">Требовать ФИО и группу</span>
+										<p className="text-xs text-neutral-500">
+											Если выключено — используется имя из Telegram
+										</p>
+									</div>
+									<Toggle
+										value={requireStudentProfile}
+										onChange={() => setRequireStudentProfile(!requireStudentProfile)}
 									/>
 								</div>
 							</div>

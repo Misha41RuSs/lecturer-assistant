@@ -42,8 +42,10 @@ public class LectureController {
         Integer durationMinutes = parseInteger(body.get("durationMinutes"));
         Boolean allowQuestions = parseBoolean(body.get("allowQuestions"));
         Boolean anonymousQuestions = parseBoolean(body.get("anonymousQuestions"));
+        Boolean requireStudentProfile = parseBoolean(body.get("requireStudentProfile"));
         Lecture lecture = lectureService.createLecture(
-                body.get("name"), sequenceId, accessType, password, durationMinutes, allowQuestions, anonymousQuestions);
+                body.get("name"), sequenceId, accessType, password, durationMinutes, allowQuestions,
+                anonymousQuestions, requireStudentProfile);
         return ResponseEntity.ok(lecture);
     }
 
@@ -91,8 +93,10 @@ public class LectureController {
         Integer durationMinutes = parseInteger(body.get("durationMinutes"));
         Boolean allowQuestions = parseBoolean(body.get("allowQuestions"));
         Boolean anonymousQuestions = parseBoolean(body.get("anonymousQuestions"));
+        Boolean requireStudentProfile = parseBoolean(body.get("requireStudentProfile"));
         return ResponseEntity.ok(lectureService.updateLecture(
-                id, name, accessType, password, durationMinutes, allowQuestions, anonymousQuestions));
+                id, name, accessType, password, durationMinutes, allowQuestions,
+                anonymousQuestions, requireStudentProfile));
     }
 
     @DeleteMapping("/{id}")

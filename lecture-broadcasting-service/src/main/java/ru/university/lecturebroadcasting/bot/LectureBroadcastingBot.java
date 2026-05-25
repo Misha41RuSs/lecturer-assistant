@@ -764,7 +764,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             String username = tgUser != null ? tgUser.getUserName() : null;
             Student student = lectureService.joinLecture(lectureName, chatId, password, firstName, lastName, username);
             pendingPasswordJoin.remove(chatId);
-            if (profileIncomplete(student)) {
+            if (Boolean.TRUE.equals(student.getLecture().getRequireStudentProfile()) && profileIncomplete(student)) {
                 startProfileFlow(chatId, student);
                 return;
             }
