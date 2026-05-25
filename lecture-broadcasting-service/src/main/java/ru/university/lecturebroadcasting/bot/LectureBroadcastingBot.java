@@ -393,9 +393,11 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         student.setGroupName(groupName);
         Student saved = studentRepository.save(student);
         pendingProfileFlow.remove(chatId);
-        sendText(chatId, flow.completeJoinAfter() ? "Готово! Профиль сохранён." : "Группа обновлена.");
         if (flow.completeJoinAfter()) {
+            sendText(chatId, "Готово! Профиль сохранён.");
             completeJoin(chatId, saved);
+        } else {
+            sendTextWithMainKeyboard(chatId, "Профиль обновлён.");
         }
     }
 
@@ -412,7 +414,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 }
             });
         }
-        sendText(chatId, "Подключение отменено. Чтобы попробовать снова, используйте /join.");
+        sendTextWithMainKeyboard(chatId, "Подключение отменено. Чтобы попробовать снова, используйте /join.");
     }
 
     private void showProfile(long chatId) {

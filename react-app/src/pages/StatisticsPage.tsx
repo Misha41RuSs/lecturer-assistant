@@ -97,12 +97,14 @@ export function StatisticsPage() {
       const examRows: ExamRow[] = [];
       const surveyRows: SurveyRow[] = [];
 
-      await Promise.all(examList.filter((exam: any) =>
-        !exam.title?.startsWith('Быстрый вопрос:')
-      ).map(async (exam: any) => {
+      await Promise.all(examList.map(async (exam: any) => {
+        const isLiveQuestion = exam.title?.startsWith('Быстрый вопрос:')
+        const displayTitle = isLiveQuestion
+          ? '⚡ ' + exam.title.replace(/^Быстрый вопрос:\s*/, '')
+          : exam.title
         if (exam.status === 'DRAFT') {
           if (exam.examType === 'SURVEY') return;
-          examRows.push({ id: exam.id, title: exam.title, status: exam.status, submissionCount: 0, avgScore: null, maxScore: null, submissions: [], expanded: false });
+          examRows.push({ id: exam.id, title: displayTitle, status: exam.status, submissionCount: 0, avgScore: null, maxScore: null, submissions: [], expanded: false });
           return;
         }
 
@@ -123,14 +125,14 @@ export function StatisticsPage() {
               .find((n: number) => !isNaN(n) && n >= 1 && n <= 5);
             return { chatId: s.chatId, rating: rating ?? null };
           });
-          surveyRows.push({ id: exam.id, title: exam.title, status: exam.status, responseCount: subs.length, avgRating, submissions });
+          surveyRows.push({ id: exam.id, title: displayTitle, status: exam.status, responseCount: subs.length, avgRating, submissions });
         } else {
           const submissions: SubmRow[] = subs.map((s: any) => ({ chatId: s.chatId, totalScore: s.totalScore, maxScore: s.maxScore, hasUngraded: s.hasUngraded }));
           const gradedSubs = submissions.filter(s => s.maxScore > 0);
           const avgScore = gradedSubs.length > 0
             ? gradedSubs.reduce((sum, s) => sum + (s.totalScore / s.maxScore) * 100, 0) / gradedSubs.length
             : null;
-          examRows.push({ id: exam.id, title: exam.title, status: exam.status, submissionCount: submissions.length, avgScore, maxScore: gradedSubs[0]?.maxScore ?? null, submissions, expanded: false });
+          examRows.push({ id: exam.id, title: displayTitle, status: exam.status, submissionCount: submissions.length, avgScore, maxScore: gradedSubs[0]?.maxScore ?? null, submissions, expanded: false });
         }
       }));
 

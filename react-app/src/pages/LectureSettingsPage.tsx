@@ -354,7 +354,7 @@ export function LectureSettingsPage() {
 
 	const startEditTitle = (uuid: string, current: string) => {
 		setEditingTitle({ uuid, value: current })
-		setTimeout(() => titleInputRef.current?.focus(), 0)
+		setTimeout(() => titleInputRef.current?.focus({ preventScroll: true }), 0)
 	}
 
 	const commitTitle = async (uuid: string, value: string) => {
@@ -455,55 +455,34 @@ export function LectureSettingsPage() {
 
         return (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
-                    <div className="p-6 border-b border-neutral-200">
-                        <h2 className="text-xl font-semibold text-neutral-900">
-                            Несохранённые изменения
-                        </h2>
-                        <p className="text-sm text-neutral-500 mt-1">
-                            В настройках лекции есть несохранённые изменения
-                        </p>
-                    </div>
-
-                    <div className="p-6">
-                        <div className="flex items-start gap-3 mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                            <div className="flex-shrink-0">
-                                <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                </svg>
-                            </div>
-                            <div className="flex-1">
-                                <p className="text-sm text-neutral-700 font-medium">
-                                    Вы хотите сохранить изменения перед запуском?
-                                </p>
-                                <p className="text-xs text-neutral-500 mt-1">
-                                    Если не сохранить, все внесённые изменения будут потеряны
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="p-6 border-t border-neutral-200 flex gap-3">
-                        <button
-                            onClick={handleCancel}
-                            className="flex-1 px-4 py-2 border border-neutral-300 rounded-lg text-neutral-700 hover:bg-neutral-50 transition-colors"
-                        >
-                            Отмена
-                        </button>
+                <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6">
+                    <h2 className="text-base font-semibold text-neutral-900 mb-1">
+                        Несохранённые изменения
+                    </h2>
+                    <p className="text-sm text-neutral-500 mb-5">
+                        Сохранить настройки перед запуском лекции?
+                    </p>
+                    <div className="flex flex-col gap-2">
                         <button
                             onClick={handleSaveAndStart}
                             disabled={saving}
-                            className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                            className="w-full px-4 py-2.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-50"
                         >
                             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                             Сохранить и запустить
                         </button>
                         <button
                             onClick={handleStartWithoutSave}
-                            className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                            className="w-full px-4 py-2.5 border border-neutral-200 rounded-lg text-neutral-700 hover:bg-neutral-50 transition-colors flex items-center justify-center gap-2 text-sm"
                         >
                             <Play className="w-4 h-4" />
                             Запустить без сохранения
+                        </button>
+                        <button
+                            onClick={handleCancel}
+                            className="w-full py-2 text-sm text-neutral-400 hover:text-neutral-600 transition-colors"
+                        >
+                            Отмена
                         </button>
                     </div>
                 </div>

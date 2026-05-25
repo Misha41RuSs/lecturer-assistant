@@ -1801,9 +1801,7 @@ export function LivePresentationPage() {
 								onClick={handleSendSatisfaction}
 								className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm"
 							>
-								{editingSatisfaction
-									? `Сохранить и отправить (${studentsCount})`
-									: `Отправить (${studentsCount})`}
+								{`Отправить (${studentsCount})`}
 							</button>
 						</div>
 					</div>

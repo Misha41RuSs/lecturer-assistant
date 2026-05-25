@@ -133,10 +133,10 @@ const handleDelete = async (id: number) => {
 					<div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
 						<div>
 							<h3 className="text-base mb-2">Первый запуск</h3>
-							<div className="grid gap-2 text-sm text-neutral-700 sm:grid-cols-3">
-								<div>1. Загрузите презентацию</div>
-								<div>2. Настройте доступ</div>
-								<div>3. Запустите лекцию</div>
+							<div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-neutral-700">
+								<span>1. Загрузите презентацию</span>
+								<span>2. Настройте доступ</span>
+								<span>3. Запустите лекцию</span>
 							</div>
 						</div>
 						<div className="flex gap-2">
