@@ -207,6 +207,8 @@ export async function broadcastMessage(lectureId: string, text: string): Promise
 export async function getStudentQuestions(lectureId: string): Promise<{
 	id: string
 	text: string
+	answer?: string | null
+	status?: 'OPEN' | 'ANSWERED' | 'DISMISSED'
 	createdAt: string
 	chatId?: number
 	studentName?: string
@@ -215,6 +217,16 @@ export async function getStudentQuestions(lectureId: string): Promise<{
 	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/student-questions`)
 	if (!res.ok) throw new Error('Failed to load questions')
 	return res.json()
+}
+
+export async function dismissStudentQuestion(lectureId: string, questionId: string): Promise<void> {
+	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/student-questions/${questionId}/dismiss`, {
+		method: 'PUT'
+	})
+	if (!res.ok) {
+		const t = await res.text()
+		throw new Error(`Failed to dismiss question: ${res.status} ${t}`)
+	}
 }
 
 export async function sendPrivateReply(lectureId: string, questionId: string, text: string): Promise<void> {

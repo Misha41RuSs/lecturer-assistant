@@ -25,6 +25,7 @@ import {
 	BASE_URL,
 	broadcastMessage,
 	broadcastSlideImage,
+	dismissStudentQuestion,
 	getLecture,
 	getLectureStudents,
 	getSlideSequence,
@@ -73,6 +74,8 @@ interface Question {
 	initials: string
 	time: string
 	text: string
+	answer?: string | null
+	status: 'OPEN' | 'ANSWERED' | 'DISMISSED'
 	isNew: boolean
 	index: number
 }
@@ -149,6 +152,8 @@ function mapStudentQuestion(
 	q: {
 		id: string
 		text: string
+		answer?: string | null
+		status?: 'OPEN' | 'ANSWERED' | 'DISMISSED'
 		createdAt: string
 		chatId?: number
 		studentName?: string
@@ -169,6 +174,8 @@ function mapStudentQuestion(
 		initials: questionInitials(student),
 		time,
 		text: q.text,
+		answer: q.answer,
+		status: q.status || 'OPEN',
 		isNew: mins < 2,
 		index: num
 	}
@@ -186,6 +193,9 @@ export function LivePresentationPage() {
 	const [quickMessage, setQuickMessage] = useState('')
 	const [activeTab, setActiveTab] = useState<'questions' | 'students'>(
 		'questions'
+	)
+	const [questionView, setQuestionView] = useState<'active' | 'archive'>(
+		'active'
 	)
 	const [sidebarOpen, setSidebarOpen] = useState(() =>
 		typeof window === 'undefined' ? true : window.innerWidth >= 1024
@@ -224,6 +234,10 @@ export function LivePresentationPage() {
 	const [questions, setQuestions] = useState<Question[]>([])
 	const [students, setStudents] = useState<StudentDto[]>([])
 	const studentsCount = students.length
+	const activeQuestions = questions.filter(q => q.status === 'OPEN')
+	const archivedQuestions = questions.filter(q => q.status !== 'OPEN')
+	const visibleQuestions =
+		questionView === 'active' ? activeQuestions : archivedQuestions
 
 	// Load lecture data and slides from backend
 	useEffect(() => {
@@ -447,7 +461,11 @@ export function LivePresentationPage() {
 		const text = replyText.trim()
 		const q = questions.find(x => x.id === qId)
 		
-		setQuestions(questions.filter(x => x.id !== qId))
+		setQuestions(prev =>
+			prev.map(x =>
+				x.id === qId ? { ...x, status: 'ANSWERED', answer: text } : x
+			)
+		)
 		setReplyTo(null)
 		setReplyText('')
 		
@@ -464,7 +482,11 @@ export function LivePresentationPage() {
 		const text = replyText.trim()
 		const q = questions.find(x => x.id === qId)
 		
-		setQuestions(questions.filter(x => x.id !== qId))
+		setQuestions(prev =>
+			prev.map(x =>
+				x.id === qId ? { ...x, status: 'ANSWERED', answer: text } : x
+			)
+		)
 		setReplyTo(null)
 		setReplyText('')
 
@@ -476,10 +498,21 @@ export function LivePresentationPage() {
 			.catch(() => toast.error('Не удалось отправить ответ'))
 	}
 
-	const handleDismissQuestion = (qId: string) => {
-		setQuestions(questions.filter(x => x.id !== qId))
+	const handleDismissQuestion = async (qId: string) => {
+		if (!lectureId) return
+		setQuestions(prev =>
+			prev.map(x => (x.id === qId ? { ...x, status: 'DISMISSED' } : x))
+		)
 		setReplyTo(null)
-		toast.info('Вопрос отклонён')
+		try {
+			await dismissStudentQuestion(lectureId, qId)
+			toast.info('Вопрос отправлен в архив')
+		} catch {
+			setQuestions(prev =>
+				prev.map(x => (x.id === qId ? { ...x, status: 'OPEN' } : x))
+			)
+			toast.error('Не удалось отправить вопрос в архив')
+		}
 	}
 
 	const handleKickStudent = async () => {
@@ -1119,7 +1152,7 @@ export function LivePresentationPage() {
 									}`}
 								>
 									{tab === 'questions'
-										? `Вопросы (${questions.length})`
+										? `Вопросы (${activeQuestions.length})`
 										: `Студенты (${studentsCount})`}
 									{activeTab === tab && (
 										<div className="absolute bottom-0 left-0 right-0 h-0.5 bg-orange-500" />
@@ -1130,16 +1163,41 @@ export function LivePresentationPage() {
 
 						<div className="flex-1 overflow-y-auto p-3">
 							{activeTab === 'questions' ? (
-								questions.length === 0 ? (
-									<div className="text-neutral-500 text-sm text-center py-8">
-										Нет вопросов
+								<>
+									<div className="flex rounded-lg bg-neutral-800 p-1 mb-3">
+										{(['active', 'archive'] as const).map(view => (
+											<button
+												key={view}
+												onClick={() => setQuestionView(view)}
+												className={`flex-1 px-2 py-1.5 rounded-md text-xs transition-colors ${
+													questionView === view
+														? 'bg-neutral-700 text-white'
+														: 'text-neutral-400 hover:text-white'
+												}`}
+											>
+												{view === 'active'
+													? `Активные (${activeQuestions.length})`
+													: `Архив (${archivedQuestions.length})`}
+											</button>
+										))}
 									</div>
-								) : (
-									<div className="space-y-2">
-										{questions.map(q => (
+
+									{visibleQuestions.length === 0 ? (
+										<div className="text-neutral-500 text-sm text-center py-8">
+											{questionView === 'active'
+												? 'Нет активных вопросов'
+												: 'Архив пуст'}
+										</div>
+									) : (
+										<div className="space-y-2">
+											{visibleQuestions.map(q => (
 											<div
 												key={q.id}
-												className="bg-neutral-800 rounded-lg p-3"
+												className={`rounded-lg p-3 ${
+													q.status === 'OPEN'
+														? 'bg-neutral-800'
+														: 'bg-neutral-900 border border-neutral-800'
+												}`}
 											>
 												<div className="flex items-start gap-2 mb-2">
 													<div className="w-7 h-7 rounded-full bg-neutral-700 flex items-center justify-center text-xs text-white flex-shrink-0">
@@ -1164,8 +1222,15 @@ export function LivePresentationPage() {
 												<p className="text-neutral-300 text-sm mb-2">
 													{q.text}
 												</p>
+												{q.status !== 'OPEN' && (
+													<div className="text-xs text-neutral-500 mb-2">
+														{q.status === 'ANSWERED'
+															? `Отвечено${q.answer ? `: ${q.answer}` : ''}`
+															: 'В архиве без ответа'}
+													</div>
+												)}
 
-												{replyTo === q.id ? (
+												{q.status !== 'OPEN' ? null : replyTo === q.id ? (
 													<div className="space-y-2">
 														<textarea
 															value={replyText}
@@ -1227,7 +1292,8 @@ export function LivePresentationPage() {
 											</div>
 										))}
 									</div>
-								)
+									)}
+								</>
 							) : (
 								<div className="flex flex-col h-full">
 									{students.length === 0 ? (

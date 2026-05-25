@@ -34,6 +34,8 @@ public class StudentQuestionController {
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("id", q.id());
                     item.put("text", q.text());
+                    item.put("answer", q.answer());
+                    item.put("status", q.status());
                     item.put("createdAt", q.createdAt().toString());
                     item.put("chatId", q.chatId());
                     if (student != null) {
@@ -66,6 +68,14 @@ public class StudentQuestionController {
                 bot.sendTextMessage(id, q.chatId(),
                         "Преподаватель ответил на ваш вопрос:\n«" + q.text() + "»\n\nОтвет: " + replyText)
         );
+        return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/{id}/student-questions/{qId}/dismiss")
+    public ResponseEntity<Void> dismiss(
+            @PathVariable Long id,
+            @PathVariable String qId) {
+        questionService.dismiss(qId);
         return ResponseEntity.ok().build();
     }
 

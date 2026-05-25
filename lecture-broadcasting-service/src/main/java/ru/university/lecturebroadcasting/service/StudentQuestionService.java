@@ -23,9 +23,13 @@ public class StudentQuestionService {
     private static final Logger logger = LoggerFactory.getLogger(StudentQuestionService.class);
 
     public record Question(String id, Long lectureId, Long chatId, String text,
-                           String answer, Instant createdAt) {
+                           String answer, String status, Instant createdAt) {
         Question withAnswer(String ans) {
-            return new Question(id, lectureId, chatId, text, ans, createdAt);
+            return new Question(id, lectureId, chatId, text, ans, "ANSWERED", createdAt);
+        }
+
+        Question dismissed() {
+            return new Question(id, lectureId, chatId, text, answer, "DISMISSED", createdAt);
         }
     }
 
@@ -42,7 +46,7 @@ public class StudentQuestionService {
 
     public Question add(Long lectureId, Long chatId, String text, Long slideId) {
         String id = String.valueOf(seq.getAndIncrement());
-        Question q = new Question(id, lectureId, chatId, text, null, Instant.now());
+        Question q = new Question(id, lectureId, chatId, text, null, "OPEN", Instant.now());
         store.put(id, q);
 
         // Отправляем xAPI событие "asked" для сбора метрик
@@ -77,7 +81,7 @@ public class StudentQuestionService {
 
     public List<Question> getByLecture(Long lectureId) {
         return store.values().stream()
-                .filter(q -> q.lectureId().equals(lectureId) && q.answer() == null)
+                .filter(q -> q.lectureId().equals(lectureId))
                 .sorted(Comparator.comparing(Question::createdAt))
                 .toList();
     }
@@ -88,6 +92,14 @@ public class StudentQuestionService {
         Question answered = q.withAnswer(answer);
         store.put(id, answered);
         return Optional.of(answered);
+    }
+
+    public Optional<Question> dismiss(String id) {
+        Question q = store.get(id);
+        if (q == null) return Optional.empty();
+        Question dismissed = q.dismissed();
+        store.put(id, dismissed);
+        return Optional.of(dismissed);
     }
 
     public void clearByLecture(Long lectureId) {
