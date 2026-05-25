@@ -322,3 +322,50 @@ export function createLectureSocket(
 
 	return ws
 }
+
+export function createStompTopicSocket(
+	topic: string,
+	onMessage: (data: any) => void
+) {
+	const ws = new WebSocket(`${WS_URL}/ws/broadcasting-native`)
+
+	const sendFrame = (command: string, headers: Record<string, string> = {}, body = '') => {
+		const headerLines = Object.entries(headers)
+			.map(([key, value]) => `${key}:${value}`)
+			.join('\n')
+		ws.send(`${command}\n${headerLines}\n\n${body}\0`)
+	}
+
+	ws.onopen = () => {
+		sendFrame('CONNECT', {
+			'accept-version': '1.2',
+			'heart-beat': '0,0'
+		})
+	}
+
+	ws.onmessage = event => {
+		String(event.data)
+			.split('\0')
+			.filter(Boolean)
+			.forEach(frame => {
+				const [head, body = ''] = frame.split('\n\n')
+				const command = head.split('\n')[0]
+				if (command === 'CONNECTED') {
+					sendFrame('SUBSCRIBE', {
+						id: `sub-${topic.replace(/[^a-zA-Z0-9]/g, '-')}`,
+						destination: topic
+					})
+					return
+				}
+				if (command === 'MESSAGE') {
+					try {
+						onMessage(JSON.parse(body))
+					} catch (e) {
+						console.error('Invalid STOMP message', e)
+					}
+				}
+			})
+	}
+
+	return ws
+}

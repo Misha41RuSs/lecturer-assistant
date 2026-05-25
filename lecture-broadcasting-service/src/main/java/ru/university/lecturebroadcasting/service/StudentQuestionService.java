@@ -1,6 +1,7 @@
 package ru.university.lecturebroadcasting.service;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.http.HttpEntity;
@@ -41,11 +42,14 @@ public class StudentQuestionService {
     private final ConcurrentHashMap<String, Question> store = new ConcurrentHashMap<>();
     private final RestTemplate restTemplate;
     private final String analyticsServiceUrl;
+    private final SimpMessagingTemplate messagingTemplate;
 
     public StudentQuestionService(RestTemplate restTemplate,
-                                  @Value("${analytics-service.url}") String analyticsServiceUrl) {
+                                  @Value("${analytics-service.url}") String analyticsServiceUrl,
+                                  SimpMessagingTemplate messagingTemplate) {
         this.restTemplate = restTemplate;
         this.analyticsServiceUrl = analyticsServiceUrl;
+        this.messagingTemplate = messagingTemplate;
     }
 
     public Question add(Long lectureId, Long chatId, String text, Long slideId) {
@@ -55,6 +59,7 @@ public class StudentQuestionService {
 
         // Отправляем xAPI событие "asked" для сбора метрик
         sendXapiQuestionEvent(lectureId, slideId, chatId, text);
+        publishQuestionChange(lectureId);
 
         return q;
     }
@@ -106,6 +111,7 @@ public class StudentQuestionService {
         if (q == null) return Optional.empty();
         Question answered = q.withAnswer(answer);
         store.put(id, answered);
+        publishQuestionChange(answered.lectureId());
         return Optional.of(answered);
     }
 
@@ -114,7 +120,15 @@ public class StudentQuestionService {
         if (q == null) return Optional.empty();
         Question dismissed = q.dismissed();
         store.put(id, dismissed);
+        publishQuestionChange(dismissed.lectureId());
         return Optional.of(dismissed);
+    }
+
+    private void publishQuestionChange(Long lectureId) {
+        messagingTemplate.convertAndSend(
+                "/topic/student-questions/" + lectureId,
+                Map.of("type", "QUESTIONS_CHANGED", "lectureId", lectureId)
+        );
     }
 
     public void clearByLecture(Long lectureId) {

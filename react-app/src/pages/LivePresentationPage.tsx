@@ -25,6 +25,7 @@ import {
 	BASE_URL,
 	broadcastMessage,
 	broadcastSlideImage,
+	createStompTopicSocket,
 	dismissStudentQuestion,
 	getLecture,
 	getLectureStudents,
@@ -317,14 +318,23 @@ export function LivePresentationPage() {
 	// Polling вопросов студентов из бота каждые 10 секунд
 	useEffect(() => {
 		if (!lectureId) return
+		let cancelled = false
 		const load = () => {
 			getStudentQuestions(lectureId)
-				.then(list => setQuestions(list.map(mapStudentQuestion)))
+				.then(list => {
+					if (!cancelled) setQuestions(list.map(mapStudentQuestion))
+				})
 				.catch(() => {})
 		}
 		load()
-		const interval = setInterval(load, 5000)
-		return () => clearInterval(interval)
+		const socket = createStompTopicSocket(
+			`/topic/student-questions/${lectureId}`,
+			load
+		)
+		return () => {
+			cancelled = true
+			socket.close()
+		}
 	}, [lectureId])
 
 	// Реальное число студентов из lecture-broadcasting-service
