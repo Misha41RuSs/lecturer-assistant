@@ -68,6 +68,7 @@ export function LectureSettingsPage() {
 	const [showPassword, setShowPassword] = useState(false)
 	const [duration, setDuration] = useState('90')
 	const [allowQuestions, setAllowQuestions] = useState(true)
+	const [anonymousQuestions, setAnonymousQuestions] = useState(false)
 	const [showQR, setShowQR] = useState(false)
 
     // Состояние для отслеживания изменений
@@ -83,7 +84,8 @@ export function LectureSettingsPage() {
         accessType: 'open' as 'open' | 'password' | 'invitation',
         password: '',
         duration: '90',
-        allowQuestions: true
+        allowQuestions: true,
+        anonymousQuestions: false
     })
 
 
@@ -97,16 +99,17 @@ export function LectureSettingsPage() {
             accessType !== initialValues.accessType ||
             password !== initialValues.password ||
             duration !== initialValues.duration ||
-            allowQuestions !== initialValues.allowQuestions
+            allowQuestions !== initialValues.allowQuestions ||
+            anonymousQuestions !== initialValues.anonymousQuestions
 
         setHasUnsavedChanges(hasChanges)
         return hasChanges
-    }, [lectureName, description, accessType, password, duration, allowQuestions, initialValues])
+    }, [lectureName, description, accessType, password, duration, allowQuestions, anonymousQuestions, initialValues])
 
 // Следим за изменениями всех полей
     useEffect(() => {
         checkUnsavedChanges()
-    }, [lectureName, description, accessType, password, duration, allowQuestions, checkUnsavedChanges])
+    }, [lectureName, description, accessType, password, duration, allowQuestions, anonymousQuestions, checkUnsavedChanges])
 
 // При загрузке данных устанавливаем initialValues
     useEffect(() => {
@@ -151,14 +154,16 @@ export function LectureSettingsPage() {
 						: lecture.accessType === 'INVITATION'
 							? 'invitation'
 							: 'open'
-				const serverDuration = String(lecture.durationMinutes || 90)
-				const serverAllowQuestions = lecture.allowQuestions !== false
-				const serverHasPassword = Boolean(lecture.hasPassword)
+					const serverDuration = String(lecture.durationMinutes || 90)
+					const serverAllowQuestions = lecture.allowQuestions !== false
+					const serverAnonymousQuestions = Boolean(lecture.anonymousQuestions)
+					const serverHasPassword = Boolean(lecture.hasPassword)
 				setAccessType(serverAccessType)
 				setPassword('')
 				setHasExistingPassword(serverHasPassword)
-				setDuration(serverDuration)
-				setAllowQuestions(serverAllowQuestions)
+					setDuration(serverDuration)
+					setAllowQuestions(serverAllowQuestions)
+					setAnonymousQuestions(serverAnonymousQuestions)
 
 				if (lecture.sequenceId) {
 					setSequenceId(lecture.sequenceId)
@@ -188,10 +193,11 @@ export function LectureSettingsPage() {
 					lectureName: lecture.name || '',
 					description,
 					accessType: serverAccessType,
-					password: '',
-					duration: serverDuration,
-					allowQuestions: serverAllowQuestions
-				})
+						password: '',
+						duration: serverDuration,
+						allowQuestions: serverAllowQuestions,
+						anonymousQuestions: serverAnonymousQuestions
+					})
 				setHasUnsavedChanges(false)
 			} catch (e) {
 				toast.error('Не удалось загрузить лекцию')
@@ -224,10 +230,11 @@ export function LectureSettingsPage() {
             await updateLecture(parseInt(lectureId), {
                 name: lectureName.trim(),
                 accessType: accessType.toUpperCase(),
-                password: accessType === 'password' ? password.trim() : '',
-                durationMinutes: Number(duration),
-                allowQuestions
-            })
+	                password: accessType === 'password' ? password.trim() : '',
+	                durationMinutes: Number(duration),
+	                allowQuestions,
+	                anonymousQuestions
+	            })
             const passwordExists =
                 accessType === 'password' && (hasExistingPassword || Boolean(password.trim()))
             setHasExistingPassword(passwordExists)
@@ -238,10 +245,11 @@ export function LectureSettingsPage() {
                 lectureName,
                 description,
                 accessType,
-                password: '',
-                duration,
-                allowQuestions
-            })
+	                password: '',
+	                duration,
+	                allowQuestions,
+	                anonymousQuestions
+	            })
             setHasUnsavedChanges(false)
 
             toast.success('Настройки сохранены')
@@ -954,14 +962,21 @@ export function LectureSettingsPage() {
 							/>
 						</div>
 						<div className="space-y-3 border-t border-neutral-200 pt-4">
-							<div className="flex items-center justify-between">
-								<span className="text-sm">Разрешить вопросы</span>
-								<Toggle
-									value={allowQuestions}
-									onChange={() => setAllowQuestions(!allowQuestions)}
-								/>
+								<div className="flex items-center justify-between">
+									<span className="text-sm">Разрешить вопросы</span>
+									<Toggle
+										value={allowQuestions}
+										onChange={() => setAllowQuestions(!allowQuestions)}
+									/>
+								</div>
+								<div className="flex items-center justify-between">
+									<span className="text-sm">Анонимные вопросы</span>
+									<Toggle
+										value={anonymousQuestions}
+										onChange={() => setAnonymousQuestions(!anonymousQuestions)}
+									/>
+								</div>
 							</div>
-						</div>
 					</div>
 
 						{accessType === 'password' && (password || hasExistingPassword) && (

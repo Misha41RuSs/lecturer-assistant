@@ -51,6 +51,12 @@ public class LectureService {
     @Transactional
     public Lecture createLecture(String name, java.util.UUID sequenceId, AccessType accessType, String password,
                                  Integer durationMinutes, Boolean allowQuestions) {
+        return createLecture(name, sequenceId, accessType, password, durationMinutes, allowQuestions, null);
+    }
+
+    @Transactional
+    public Lecture createLecture(String name, java.util.UUID sequenceId, AccessType accessType, String password,
+                                 Integer durationMinutes, Boolean allowQuestions, Boolean anonymousQuestions) {
         String cleaned = normalizeLectureJoinKey(name);
         if (cleaned.isEmpty()) {
             throw new IllegalArgumentException("Lecture name must not be blank");
@@ -63,6 +69,9 @@ public class LectureService {
         }
         if (allowQuestions != null) {
             lecture.setAllowQuestions(allowQuestions);
+        }
+        if (anonymousQuestions != null) {
+            lecture.setAnonymousQuestions(anonymousQuestions);
         }
         Lecture saved = lectureRepository.save(lecture);
         log.info("Lecture created: id={} name={} status={} accessType={} sequenceId={}",
@@ -219,6 +228,12 @@ public class LectureService {
     @Transactional
     public Lecture updateLecture(Long id, String name, AccessType accessType, String password,
                                  Integer durationMinutes, Boolean allowQuestions) {
+        return updateLecture(id, name, accessType, password, durationMinutes, allowQuestions, null);
+    }
+
+    @Transactional
+    public Lecture updateLecture(Long id, String name, AccessType accessType, String password,
+                                 Integer durationMinutes, Boolean allowQuestions, Boolean anonymousQuestions) {
         String cleaned = normalizeLectureJoinKey(name);
         if (cleaned.isEmpty()) {
             throw new IllegalArgumentException("Lecture name must not be blank");
@@ -239,6 +254,9 @@ public class LectureService {
         }
         if (allowQuestions != null) {
             lecture.setAllowQuestions(allowQuestions);
+        }
+        if (anonymousQuestions != null) {
+            lecture.setAnonymousQuestions(anonymousQuestions);
         }
         return lectureRepository.save(lecture);
     }

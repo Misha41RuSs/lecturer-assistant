@@ -46,6 +46,9 @@ public class Lecture {
     @Column(name = "allow_questions")
     private Boolean allowQuestions = true;
 
+    @Column(name = "anonymous_questions")
+    private Boolean anonymousQuestions = false;
+
     @Column(name = "notified_start_at")
     private Instant notifiedStartAt;
 

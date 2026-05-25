@@ -149,6 +149,7 @@ export async function updateLecture(
 		password?: string
 		durationMinutes?: number
 		allowQuestions?: boolean
+		anonymousQuestions?: boolean
 	}
 ) {
 	const payload: Record<string, string> = { name: body.name.trim() }
@@ -158,6 +159,8 @@ export async function updateLecture(
 		payload.durationMinutes = String(body.durationMinutes)
 	if (body.allowQuestions !== undefined)
 		payload.allowQuestions = String(body.allowQuestions)
+	if (body.anonymousQuestions !== undefined)
+		payload.anonymousQuestions = String(body.anonymousQuestions)
 
 	const res = await fetch(`${BASE_URL}/lectures/${lectureId}`, {
 		method: 'PUT',
