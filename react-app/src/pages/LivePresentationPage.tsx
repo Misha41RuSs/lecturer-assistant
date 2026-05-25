@@ -169,6 +169,7 @@ export function LivePresentationPage() {
 	)
 	const [sidebarOpen, setSidebarOpen] = useState(true)
 	const [elapsed, setElapsed] = useState(0)
+	const [slideElapsed, setSlideElapsed] = useState(0)
 	const [showConfirmEnd, setShowConfirmEnd] = useState(false)
 	const [showConfirmExit, setShowConfirmExit] = useState(false)
 	const [replyTo, setReplyTo] = useState<string | null>(null)
@@ -305,6 +306,12 @@ export function LivePresentationPage() {
 		const timer = setInterval(() => setElapsed(p => p + 1), 1000)
 		return () => clearInterval(timer)
 	}, [])
+
+	useEffect(() => {
+		setSlideElapsed(0)
+		const timer = setInterval(() => setSlideElapsed(p => p + 1), 1000)
+		return () => clearInterval(timer)
+	}, [currentSlide])
 
 	useEffect(() => {
 		if (!lectureId) return
@@ -998,9 +1005,14 @@ export function LivePresentationPage() {
 									<p>Предыдущий слайд</p>
 								</TooltipContent>
 							</Tooltip>
-							<span className="text-white text-sm bg-neutral-800 px-3 py-1.5 rounded-lg">
-								{currentSlide + 1} / {slidesData.length}
-							</span>
+							<div className="flex items-center gap-2">
+								<span className="text-white text-sm bg-neutral-800 px-3 py-1.5 rounded-lg">
+									{currentSlide + 1} / {slidesData.length}
+								</span>
+								<span className="text-neutral-300 text-sm bg-neutral-800 px-3 py-1.5 rounded-lg">
+									На слайде {formatTime(slideElapsed)}
+								</span>
+							</div>
 							<Tooltip>
 								<TooltipTrigger asChild>
 									<button
