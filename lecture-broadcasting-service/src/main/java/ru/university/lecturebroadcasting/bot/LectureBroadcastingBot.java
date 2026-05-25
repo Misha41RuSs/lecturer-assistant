@@ -12,6 +12,9 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.bots.DefaultBotOptions;
 import org.springframework.web.client.RestTemplate;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.university.lecturebroadcasting.entity.Student;
@@ -43,6 +46,24 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private static final String CB_CURRENT_SLIDE = "current_slide";
     private static final String CB_GOTO_SLIDE = "goto_slide";
     private static final String CB_EXAM_OPT = "exam_opt:";
+    private static final String BTN_JOIN = "🔌 Подключиться";
+    private static final String BTN_CURRENT = "📍 Текущий слайд";
+    private static final String BTN_PREV = "◀ Предыдущий слайд";
+    private static final String BTN_QUESTION = "❓ Задать вопрос";
+    private static final String BTN_RATE = "⭐ Оценить слайд";
+    private static final String BTN_HELP = "ℹ️ Помощь";
+    private static final String HELP_TEXT = """
+            Команды бота:
+            /join <название или id> — подключиться к лекции
+            /question <текст> — задать вопрос преподавателю
+            /rate <1-5> — оценить понимание текущего слайда
+            /current — повторно получить текущий слайд
+            /prev — получить предыдущий слайд
+            /slide — выбрать слайд по номеру
+            /help — показать эту подсказку
+
+            Когда преподаватель запустит тест, вопросы придут автоматически.
+            """;
 
     private final ConcurrentHashMap<Long, String> pendingPasswordJoin = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, String> pendingCommand = new ConcurrentHashMap<>();
@@ -126,6 +147,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         String text = update.getMessage().getText().trim();
         long chatId = update.getMessage().getChatId();
         org.telegram.telegrambots.meta.api.objects.User from = update.getMessage().getFrom();
+        text = normalizeKeyboardButton(text);
         String cmd = baseCommand(text.split("\\s+", 2)[0]);
 
         log.info("Telegram message: chatId={} cmd='{}'", chatId, cmd);
@@ -171,14 +193,12 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 tryJoinWithPassword(chatId, lectureKey, null, from);
                 return;
             }
-            sendText(chatId,
-                    "Привет! Я бот для лекций.\n\n" +
-                            "/join — подключиться к лекции\n" +
-                            "/question — задать вопрос преподавателю\n" +
-                            "/rate — оценить понимание слайда (1-5)\n" +
-                            "/current — просмотр текущего слайда\n" +
-                            "/ping — проверка связи\n\n" +
-                            "Когда преподаватель запустит тест, вопросы придут автоматически.");
+            sendTextWithMainKeyboard(chatId, "Привет! Я бот для лекций.\n\n" + HELP_TEXT);
+            return;
+        }
+
+        if ("/help".equals(cmd)) {
+            sendTextWithMainKeyboard(chatId, HELP_TEXT);
             return;
         }
 
@@ -241,7 +261,35 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
 
-        sendText(chatId, "Команды:\n/join — подключиться к лекции\n/question — задать вопрос\n/current — просмотр текущего слайда\n/ping — проверка");
+        if ("/prev".equals(cmd)) {
+            handlePrevSlide(chatId);
+            return;
+        }
+
+        if ("/slide".equals(cmd)) {
+            String[] parts = text.split("\\s+", 2);
+            if (parts.length >= 2 && !parts[1].isBlank()) {
+                handleGoToSlideByNumber(chatId, parts[1].trim());
+            } else {
+                pendingGoToSlide.put(chatId, true);
+                sendText(chatId, "Введите номер слайда:");
+            }
+            return;
+        }
+
+        sendTextWithMainKeyboard(chatId, HELP_TEXT);
+    }
+
+    private String normalizeKeyboardButton(String text) {
+        return switch (text) {
+            case BTN_JOIN -> "/join";
+            case BTN_CURRENT -> "/current";
+            case BTN_PREV -> "/prev";
+            case BTN_QUESTION -> "/question";
+            case BTN_RATE -> "/rate";
+            case BTN_HELP -> "/help";
+            default -> text;
+        };
     }
 
     private void requestInput(long chatId, String commandKey, String promptText) {
@@ -520,7 +568,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             String username = tgUser != null ? tgUser.getUserName() : null;
             Student student = lectureService.joinLecture(lectureName, chatId, password, firstName, lastName, username);
             pendingPasswordJoin.remove(chatId);
-            sendText(chatId, "Вы подключились к лекции: " + student.getLecture().getName());
+            sendTextWithMainKeyboard(chatId, "Вы подключились к лекции: " + student.getLecture().getName());
             analyticsServiceClient.sendStudentJoinedEvent(student.getLecture().getId(), chatId);
             int currentSlide = student.getLecture().getCurrentSlide();
             if (student.getLecture().getStatus() == ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE && currentSlide > 0) {
@@ -548,6 +596,19 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         String title = Objects.requireNonNullElse(lectureName, "лекция");
         String msg = "Лекция «" + title + "» завершена. Вы отключены.\n\n/join <название> — подключиться к другой.";
         for (Long chatId : chatIds) sendTrackedText(lectureId, chatId, msg);
+    }
+
+    public void notifyLectureStartedToStudents(Long lectureId, String lectureName, int currentSlide, List<Long> chatIds) {
+        if (chatIds == null || chatIds.isEmpty()) return;
+        String title = Objects.requireNonNullElse(lectureName, "лекция");
+        String msg = "Лекция «" + title + "» началась.\n\n"
+                + "Используйте /current, чтобы повторно получить текущий слайд.";
+        for (Long chatId : chatIds) {
+            sendTrackedText(lectureId, chatId, msg);
+            if (currentSlide > 0) {
+                sendSlideToStudent(lectureId, chatId, null, currentSlide);
+            }
+        }
     }
 
     // Вызывается лектором при смене слайда — только текст, всегда последнее сообщение
@@ -679,6 +740,40 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         } catch (TelegramApiException e) {
             log.error("sendText failed chatId={}", chatId, e);
         }
+    }
+
+    private void sendTextWithMainKeyboard(long chatId, String text) {
+        try {
+            Timer.Sample sample = Timer.start(meterRegistry);
+            execute(SendMessage.builder()
+                    .chatId(chatId)
+                    .text(text)
+                    .replyMarkup(mainKeyboard())
+                    .build());
+            sample.stop(buildTelegramApiTimer("sendMessage", "unknown"));
+        } catch (TelegramApiException e) {
+            log.error("sendText failed chatId={}", chatId, e);
+        }
+    }
+
+    private ReplyKeyboardMarkup mainKeyboard() {
+        KeyboardRow row1 = new KeyboardRow();
+        row1.add(new KeyboardButton(BTN_CURRENT));
+        row1.add(new KeyboardButton(BTN_PREV));
+
+        KeyboardRow row2 = new KeyboardRow();
+        row2.add(new KeyboardButton(BTN_QUESTION));
+        row2.add(new KeyboardButton(BTN_RATE));
+
+        KeyboardRow row3 = new KeyboardRow();
+        row3.add(new KeyboardButton(BTN_JOIN));
+        row3.add(new KeyboardButton(BTN_HELP));
+
+        return ReplyKeyboardMarkup.builder()
+                .keyboard(List.of(row1, row2, row3))
+                .resizeKeyboard(true)
+                .oneTimeKeyboard(false)
+                .build();
     }
 
     private String getLectureIdFromChatId(String chatIdStr) {
@@ -829,4 +924,3 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         public void setDescription(String description) { this.description = description; }
     }
 }
-

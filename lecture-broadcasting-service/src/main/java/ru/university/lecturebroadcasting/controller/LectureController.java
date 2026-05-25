@@ -120,7 +120,15 @@ public class LectureController {
 
     @PostMapping("/{id}/start")
     public ResponseEntity<Lecture> startLecture(@PathVariable Long id) {
-        return ResponseEntity.ok(lectureService.startLecture(id));
+        Lecture lecture = lectureService.startLecture(id);
+        List<Long> chatIds = lectureService.getStudentChatIds(id);
+        bot.notifyLectureStartedToStudents(
+                id,
+                lecture.getName(),
+                lecture.getCurrentSlide() != null ? lecture.getCurrentSlide() : 1,
+                chatIds
+        );
+        return ResponseEntity.ok(lecture);
     }
 
     @PostMapping("/{id}/stop")
