@@ -19,6 +19,8 @@ import ru.university.lecturebroadcasting.repository.StudentRepository;
 import ru.university.lecturebroadcasting.dto.StudentDto;
 
 import java.text.Normalizer;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
@@ -96,12 +98,18 @@ public class LectureService {
     }
 
     @Transactional
-    public Lecture startLecture(Long id) {
+    public StartLectureResult startLecture(Long id) {
         Lecture lecture = lectureRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Lecture not found: " + id));
+        Instant now = Instant.now();
+        boolean shouldNotify = lecture.getNotifiedStartAt() == null ||
+                lecture.getNotifiedStartAt().isBefore(now.minus(30, ChronoUnit.MINUTES));
         lecture.setStatus(LectureStatus.ACTIVE);
+        if (shouldNotify) {
+            lecture.setNotifiedStartAt(now);
+        }
         cpuMonitoringService.startMonitoring(id);
-        return lectureRepository.save(lecture);
+        return new StartLectureResult(lectureRepository.save(lecture), shouldNotify);
     }
 
     @Transactional
@@ -123,6 +131,7 @@ public class LectureService {
     }
 
     public record StopLectureResult(Lecture lecture, List<Long> disconnectedChatIds) {}
+    public record StartLectureResult(Lecture lecture, boolean notifyStudents) {}
 
     @Transactional
     public Student joinLecture(String lectureNameOrId, Long chatId, String firstName, String lastName, String username) {

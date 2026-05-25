@@ -41,6 +41,7 @@ import {
 } from '../app/api/client'
 import {
 	broadcastExam,
+	closeExam,
 	createExam,
 	getExam,
 	getExamSubmissions,
@@ -103,6 +104,7 @@ interface LivePollState {
 	title: string
 	questionText: string
 	questionType: 'MULTIPLE' | 'OPEN'
+	correctAnswer?: string
 }
 
 function QuizLaunchForm({
@@ -205,6 +207,9 @@ function mapStudentQuestion(
 		index: num
 	}
 }
+
+const isLivePollExam = (exam: { title?: string }) =>
+	exam.title?.startsWith('Быстрый вопрос:') ?? false
 
 export function LivePresentationPage() {
 	const navigate = useNavigate()
@@ -391,8 +396,10 @@ export function LivePresentationPage() {
 		if (!lectureId) return
 		getExamsByLecture(lectureId)
 			.then((list: any[]) => {
-				setBankExams(list)
-				if (list.length > 0) setSelectedBankExamId(current => current || list[0].id)
+				const reusableExams = list.filter(exam => !isLivePollExam(exam))
+				setBankExams(reusableExams)
+				if (reusableExams.length > 0)
+					setSelectedBankExamId(current => current || reusableExams[0].id)
 			})
 			.catch(() => {})
 	}, [lectureId])
@@ -675,7 +682,8 @@ export function LivePresentationPage() {
 				examId: exam.id,
 				title,
 				questionText: sourceQuestion.text,
-				questionType: sourceQuestion.type
+				questionType: sourceQuestion.type,
+				correctAnswer: sourceQuestion.options?.find(option => option.correct)?.text
 			})
 			setLivePollSubmissions([])
 			toast.success(`Вопрос отправлен студентам (${studentsCount})`)
@@ -683,6 +691,24 @@ export function LivePresentationPage() {
 			toast.error('Не удалось отправить вопрос')
 		} finally {
 			setLaunchingQuestionId(null)
+		}
+	}
+
+	const handleFinishLivePoll = async () => {
+		if (!lectureId || !livePoll) return
+		try {
+			await closeExam(livePoll.examId)
+			if (livePoll.correctAnswer) {
+				await broadcastMessage(
+					lectureId,
+					`Быстрый вопрос завершён. Правильный ответ: ${livePoll.correctAnswer}`
+				)
+			}
+			setLivePoll(null)
+			setLivePollSubmissions([])
+			toast.success('Опрос завершён')
+		} catch {
+			toast.error('Не удалось завершить опрос')
 		}
 	}
 
@@ -1431,9 +1457,9 @@ export function LivePresentationPage() {
 							) : activeTab === 'polls' ? (
 								<div className="space-y-4">
 									{livePoll && (
-										<div className="rounded-lg border border-orange-500/40 bg-orange-500/10 p-3">
-											<div className="text-xs text-orange-300 mb-1">Идёт быстрый вопрос</div>
-											<div className="text-sm text-white mb-3">{livePoll.questionText}</div>
+											<div className="rounded-lg border border-orange-500/40 bg-orange-500/10 p-3">
+												<div className="text-xs text-orange-300 mb-1">Идёт быстрый вопрос</div>
+												<div className="text-sm text-white mb-3">{livePoll.questionText}</div>
 											<div className="grid grid-cols-3 gap-2 text-center mb-3">
 												<div className="rounded bg-neutral-900 p-2">
 													<div className="text-lg text-white">{livePollAnswered}</div>
@@ -1523,6 +1549,12 @@ export function LivePresentationPage() {
 														))}
 													</div>
 												)}
+												<button
+													onClick={handleFinishLivePoll}
+													className="mt-3 w-full px-3 py-1.5 bg-neutral-800 text-white text-sm rounded hover:bg-neutral-700"
+												>
+													Завершить опрос
+												</button>
 											</div>
 										)}
 									</div>

@@ -135,14 +135,17 @@ public class LectureController {
 
     @PostMapping("/{id}/start")
     public ResponseEntity<Lecture> startLecture(@PathVariable Long id) {
-        Lecture lecture = lectureService.startLecture(id);
-        List<Long> chatIds = lectureService.getStudentChatIds(id);
-        bot.notifyLectureStartedToStudents(
-                id,
-                lecture.getName(),
-                lecture.getCurrentSlide() != null ? lecture.getCurrentSlide() : 1,
-                chatIds
-        );
+        LectureService.StartLectureResult result = lectureService.startLecture(id);
+        Lecture lecture = result.lecture();
+        if (result.notifyStudents()) {
+            List<Long> chatIds = lectureService.getStudentChatIds(id);
+            bot.notifyLectureStartedToStudents(
+                    id,
+                    lecture.getName(),
+                    lecture.getCurrentSlide() != null ? lecture.getCurrentSlide() : 1,
+                    chatIds
+            );
+        }
         return ResponseEntity.ok(lecture);
     }
 

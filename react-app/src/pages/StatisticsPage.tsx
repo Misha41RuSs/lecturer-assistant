@@ -71,7 +71,9 @@ export function StatisticsPage() {
       const examRows: ExamRow[] = [];
       const surveyRows: SurveyRow[] = [];
 
-      await Promise.all(examList.map(async (exam: any) => {
+      await Promise.all(examList.filter((exam: any) =>
+        !exam.title?.startsWith('Быстрый вопрос:')
+      ).map(async (exam: any) => {
         if (exam.status === 'DRAFT') {
           if (exam.examType === 'SURVEY') return;
           examRows.push({ id: exam.id, title: exam.title, status: exam.status, submissionCount: 0, avgScore: null, maxScore: null, submissions: [], expanded: false });

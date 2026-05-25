@@ -6,6 +6,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.Instant;
+
 @Entity
 @Table(name = "lectures")
 @Getter
@@ -43,6 +45,9 @@ public class Lecture {
 
     @Column(name = "allow_questions")
     private Boolean allowQuestions = true;
+
+    @Column(name = "notified_start_at")
+    private Instant notifiedStartAt;
 
     public Lecture(String name, java.util.UUID sequenceId) {
         this.name = name;
