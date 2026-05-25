@@ -85,6 +85,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final ConcurrentHashMap<Long, Integer> studentCurrentSlide = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Boolean> pendingGoToSlide = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, java.util.Timer> questionTimers = new ConcurrentHashMap<>();
+    private final java.util.Set<Long> profilePendingChatIds = ConcurrentHashMap.newKeySet();
 
     private final String botUsername;
     private final StudentRepository studentRepository;
@@ -343,6 +344,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     }
 
     private void startProfileFlow(long chatId, Student student) {
+        profilePendingChatIds.add(chatId);
         ProfileStep step = student.getRealName() == null || student.getRealName().isBlank()
                 ? ProfileStep.NAME
                 : ProfileStep.GROUP;
@@ -398,6 +400,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     }
 
     private void cancelProfileFlow(long chatId) {
+        profilePendingChatIds.remove(chatId);
         PendingProfileFlow flow = pendingProfileFlow.remove(chatId);
         if (flow != null) {
             studentRepository.findByChatId(chatId).ifPresent(student -> {
@@ -790,6 +793,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     }
 
     private void completeJoin(long chatId, Student student) {
+        profilePendingChatIds.remove(chatId);
         sendTextWithMainKeyboard(chatId, "Вы подключились к лекции: " + student.getLecture().getName());
         analyticsServiceClient.sendStudentJoinedEvent(student.getLecture().getId(), chatId);
         int currentSlide = student.getLecture().getCurrentSlide();
@@ -820,6 +824,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
 
     // Вызывается лектором при смене слайда — только текст, всегда последнее сообщение
     public void sendSlideToStudent(Long lectureId, long chatId, byte[] imageBytes, int slideNumber) {
+        if (profilePendingChatIds.contains(chatId)) return;
         lectureCurrentSlide.put(chatId, slideNumber);
 
         Integer prevMsgId = lastSlideMessageId.remove(chatId);

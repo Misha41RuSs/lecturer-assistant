@@ -358,7 +358,7 @@ export function LivePresentationPage() {
 		return () => window.removeEventListener('beforeunload', handler)
 	}, [lectureStatus])
 
-	// Вопросы студентов: начальная загрузка + обновления по WebSocket
+	// Вопросы студентов: начальная загрузка + WS + polling-fallback каждые 5 сек
 	useEffect(() => {
 		if (!lectureId) return
 		let cancelled = false
@@ -374,9 +374,11 @@ export function LivePresentationPage() {
 			`/topic/student-questions/${lectureId}`,
 			load
 		)
+		const poll = setInterval(load, 5000)
 		return () => {
 			cancelled = true
 			socket.close()
+			clearInterval(poll)
 		}
 	}, [lectureId])
 
