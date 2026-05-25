@@ -151,6 +151,7 @@ export function LivePresentationPage() {
 	const [slidesData, setSlidesData] = useState<SlideData[]>([])
 	const [isLoading, setIsLoading] = useState(true)
 	const [lectureName, setLectureName] = useState('')
+	const [lectureStatus, setLectureStatus] = useState('')
 
 	const [quickMessage, setQuickMessage] = useState('')
 	const [activeTab, setActiveTab] = useState<'questions' | 'students'>(
@@ -198,6 +199,7 @@ export function LivePresentationPage() {
 				setIsLoading(true)
 				const lecture = await getLecture(parseInt(lectureId))
 				setLectureName(lecture.name || 'Лекция')
+				setLectureStatus(lecture.status || '')
 				if (lecture.accessType === 'PASSWORD') {
 					setAccessType('password')
 					setPassword(lecture.password || '')
@@ -250,6 +252,16 @@ export function LivePresentationPage() {
 
 		loadLecture()
 	}, [lectureId])
+
+	useEffect(() => {
+		const handler = (e: BeforeUnloadEvent) => {
+			if (lectureStatus !== 'ACTIVE') return
+			e.preventDefault()
+			e.returnValue = ''
+		}
+		window.addEventListener('beforeunload', handler)
+		return () => window.removeEventListener('beforeunload', handler)
+	}, [lectureStatus])
 
 	// Polling вопросов студентов из бота каждые 10 секунд
 	useEffect(() => {
