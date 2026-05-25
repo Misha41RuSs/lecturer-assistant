@@ -509,9 +509,10 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         }
 
         if (!session.hasMore()) {
+            UUID examId = session.getExamId();
             examSessions.remove(chatId);
             cancelQuestionTimer(chatId);
-            sendText(chatId, "✅ Тест завершён! Ваши ответы записаны. Результаты сообщит преподаватель.");
+            sendText(chatId, buildExamResultMessage(chatId, examId));
             return;
         }
 
@@ -544,6 +545,24 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             lastQuestionMessageId.put(chatId, sent.getMessageId());
         }
         scheduleQuestionTimer(chatId, session, q, sent != null ? sent.getMessageId() : null);
+    }
+
+    private String buildExamResultMessage(long chatId, UUID examId) {
+        return quizServiceClient.getSubmissions(examId).stream()
+                .filter(result -> Objects.equals(result.chatId(), chatId))
+                .findFirst()
+                .map(result -> {
+                    String percent = result.maxScore() > 0
+                            ? " (" + Math.round(result.totalScore() * 100f / result.maxScore()) + "%)"
+                            : "";
+                    String reviewNotice = result.hasUngraded()
+                            ? "\nЕсть открытые ответы — преподаватель проверит их отдельно."
+                            : "";
+                    return "✅ Тест завершён!\n\nВаш результат: "
+                            + result.totalScore() + "/" + result.maxScore() + percent
+                            + reviewNotice;
+                })
+                .orElse("✅ Тест завершён! Ваши ответы записаны.");
     }
 
     public void sendExamToStudent(long chatId, UUID examId) {
