@@ -75,7 +75,7 @@ interface Question {
 	time: string
 	text: string
 	answer?: string | null
-	status: 'OPEN' | 'ANSWERED' | 'DISMISSED'
+	status: 'OPEN' | 'SEEN' | 'ANSWERED' | 'DISMISSED'
 	isNew: boolean
 	index: number
 }
@@ -153,7 +153,7 @@ function mapStudentQuestion(
 		id: string
 		text: string
 		answer?: string | null
-		status?: 'OPEN' | 'ANSWERED' | 'DISMISSED'
+		status?: 'OPEN' | 'SEEN' | 'ANSWERED' | 'DISMISSED'
 		createdAt: string
 		chatId?: number
 		studentName?: string
@@ -234,8 +234,10 @@ export function LivePresentationPage() {
 	const [questions, setQuestions] = useState<Question[]>([])
 	const [students, setStudents] = useState<StudentDto[]>([])
 	const studentsCount = students.length
-	const activeQuestions = questions.filter(q => q.status === 'OPEN')
-	const archivedQuestions = questions.filter(q => q.status !== 'OPEN')
+	const isActiveQuestion = (q: Question) =>
+		q.status === 'OPEN' || q.status === 'SEEN'
+	const activeQuestions = questions.filter(isActiveQuestion)
+	const archivedQuestions = questions.filter(q => !isActiveQuestion(q))
 	const visibleQuestions =
 		questionView === 'active' ? activeQuestions : archivedQuestions
 
@@ -1194,7 +1196,7 @@ export function LivePresentationPage() {
 											<div
 												key={q.id}
 												className={`rounded-lg p-3 ${
-													q.status === 'OPEN'
+													isActiveQuestion(q)
 														? 'bg-neutral-800'
 														: 'bg-neutral-900 border border-neutral-800'
 												}`}
@@ -1222,7 +1224,7 @@ export function LivePresentationPage() {
 												<p className="text-neutral-300 text-sm mb-2">
 													{q.text}
 												</p>
-												{q.status !== 'OPEN' && (
+												{!isActiveQuestion(q) && (
 													<div className="text-xs text-neutral-500 mb-2">
 														{q.status === 'ANSWERED'
 															? `Отвечено${q.answer ? `: ${q.answer}` : ''}`
@@ -1230,7 +1232,7 @@ export function LivePresentationPage() {
 													</div>
 												)}
 
-												{q.status !== 'OPEN' ? null : replyTo === q.id ? (
+												{!isActiveQuestion(q) ? null : replyTo === q.id ? (
 													<div className="space-y-2">
 														<textarea
 															value={replyText}

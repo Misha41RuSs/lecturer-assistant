@@ -25,6 +25,10 @@ public class StudentQuestionController {
 
     @GetMapping("/{id}/student-questions")
     public List<Map<String, Object>> getQuestions(@PathVariable Long id) {
+        questionService.markOpenAsSeen(id).forEach(q ->
+                bot.sendTextMessage(id, q.chatId(), "👀 Преподаватель увидел ваш вопрос.")
+        );
+
         Map<Long, StudentDto> studentsByChatId = lectureService.getAllStudents(id).stream()
                 .collect(Collectors.toMap(StudentDto::getChatId, Function.identity(), (left, right) -> left));
 
@@ -75,7 +79,9 @@ public class StudentQuestionController {
     public ResponseEntity<Void> dismiss(
             @PathVariable Long id,
             @PathVariable String qId) {
-        questionService.dismiss(qId);
+        questionService.dismiss(qId).ifPresent(q ->
+                bot.sendTextMessage(id, q.chatId(), "Вопрос закрыт преподавателем.")
+        );
         return ResponseEntity.ok().build();
     }
 

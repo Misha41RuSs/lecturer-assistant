@@ -28,6 +28,10 @@ public class StudentQuestionService {
             return new Question(id, lectureId, chatId, text, ans, "ANSWERED", createdAt);
         }
 
+        Question seen() {
+            return new Question(id, lectureId, chatId, text, answer, "SEEN", createdAt);
+        }
+
         Question dismissed() {
             return new Question(id, lectureId, chatId, text, answer, "DISMISSED", createdAt);
         }
@@ -83,6 +87,17 @@ public class StudentQuestionService {
         return store.values().stream()
                 .filter(q -> q.lectureId().equals(lectureId))
                 .sorted(Comparator.comparing(Question::createdAt))
+                .toList();
+    }
+
+    public List<Question> markOpenAsSeen(Long lectureId) {
+        return store.values().stream()
+                .filter(q -> q.lectureId().equals(lectureId) && "OPEN".equals(q.status()))
+                .map(q -> {
+                    Question seen = q.seen();
+                    store.put(q.id(), seen);
+                    return seen;
+                })
                 .toList();
     }
 

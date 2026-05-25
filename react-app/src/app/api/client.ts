@@ -208,7 +208,7 @@ export async function getStudentQuestions(lectureId: string): Promise<{
 	id: string
 	text: string
 	answer?: string | null
-	status?: 'OPEN' | 'ANSWERED' | 'DISMISSED'
+	status?: 'OPEN' | 'SEEN' | 'ANSWERED' | 'DISMISSED'
 	createdAt: string
 	chatId?: number
 	studentName?: string
