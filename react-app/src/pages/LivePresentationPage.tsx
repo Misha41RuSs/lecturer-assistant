@@ -167,7 +167,9 @@ export function LivePresentationPage() {
 	const [activeTab, setActiveTab] = useState<'questions' | 'students'>(
 		'questions'
 	)
-	const [sidebarOpen, setSidebarOpen] = useState(true)
+	const [sidebarOpen, setSidebarOpen] = useState(() =>
+		typeof window === 'undefined' ? true : window.innerWidth >= 1024
+	)
 	const [elapsed, setElapsed] = useState(0)
 	const [slideElapsed, setSlideElapsed] = useState(0)
 	const [showConfirmEnd, setShowConfirmEnd] = useState(false)
@@ -764,7 +766,7 @@ export function LivePresentationPage() {
 						<TooltipTrigger asChild>
 							<button
 								onClick={() => setSidebarOpen(!sidebarOpen)}
-								className="p-1.5 text-neutral-400 hover:text-white hidden lg:block"
+								className="p-1.5 text-neutral-400 hover:text-white"
 							>
 								<MessageSquare className="w-4 h-4" />
 							</button>
@@ -1069,7 +1071,22 @@ export function LivePresentationPage() {
 
 				{/* Sidebar */}
 				{sidebarOpen && (
-					<div className="hidden lg:flex w-[340px] xl:w-[380px] bg-neutral-900 border-l border-neutral-800 flex-col flex-shrink-0">
+					<div
+						className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+						onClick={() => setSidebarOpen(false)}
+					/>
+				)}
+				{sidebarOpen && (
+					<div className="fixed inset-y-0 right-0 z-50 flex w-[min(100vw-2rem,380px)] bg-neutral-900 border-l border-neutral-800 flex-col flex-shrink-0 shadow-2xl lg:static lg:z-auto lg:w-[340px] lg:shadow-none xl:w-[380px]">
+						<div className="lg:hidden flex items-center justify-between px-3 py-3 border-b border-neutral-800">
+							<span className="text-sm text-white">Аудитория</span>
+							<button
+								onClick={() => setSidebarOpen(false)}
+								className="p-1.5 text-neutral-400 hover:text-white"
+							>
+								<X className="w-4 h-4" />
+							</button>
+						</div>
 						<div className="flex border-b border-neutral-800">
 							{(['questions', 'students'] as const).map(tab => (
 								<button
