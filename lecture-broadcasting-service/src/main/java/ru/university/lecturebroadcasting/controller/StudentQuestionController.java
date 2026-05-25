@@ -38,7 +38,9 @@ public class StudentQuestionController {
                     item.put("answer", q.answer());
                     item.put("status", q.status());
                     item.put("createdAt", q.createdAt().toString());
-                    item.put("chatId", q.chatId());
+                    if (!anonymous) {
+                        item.put("chatId", q.chatId());
+                    }
                     if (!anonymous && student != null) {
                         item.put("studentName", studentDisplayName(student));
                         item.put("username", student.getUsername());

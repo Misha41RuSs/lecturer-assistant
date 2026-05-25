@@ -194,7 +194,11 @@ function mapStudentQuestion(
 	const num = idx + 1
 	const student =
 		q.studentName ||
-		(q.username ? `@${q.username}` : q.chatId ? `ID: ${q.chatId}` : `Вопрос #${num}`)
+		(q.username
+			? `@${q.username}`
+			: q.chatId
+				? `ID: ${q.chatId}`
+				: `Анонимный вопрос #${num}`)
 	return {
 		id: q.id,
 		student,
