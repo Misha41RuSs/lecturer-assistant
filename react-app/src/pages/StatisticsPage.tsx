@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Users, ClipboardList, CheckCircle, ChevronDown, ChevronUp, Star, Download } from "lucide-react";
 import { toast } from "sonner";
 import { listLectures, LectureListItem, getAllStudents, StudentDto } from "../app/api/client";
@@ -21,6 +21,7 @@ interface SurveyRow {
   status: string
   responseCount: number
   avgRating: number | null
+  submissions: SurveySubmissionRow[]
 }
 interface SubmRow {
   chatId: number
@@ -28,11 +29,34 @@ interface SubmRow {
   maxScore: number
   hasUngraded: boolean
 }
+interface SurveySubmissionRow {
+  chatId: number
+  rating: number | null
+}
 interface SlideStats {
   lectureId: number
   totalRequests: number
   topSlides: { slideNumber: number; count: number }[]
   byStudent: { chatId: number; requestCount: number }[]
+}
+interface GroupStatsRow {
+  key: string
+  groupName: string
+  studentCount: number
+  answeredCount: number
+  avgScore: number | null
+  avgRating: number | null
+  distribution: Record<string, number>
+  students: {
+    chatId: number
+    name: string
+    answered: boolean
+    totalScore?: number
+    maxScore?: number
+    percent?: number | null
+    rating?: number | null
+    hasUngraded?: boolean
+  }[]
 }
 
 export function StatisticsPage() {
@@ -43,6 +67,8 @@ export function StatisticsPage() {
   const [surveys, setSurveys] = useState<SurveyRow[]>([]);
   const [slideStats, setSlideStats] = useState<SlideStats | null>(null);
   const [loading, setLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<'students' | 'groups'>('students');
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     listLectures()
@@ -90,7 +116,13 @@ export function StatisticsPage() {
           const avgRating = ratings.length > 0
             ? ratings.reduce((s: number, r: number) => s + r, 0) / ratings.length
             : null;
-          surveyRows.push({ id: exam.id, title: exam.title, status: exam.status, responseCount: subs.length, avgRating });
+          const submissions = subs.map((s: any) => {
+            const rating = (s.answers ?? [])
+              .map((a: any) => parseInt(a.selectedOptionText))
+              .find((n: number) => !isNaN(n) && n >= 1 && n <= 5);
+            return { chatId: s.chatId, rating: rating ?? null };
+          });
+          surveyRows.push({ id: exam.id, title: exam.title, status: exam.status, responseCount: subs.length, avgRating, submissions });
         } else {
           const submissions: SubmRow[] = subs.map((s: any) => ({ chatId: s.chatId, totalScore: s.totalScore, maxScore: s.maxScore, hasUngraded: s.hasUngraded }));
           const gradedSubs = submissions.filter(s => s.maxScore > 0);
@@ -110,11 +142,20 @@ export function StatisticsPage() {
     setExams(prev => prev.map(e => e.id === id ? { ...e, expanded: !e.expanded } : e));
   };
 
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
   const getStudentName = (chatId: number) => {
     const st = students.find(x => x.chatId === chatId);
     if (st?.realName) return st.realName;
     if (st?.firstName) return `${st.firstName} ${st.lastName || ''}`.trim();
     return `ID ${chatId}`;
+  };
+
+  const getStudentGroup = (chatId: number) => {
+    const groupName = students.find(x => x.chatId === chatId)?.groupName?.trim();
+    return groupName || 'Без группы';
   };
 
   const getStudentUsername = (chatId: number) => {
@@ -140,6 +181,7 @@ export function StatisticsPage() {
           exam.title,
           getStudentName(sub.chatId),
           getStudentUsername(sub.chatId),
+          getStudentGroup(sub.chatId),
           sub.chatId,
           sub.totalScore,
           sub.maxScore,
@@ -159,6 +201,7 @@ export function StatisticsPage() {
       'Тест',
       'Студент',
       'Telegram',
+      'Группа',
       'Chat ID',
       'Баллы',
       'Максимум',
@@ -187,6 +230,174 @@ export function StatisticsPage() {
   const overallSatisfaction = satisfactionSurveys.length > 0
     ? satisfactionSurveys.reduce((s, sr) => s + sr.avgRating!, 0) / satisfactionSurveys.length
     : null;
+
+  const studentsByGroup = students.reduce<Record<string, StudentDto[]>>((acc, student) => {
+    const groupName = student.groupName?.trim() || 'Без группы';
+    acc[groupName] = acc[groupName] || [];
+    acc[groupName].push(student);
+    return acc;
+  }, {});
+
+  const scoreBand = (percent: number) => {
+    if (percent >= 90) return '90–100';
+    if (percent >= 70) return '70–89';
+    if (percent >= 50) return '50–69';
+    return '<50';
+  };
+
+  const buildExamGroupRows = (exam: ExamRow): GroupStatsRow[] => {
+    const submissionsByChatId = new Map(exam.submissions.map(sub => [sub.chatId, sub]));
+    return Object.entries(studentsByGroup)
+      .sort(([a], [b]) => a.localeCompare(b, 'ru'))
+      .map(([groupName, groupStudents]) => {
+        const rowStudents = groupStudents.map(student => {
+          const sub = submissionsByChatId.get(student.chatId);
+          const percent = sub && sub.maxScore > 0 ? Math.round((sub.totalScore / sub.maxScore) * 100) : null;
+          return {
+            chatId: student.chatId,
+            name: getStudentName(student.chatId),
+            answered: Boolean(sub),
+            totalScore: sub?.totalScore,
+            maxScore: sub?.maxScore,
+            percent,
+            hasUngraded: sub?.hasUngraded,
+          };
+        });
+        const answered = rowStudents.filter(student => student.answered);
+        const graded = answered.filter(student => student.percent !== null);
+        const distribution = graded.reduce<Record<string, number>>((acc, student) => {
+          const band = scoreBand(student.percent!);
+          acc[band] = (acc[band] || 0) + 1;
+          return acc;
+        }, {});
+        return {
+          key: `${exam.id}:${groupName}`,
+          groupName,
+          studentCount: groupStudents.length,
+          answeredCount: answered.length,
+          avgScore: graded.length > 0
+            ? graded.reduce((sum, student) => sum + student.percent!, 0) / graded.length
+            : null,
+          avgRating: null,
+          distribution,
+          students: rowStudents,
+        };
+      });
+  };
+
+  const buildSurveyGroupRows = (survey: SurveyRow): GroupStatsRow[] => {
+    const submissionsByChatId = new Map(survey.submissions.map(sub => [sub.chatId, sub]));
+    return Object.entries(studentsByGroup)
+      .sort(([a], [b]) => a.localeCompare(b, 'ru'))
+      .map(([groupName, groupStudents]) => {
+        const rowStudents = groupStudents.map(student => {
+          const sub = submissionsByChatId.get(student.chatId);
+          return {
+            chatId: student.chatId,
+            name: getStudentName(student.chatId),
+            answered: Boolean(sub),
+            rating: sub?.rating ?? null,
+          };
+        });
+        const rated = rowStudents.filter(student => student.rating !== null);
+        return {
+          key: `${survey.id}:${groupName}`,
+          groupName,
+          studentCount: groupStudents.length,
+          answeredCount: rowStudents.filter(student => student.answered).length,
+          avgScore: null,
+          avgRating: rated.length > 0
+            ? rated.reduce((sum, student) => sum + student.rating!, 0) / rated.length
+            : null,
+          distribution: {},
+          students: rowStudents,
+        };
+      });
+  };
+
+  const renderDistribution = (distribution: Record<string, number>) => {
+    const labels = ['90–100', '70–89', '50–69', '<50'];
+    const total = labels.reduce((sum, label) => sum + (distribution[label] || 0), 0);
+    if (total === 0) return <span className="text-neutral-400">—</span>;
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {labels.map(label => distribution[label] ? (
+          <span key={label} className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
+            {label}: {distribution[label]}
+          </span>
+        ) : null)}
+      </div>
+    );
+  };
+
+  const renderGroupRows = (rows: GroupStatsRow[], kind: 'exam' | 'survey') => (
+    <div className="overflow-x-auto">
+      <table className="w-full">
+        <thead>
+          <tr className="border-b border-neutral-100">
+            <th className="text-left py-2 px-3 text-xs text-neutral-500">Группа</th>
+            <th className="text-left py-2 px-3 text-xs text-neutral-500">Студентов</th>
+            <th className="text-left py-2 px-3 text-xs text-neutral-500">% ответивших</th>
+            <th className="text-left py-2 px-3 text-xs text-neutral-500">{kind === 'exam' ? 'Средний балл' : 'Средняя оценка'}</th>
+            {kind === 'exam' && <th className="text-left py-2 px-3 text-xs text-neutral-500">Распределение</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(row => {
+            const answeredPct = row.studentCount > 0 ? Math.round(row.answeredCount / row.studentCount * 100) : 0;
+            return (
+              <Fragment key={row.key}>
+                <tr
+                  className="border-b border-neutral-50 hover:bg-neutral-50 cursor-pointer"
+                  onClick={() => toggleGroup(row.key)}
+                >
+                  <td className="py-2 px-3 text-sm">
+                    <div className="flex items-center gap-2">
+                      {expandedGroups[row.key] ? <ChevronUp className="w-4 h-4 text-neutral-400" /> : <ChevronDown className="w-4 h-4 text-neutral-400" />}
+                      <span className="font-medium">{row.groupName}</span>
+                    </div>
+                  </td>
+                  <td className="py-2 px-3 text-sm text-neutral-600">{row.studentCount}</td>
+                  <td className="py-2 px-3 text-sm text-neutral-600">{answeredPct}% ({row.answeredCount}/{row.studentCount})</td>
+                  <td className="py-2 px-3 text-sm">
+                    {kind === 'exam'
+                      ? row.avgScore !== null ? <span className="font-medium text-orange-600">{Math.round(row.avgScore)}%</span> : <span className="text-neutral-400">—</span>
+                      : row.avgRating !== null ? <span className="font-medium text-yellow-600">{row.avgRating.toFixed(1)} ⭐</span> : <span className="text-neutral-400">—</span>
+                    }
+                  </td>
+                  {kind === 'exam' && <td className="py-2 px-3 text-sm">{renderDistribution(row.distribution)}</td>}
+                </tr>
+                {expandedGroups[row.key] && (
+                  <tr className="border-b border-neutral-100 bg-neutral-50/70">
+                    <td colSpan={kind === 'exam' ? 5 : 4} className="px-10 py-3">
+                      <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                        {row.students.map(student => (
+                          <div key={student.chatId} className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm">
+                            <span className="font-medium text-neutral-700">{student.name}</span>
+                            {kind === 'exam' ? (
+                              student.answered ? (
+                                <span className={student.hasUngraded ? 'text-yellow-600' : (student.percent ?? 0) >= 60 ? 'text-green-600' : 'text-red-500'}>
+                                  {student.hasUngraded ? 'Не проверено' : `${student.percent}%`} · {student.totalScore}/{student.maxScore}
+                                </span>
+                              ) : <span className="text-neutral-400">Нет ответа</span>
+                            ) : (
+                              student.answered ? (
+                                <span className="text-yellow-600">{student.rating ? `${student.rating} ⭐` : 'Ответ'}</span>
+                              ) : <span className="text-neutral-400">Нет ответа</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
@@ -253,6 +464,23 @@ export function StatisticsPage() {
             ))}
           </div>
 
+          <div className="mb-6 inline-flex rounded-lg border border-neutral-200 bg-white p-1">
+            <button
+              type="button"
+              onClick={() => setViewMode('students')}
+              className={`px-3 py-1.5 text-sm rounded-md ${viewMode === 'students' ? 'bg-neutral-900 text-white' : 'text-neutral-600 hover:bg-neutral-50'}`}
+            >
+              По студентам
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('groups')}
+              className={`px-3 py-1.5 text-sm rounded-md ${viewMode === 'groups' ? 'bg-neutral-900 text-white' : 'text-neutral-600 hover:bg-neutral-50'}`}
+            >
+              По группам
+            </button>
+          </div>
+
           {/* Список студентов */}
           <div className="bg-white rounded-xl p-5 border border-neutral-200 mb-6">
             <h3 className="text-sm font-medium mb-3">Студенты ({students.length})</h3>
@@ -265,6 +493,7 @@ export function StatisticsPage() {
                     <tr className="border-b border-neutral-200">
                       <th className="text-left py-2 px-3 text-xs text-neutral-500">Студент</th>
                       <th className="text-left py-2 px-3 text-xs text-neutral-500">Telegram Username</th>
+                      <th className="text-left py-2 px-3 text-xs text-neutral-500">Группа</th>
                       <th className="text-left py-2 px-3 text-xs text-neutral-500">Статус</th>
                     </tr>
                   </thead>
@@ -273,11 +502,12 @@ export function StatisticsPage() {
                       <tr key={s.chatId} className="border-b border-neutral-100 hover:bg-neutral-50">
                         <td className="py-2 px-3 text-sm flex items-center gap-2">
                           <div className="w-6 h-6 rounded-full bg-neutral-200 flex items-center justify-center text-xs font-medium text-neutral-600">
-                            {s.firstName?.[0] || 'С'}
+                            {getStudentName(s.chatId)[0] || 'С'}
                           </div>
-                          <span className="font-medium">{s.firstName ? `${s.firstName} ${s.lastName || ''}`.trim() : 'Студент'}</span>
+                          <span className="font-medium">{getStudentName(s.chatId)}</span>
                         </td>
                         <td className="py-2 px-3 text-sm text-neutral-500">{s.username ? `@${s.username}` : '—'}</td>
+                        <td className="py-2 px-3 text-sm text-neutral-500">{getStudentGroup(s.chatId)}</td>
                         <td className="py-2 px-3 text-sm">
                           {s.kicked
                             ? <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600">Выгнан</span>
@@ -329,23 +559,37 @@ export function StatisticsPage() {
           {surveys.length > 0 && (
             <div className="bg-white rounded-xl p-5 border border-neutral-200 mb-6">
               <h3 className="text-sm font-medium mb-3">Удовлетворённость ({surveys.length})</h3>
-              <div className="space-y-2">
-                {surveys.map(s => (
-                  <div key={s.id} className="flex items-center justify-between px-4 py-3 border border-neutral-200 rounded-lg">
-                    <div>
-                      <div className="text-sm font-medium">{s.title}</div>
-                      <div className="text-xs text-neutral-400 mt-0.5">{s.responseCount} ответов</div>
+              {viewMode === 'students' ? (
+                <div className="space-y-2">
+                  {surveys.map(s => (
+                    <div key={s.id} className="flex items-center justify-between px-4 py-3 border border-neutral-200 rounded-lg">
+                      <div>
+                        <div className="text-sm font-medium">{s.title}</div>
+                        <div className="text-xs text-neutral-400 mt-0.5">{s.responseCount} ответов</div>
+                      </div>
+                      <div className="text-right">
+                        {s.avgRating !== null ? (
+                          <div className="text-lg font-semibold text-yellow-600">{s.avgRating.toFixed(1)} ⭐</div>
+                        ) : (
+                          <div className="text-sm text-neutral-400">Нет ответов</div>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-right">
-                      {s.avgRating !== null ? (
-                        <div className="text-lg font-semibold text-yellow-600">{s.avgRating.toFixed(1)} ⭐</div>
-                      ) : (
-                        <div className="text-sm text-neutral-400">Нет ответов</div>
-                      )}
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {surveys.map(s => (
+                    <div key={s.id} className="border border-neutral-200 rounded-lg overflow-hidden">
+                      <div className="px-4 py-3 border-b border-neutral-100">
+                        <div className="text-sm font-medium">{s.title}</div>
+                        <div className="text-xs text-neutral-400 mt-0.5">{s.responseCount} ответов</div>
+                      </div>
+                      {renderGroupRows(buildSurveyGroupRows(s), 'survey')}
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -354,7 +598,7 @@ export function StatisticsPage() {
             <h3 className="text-sm font-medium mb-3">Тесты ({exams.length})</h3>
             {exams.length === 0 ? (
               <p className="text-sm text-neutral-400">Нет тестов для этой лекции</p>
-            ) : (
+            ) : viewMode === 'students' ? (
               <div className="space-y-2">
                 {exams.map(exam => (
                   <div key={exam.id} className="border border-neutral-200 rounded-lg overflow-hidden">
@@ -417,6 +661,28 @@ export function StatisticsPage() {
                         Нет ответов
                       </div>
                     )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {exams.map(exam => (
+                  <div key={exam.id} className="border border-neutral-200 rounded-lg overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          exam.status === 'ACTIVE' ? 'bg-green-100 text-green-700' :
+                          exam.status === 'CLOSED' ? 'bg-neutral-100 text-neutral-600' :
+                          'bg-yellow-100 text-yellow-700'
+                        }`}>{exam.status}</span>
+                        <span className="text-sm font-medium">{exam.title}</span>
+                      </div>
+                      <div className="text-sm text-neutral-500">
+                        {exam.submissionCount} ответов
+                        {exam.avgScore !== null && <span className="ml-3 font-medium text-orange-600">{Math.round(exam.avgScore)}%</span>}
+                      </div>
+                    </div>
+                    {renderGroupRows(buildExamGroupRows(exam), 'exam')}
                   </div>
                 ))}
               </div>
