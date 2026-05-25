@@ -183,6 +183,8 @@ function mapStudentQuestion(
 		status?: 'OPEN' | 'SEEN' | 'ANSWERED' | 'DISMISSED'
 		createdAt: string
 		chatId?: number
+		realName?: string
+		groupName?: string
 		studentName?: string
 		username?: string
 	},
@@ -193,6 +195,7 @@ function mapStudentQuestion(
 	const time = mins < 1 ? 'только что' : `${mins} мин.`
 	const num = idx + 1
 	const student =
+		q.realName ||
 		q.studentName ||
 		(q.username
 			? `@${q.username}`
@@ -550,8 +553,15 @@ export function LivePresentationPage() {
 	}, {})
 
 	const getStudentDisplayName = (student: StudentDto) => {
+		if (student.realName) return student.realName
 		const fullName = `${student.firstName || ''} ${student.lastName || ''}`.trim()
 		return fullName || student.username || `ID: ${student.chatId}`
+	}
+
+	const getStudentSecondary = (student: StudentDto) => {
+		if (student.groupName) return student.groupName
+		if (student.username) return `@${student.username}`
+		return `ID: ${student.chatId}`
 	}
 
 	const handleSendMessage = () => {
@@ -1582,18 +1592,14 @@ export function LivePresentationPage() {
 													<div className="flex items-center justify-between">
 														<div className="flex items-center gap-2 min-w-0">
 															<div className="w-8 h-8 bg-neutral-700 rounded-full flex items-center justify-center text-sm font-medium text-white flex-shrink-0">
-																{s.firstName?.[0] || 'С'}
+																{getStudentDisplayName(s)[0] || 'С'}
 															</div>
 															<div className="min-w-0">
 																<div className="text-white text-sm font-medium truncate">
-																	{s.firstName
-																		? `${s.firstName} ${s.lastName || ''}`
-																		: `Студент`}
+																	{getStudentDisplayName(s)}
 																</div>
 																<div className="text-orange-400/80 text-xs truncate">
-																	{s.username
-																		? `@${s.username}`
-																		: `ID: ${s.chatId}`}
+																	{getStudentSecondary(s)}
 																	</div>
 																</div>
 															</div>

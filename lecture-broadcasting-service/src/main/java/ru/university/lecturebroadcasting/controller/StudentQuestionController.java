@@ -42,6 +42,8 @@ public class StudentQuestionController {
                         item.put("chatId", q.chatId());
                     }
                     if (!anonymous && student != null) {
+                        item.put("realName", student.getRealName());
+                        item.put("groupName", student.getGroupName());
                         item.put("studentName", studentDisplayName(student));
                         item.put("username", student.getUsername());
                     }

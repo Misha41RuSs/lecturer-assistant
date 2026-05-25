@@ -112,6 +112,7 @@ export function StatisticsPage() {
 
   const getStudentName = (chatId: number) => {
     const st = students.find(x => x.chatId === chatId);
+    if (st?.realName) return st.realName;
     if (st?.firstName) return `${st.firstName} ${st.lastName || ''}`.trim();
     return `ID ${chatId}`;
   };

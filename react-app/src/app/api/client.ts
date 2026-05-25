@@ -229,6 +229,8 @@ export async function getStudentQuestions(lectureId: string): Promise<{
 	status?: 'OPEN' | 'SEEN' | 'ANSWERED' | 'DISMISSED'
 	createdAt: string
 	chatId?: number
+	realName?: string
+	groupName?: string
 	studentName?: string
 	username?: string
 }[]> {
