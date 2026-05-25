@@ -43,6 +43,16 @@ import {
 	sendExamToUser
 } from '../app/api/quiz.api'
 import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle
+} from '../shared/alert-dialog'
+import {
 	DrawingOverlay,
 	DrawingOverlayHandle
 } from '../features/DrawingOverlay'
@@ -176,6 +186,8 @@ export function LivePresentationPage() {
 	const [isChangingSlide, setIsChangingSlide] = useState(false)
 	const [showNotes, setShowNotes] = useState(false)
 	const [isMessageCoolingDown, setIsMessageCoolingDown] = useState(false)
+	const [kickTarget, setKickTarget] = useState<StudentDto | null>(null)
+	const [kickingChatId, setKickingChatId] = useState<number | null>(null)
 
 	const drawingRef = useRef<DrawingOverlayHandle>(null)
 	const broadcastChannelRef = useRef<BroadcastChannel | null>(null)
@@ -383,6 +395,11 @@ export function LivePresentationPage() {
 			.padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`
 	const slide = slidesData[currentSlide]
 
+	const getStudentDisplayName = (student: StudentDto) => {
+		const fullName = `${student.firstName || ''} ${student.lastName || ''}`.trim()
+		return fullName || student.username || `ID: ${student.chatId}`
+	}
+
 	const handleSendMessage = () => {
 		if (!quickMessage.trim() || !lectureId || isMessageCoolingDown) return
 		const msg = quickMessage.trim()
@@ -434,6 +451,21 @@ export function LivePresentationPage() {
 		setQuestions(questions.filter(x => x.id !== qId))
 		setReplyTo(null)
 		toast.info('Вопрос отклонён')
+	}
+
+	const handleKickStudent = async () => {
+		if (!lectureId || !kickTarget) return
+		setKickingChatId(kickTarget.chatId)
+		try {
+			await kickLectureStudent(lectureId, kickTarget.chatId)
+			setStudents(prev => prev.filter(x => x.chatId !== kickTarget.chatId))
+			toast.success('Студент отключен')
+			setKickTarget(null)
+		} catch {
+			toast.error('Не удалось отключить студента')
+		} finally {
+			setKickingChatId(null)
+		}
 	}
 
 	const handleAssignTestAll = async (examId: string) => {
@@ -849,6 +881,39 @@ export function LivePresentationPage() {
 				</div>
 			)}
 
+			<AlertDialog
+				open={kickTarget !== null}
+				onOpenChange={open => {
+					if (!open && kickingChatId === null) setKickTarget(null)
+				}}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Отключить студента?</AlertDialogTitle>
+						<AlertDialogDescription>
+							{kickTarget
+								? `${getStudentDisplayName(kickTarget)} больше не сможет подключиться к этой лекции.`
+								: 'Студент больше не сможет подключиться к этой лекции.'}
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel disabled={kickingChatId !== null}>
+							Отмена
+						</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={e => {
+								e.preventDefault()
+								handleKickStudent()
+							}}
+							disabled={kickingChatId !== null}
+							className="bg-red-600 text-white hover:bg-red-700"
+						>
+							{kickingChatId !== null ? 'Отключение…' : 'Отключить'}
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+
 			<div className="flex-1 flex overflow-hidden">
 				{/* Main area */}
 				<div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 min-w-0">
@@ -1135,33 +1200,17 @@ export function LivePresentationPage() {
 																	{s.username
 																		? `@${s.username}`
 																		: `ID: ${s.chatId}`}
+																	</div>
 																</div>
 															</div>
+															<button
+																onClick={() => setKickTarget(s)}
+																className="p-1.5 text-neutral-500 hover:bg-red-500/10 hover:text-red-400 rounded transition-colors"
+																title="Выгнать из лекции"
+															>
+																<X className="w-4 h-4" />
+															</button>
 														</div>
-														<button
-															onClick={async () => {
-																if (
-																	!window.confirm(
-																		'Выгнать студента из лекции? Он больше не сможет зайти.'
-																	)
-																)
-																	return
-																try {
-																	await kickLectureStudent(lectureId!, s.chatId)
-																	setStudents(prev =>
-																		prev.filter(x => x.chatId !== s.chatId)
-																	)
-																	toast.success('Студент отключен')
-																} catch (e) {
-																	toast.error('Не удалось отключить студента')
-																}
-															}}
-															className="p-1.5 text-neutral-500 hover:bg-red-500/10 hover:text-red-400 rounded transition-colors"
-															title="Выгнать из лекции"
-														>
-															<X className="w-4 h-4" />
-														</button>
-													</div>
 													<div className="flex mt-1">
 														<button
 															onClick={() => setShowTestModal(s.chatId)}
