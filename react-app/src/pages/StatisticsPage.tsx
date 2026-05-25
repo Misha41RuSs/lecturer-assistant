@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Users, ClipboardList, CheckCircle, ChevronDown, ChevronUp, Star } from "lucide-react";
+import { Users, ClipboardList, CheckCircle, ChevronDown, ChevronUp, Star, Download } from "lucide-react";
 import { toast } from "sonner";
 import { listLectures, LectureListItem, getAllStudents, StudentDto } from "../app/api/client";
 import { getSlideRequestStats } from "../app/api/analytics.api";
@@ -114,6 +114,67 @@ export function StatisticsPage() {
     return `ID ${chatId}`;
   };
 
+  const getStudentUsername = (chatId: number) => {
+    const username = students.find(x => x.chatId === chatId)?.username;
+    return username ? `@${username}` : '';
+  };
+
+  const csvCell = (value: string | number | boolean | null) =>
+    `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+  const safeFilePart = (value: string) =>
+    value.trim().replace(/[^\p{L}\p{N}._-]+/gu, '_').replace(/^_+|_+$/g, '') || 'lecture';
+
+  const exportResultsCsv = () => {
+    const selectedLecture = lectures.find(l => l.id === selectedLectureId);
+    const rows = conductedExams.flatMap(exam =>
+      exam.submissions.map(sub => {
+        const percent = sub.maxScore > 0
+          ? Math.round((sub.totalScore / sub.maxScore) * 100)
+          : '';
+        return [
+          selectedLecture?.name || '',
+          exam.title,
+          getStudentName(sub.chatId),
+          getStudentUsername(sub.chatId),
+          sub.chatId,
+          sub.totalScore,
+          sub.maxScore,
+          percent,
+          sub.hasUngraded ? 'Да' : 'Нет'
+        ];
+      })
+    );
+
+    if (rows.length === 0) {
+      toast.info("Нет результатов для экспорта");
+      return;
+    }
+
+    const header = [
+      'Лекция',
+      'Тест',
+      'Студент',
+      'Telegram',
+      'Chat ID',
+      'Баллы',
+      'Максимум',
+      'Процент',
+      'Есть непроверенные ответы'
+    ];
+    const csv = [header, ...rows]
+      .map(row => row.map(csvCell).join(','))
+      .join('\n');
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `results-${safeFilePart(selectedLecture?.name || String(selectedLectureId))}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success("CSV с результатами скачан");
+  };
+
   const conductedExams = exams.filter(e => e.status !== 'DRAFT');
   const allAvg = conductedExams.filter(e => e.avgScore !== null);
   const overallAvg = allAvg.length > 0
@@ -131,7 +192,7 @@ export function StatisticsPage() {
         <p className="text-sm text-neutral-500">Студенты и результаты тестов по лекции</p>
       </div>
 
-      <div className="mb-6">
+      <div className="mb-6 flex flex-col sm:flex-row gap-3 sm:items-center">
         <select
           value={selectedLectureId}
           onChange={e => setSelectedLectureId(Number(e.target.value))}
@@ -142,6 +203,17 @@ export function StatisticsPage() {
             <option key={l.id} value={l.id}>{l.name} ({l.status})</option>
           ))}
         </select>
+        {selectedLectureId > 0 && (
+          <button
+            type="button"
+            onClick={exportResultsCsv}
+            disabled={loading || conductedExams.every(e => e.submissions.length === 0)}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-white border border-neutral-300 rounded-lg text-sm hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download className="w-4 h-4" />
+            Скачать CSV
+          </button>
+        )}
       </div>
 
       {!selectedLectureId && (
