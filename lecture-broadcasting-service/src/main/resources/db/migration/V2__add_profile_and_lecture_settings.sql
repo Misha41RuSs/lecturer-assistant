@@ -4,6 +4,9 @@ BEGIN
         ALTER TABLE students
             ADD COLUMN IF NOT EXISTS real_name varchar(128),
             ADD COLUMN IF NOT EXISTS group_name varchar(32);
+
+        CREATE INDEX IF NOT EXISTS idx_students_group_name
+            ON students(group_name);
     END IF;
 
     IF to_regclass('public.lectures') IS NOT NULL THEN
