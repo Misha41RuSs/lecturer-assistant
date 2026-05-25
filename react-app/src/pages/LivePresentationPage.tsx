@@ -486,6 +486,13 @@ export function LivePresentationPage() {
 
 	const handleSendSatisfaction = async () => {
 		if (!lectureId) return
+		const questionText = (
+			editingSatisfaction ? satisfactionDraft : satisfactionPreset
+		).trim()
+		if (!questionText) {
+			toast.error('Введите текст вопроса')
+			return
+		}
 		try {
 			const exam = await createExam({
 				lectureId,
@@ -493,7 +500,7 @@ export function LivePresentationPage() {
 				examType: 'SURVEY',
 				questions: [
 					{
-						text: satisfactionPreset,
+						text: questionText,
 						type: 'MULTIPLE',
 						options: [
 							{ text: '1 ⭐', correct: false },
@@ -506,11 +513,14 @@ export function LivePresentationPage() {
 				]
 			})
 			await broadcastExam(exam.id, lectureId)
+			setSatisfactionPreset(questionText)
+			setSatisfactionDraft(questionText)
+			setEditingSatisfaction(false)
+			setShowSatisfactionModal(false)
 			toast.success(`Опрос запущен для студентов (${studentsCount})`)
 		} catch {
 			toast.error('Не удалось запустить опрос')
 		}
-		setShowSatisfactionModal(false)
 	}
 
 	const handleSlideChange = async (newSlideIndex: number) => {
@@ -1386,7 +1396,11 @@ export function LivePresentationPage() {
 
 						<div className="flex gap-2">
 							<button
-								onClick={() => setShowSatisfactionModal(false)}
+								onClick={() => {
+									setShowSatisfactionModal(false)
+									setEditingSatisfaction(false)
+									setSatisfactionDraft(satisfactionPreset)
+								}}
 								className="flex-1 px-4 py-2 border border-neutral-300 rounded-lg text-sm"
 							>
 								Отмена
@@ -1395,7 +1409,9 @@ export function LivePresentationPage() {
 								onClick={handleSendSatisfaction}
 								className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm"
 							>
-								Отправить ({studentsCount})
+								{editingSatisfaction
+									? `Сохранить и отправить (${studentsCount})`
+									: `Отправить (${studentsCount})`}
 							</button>
 						</div>
 					</div>
