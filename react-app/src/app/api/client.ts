@@ -239,6 +239,16 @@ export async function dismissStudentQuestion(lectureId: string, questionId: stri
 	}
 }
 
+export async function markStudentQuestionsSeen(lectureId: string): Promise<void> {
+	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/student-questions/seen`, {
+		method: 'PUT'
+	})
+	if (!res.ok) {
+		const t = await res.text()
+		throw new Error(`Failed to mark questions seen: ${res.status} ${t}`)
+	}
+}
+
 export async function sendPrivateReply(lectureId: string, questionId: string, text: string): Promise<void> {
 	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/student-questions/${questionId}/private-reply`, {
 		method: 'PUT',

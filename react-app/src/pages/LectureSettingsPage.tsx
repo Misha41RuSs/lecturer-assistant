@@ -64,6 +64,7 @@ export function LectureSettingsPage() {
 		'open' | 'password' | 'invitation'
 	>('open')
 	const [password, setPassword] = useState('')
+	const [hasExistingPassword, setHasExistingPassword] = useState(false)
 	const [showPassword, setShowPassword] = useState(false)
 	const [duration, setDuration] = useState('90')
 	const [allowQuestions, setAllowQuestions] = useState(true)
@@ -109,25 +110,6 @@ export function LectureSettingsPage() {
 
 // При загрузке данных устанавливаем initialValues
     useEffect(() => {
-        if (!loadingLecture && lectureId && lectureId !== 'new') {
-            setInitialValues({
-                lectureName,
-                description,
-                accessType,
-                password,
-                duration,
-                allowQuestions
-            })
-        }
-    }, [loadingLecture, lectureId])
-
-
-
-
-
-
-
-    useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
             if (hasUnsavedChanges) {
                 e.preventDefault()
@@ -169,11 +151,12 @@ export function LectureSettingsPage() {
 						: lecture.accessType === 'INVITATION'
 							? 'invitation'
 							: 'open'
-				const serverPassword = lecture.password || ''
 				const serverDuration = String(lecture.durationMinutes || 90)
 				const serverAllowQuestions = lecture.allowQuestions !== false
+				const serverHasPassword = Boolean(lecture.hasPassword)
 				setAccessType(serverAccessType)
-				setPassword(serverPassword)
+				setPassword('')
+				setHasExistingPassword(serverHasPassword)
 				setDuration(serverDuration)
 				setAllowQuestions(serverAllowQuestions)
 
@@ -205,7 +188,7 @@ export function LectureSettingsPage() {
 					lectureName: lecture.name || '',
 					description,
 					accessType: serverAccessType,
-					password: serverPassword,
+					password: '',
 					duration: serverDuration,
 					allowQuestions: serverAllowQuestions
 				})
@@ -230,7 +213,7 @@ export function LectureSettingsPage() {
             toast.error('Введите название лекции')
             return false
         }
-        if (accessType === 'password' && !password.trim()) {
+        if (accessType === 'password' && !password.trim() && !hasExistingPassword) {
             toast.error('Введите пароль')
             return false
         }
@@ -245,13 +228,17 @@ export function LectureSettingsPage() {
                 durationMinutes: Number(duration),
                 allowQuestions
             })
+            const passwordExists =
+                accessType === 'password' && (hasExistingPassword || Boolean(password.trim()))
+            setHasExistingPassword(passwordExists)
+            setPassword('')
 
             // После успешного сохранения обновляем initialValues
             setInitialValues({
                 lectureName,
                 description,
                 accessType,
-                password,
+                password: '',
                 duration,
                 allowQuestions
             })
@@ -274,7 +261,7 @@ export function LectureSettingsPage() {
             toast.error('Сначала заполните название')
             return
         }
-        if (accessType === 'password' && !password.trim()) {
+        if (accessType === 'password' && !password.trim() && !hasExistingPassword) {
             toast.error('Задайте пароль для лекции')
             return
         }
@@ -810,12 +797,17 @@ export function LectureSettingsPage() {
 								</label>
 								<div className="flex gap-2">
 									<div className="relative flex-1">
-										<input
-											type={showPassword ? 'text' : 'password'}
-											value={password}
-											onChange={e => setPassword(e.target.value)}
-											className="w-full px-4 py-2.5 pr-10 bg-white border border-orange-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-										/>
+											<input
+												type={showPassword ? 'text' : 'password'}
+												value={password}
+												onChange={e => setPassword(e.target.value)}
+												placeholder={
+													hasExistingPassword
+														? 'Оставьте пустым, чтобы не менять пароль'
+														: 'Введите пароль'
+												}
+												className="w-full px-4 py-2.5 pr-10 bg-white border border-orange-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+											/>
 										<Tooltip>
 											<TooltipTrigger asChild>
 												<button
@@ -838,10 +830,11 @@ export function LectureSettingsPage() {
 									</div>
 									<Tooltip>
 										<TooltipTrigger asChild>
-											<button
-												onClick={() => copyToClipboard(password)}
-												className="px-3 py-2 border border-orange-300 rounded-lg hover:bg-orange-100 text-sm flex items-center gap-1"
-											>
+												<button
+													onClick={() => copyToClipboard(password)}
+													disabled={!password}
+													className="px-3 py-2 border border-orange-300 rounded-lg hover:bg-orange-100 text-sm flex items-center gap-1"
+												>
 												<Copy className="w-3.5 h-3.5" /> Копировать
 											</button>
 										</TooltipTrigger>
@@ -849,8 +842,13 @@ export function LectureSettingsPage() {
 											<p>Копировать пароль в буфер обмена</p>
 										</TooltipContent>
 									</Tooltip>
-								</div>
-								{password && (
+									</div>
+									{hasExistingPassword && !password && (
+										<p className="mt-2 text-sm text-neutral-600">
+											Пароль уже задан. Введите новый только если хотите заменить его.
+										</p>
+									)}
+									{password && (
 									<div className="mt-2 flex items-center gap-2 text-sm">
 										<span className="text-neutral-600">Пароль:</span>
 										<code className="bg-white px-2 py-0.5 rounded border border-orange-200 text-orange-700">
@@ -966,16 +964,20 @@ export function LectureSettingsPage() {
 						</div>
 					</div>
 
-					{accessType === 'password' && password && (
-						<div className="bg-orange-500 text-white rounded-xl p-5">
+						{accessType === 'password' && (password || hasExistingPassword) && (
+							<div className="bg-orange-500 text-white rounded-xl p-5">
 							<div className="flex items-center gap-2 mb-2">
 								<Lock className="w-4 h-4" />
 								<span className="text-sm">Пароль для студентов</span>
 							</div>
-							<div className="text-2xl tracking-wider mb-1">{password}</div>
-							<p className="text-orange-100 text-xs">
-								Покажите студентам при подключении
-							</p>
+								<div className="text-2xl tracking-wider mb-1">
+									{password || 'Пароль задан'}
+								</div>
+								<p className="text-orange-100 text-xs">
+									{password
+										? 'Покажите студентам при подключении'
+										: 'Введите новый пароль, если нужно заменить текущий'}
+								</p>
 						</div>
 					)}
 

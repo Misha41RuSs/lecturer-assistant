@@ -32,6 +32,7 @@ import {
 	getSlideSequence,
 	getStudentQuestions,
 	kickLectureStudent,
+	markStudentQuestionsSeen,
 	sendBroadcastReply,
 	sendPrivateReply,
 	stopLecture,
@@ -284,7 +285,7 @@ export function LivePresentationPage() {
 				setLectureStatus(lecture.status || '')
 				if (lecture.accessType === 'PASSWORD') {
 					setAccessType('password')
-					setPassword(lecture.password || '')
+					setPassword('')
 				} else if (lecture.accessType === 'INVITATION') {
 					setAccessType('invitation')
 					setPassword('')
@@ -345,7 +346,7 @@ export function LivePresentationPage() {
 		return () => window.removeEventListener('beforeunload', handler)
 	}, [lectureStatus])
 
-	// Polling вопросов студентов из бота каждые 10 секунд
+	// Вопросы студентов: начальная загрузка + обновления по WebSocket
 	useEffect(() => {
 		if (!lectureId) return
 		let cancelled = false
@@ -366,6 +367,12 @@ export function LivePresentationPage() {
 			socket.close()
 		}
 	}, [lectureId])
+
+	useEffect(() => {
+		if (!lectureId || activeTab !== 'questions' || !sidebarOpen) return
+		if (!activeQuestions.some(q => q.status === 'OPEN')) return
+		markStudentQuestionsSeen(lectureId).catch(() => {})
+	}, [lectureId, activeTab, sidebarOpen, activeQuestions.length])
 
 	// Реальное число студентов из lecture-broadcasting-service
 	useEffect(() => {
@@ -882,9 +889,9 @@ export function LivePresentationPage() {
 									) : (
 										<QrCode className="w-3 h-3" />
 									)}
-									<span className="hidden sm:inline">
-										{accessType === 'password' ? password : 'QR'}
-									</span>
+										<span className="hidden sm:inline">
+											{accessType === 'password' ? 'Пароль' : 'QR'}
+										</span>
 								</button>
 							</TooltipTrigger>
 							<TooltipContent>
@@ -996,22 +1003,14 @@ export function LivePresentationPage() {
 					</div>
 					{accessType === 'password' && (
 						<>
-							<div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-center mb-2">
-								<div className="text-2xl tracking-wider text-orange-700">
-									{password}
+								<div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-center mb-2">
+									<div className="text-lg text-orange-700">Пароль задан</div>
+									<p className="text-xs text-neutral-500 mt-1">
+										Изменить или показать новый пароль можно в настройках лекции.
+									</p>
 								</div>
-							</div>
-							<button
-								onClick={() => {
-									navigator.clipboard.writeText(password)
-									toast.success('Скопировано')
-								}}
-								className="flex items-center gap-1 text-sm text-orange-500 hover:text-orange-600 mx-auto"
-							>
-								<Copy className="w-3.5 h-3.5" /> Копировать
-							</button>
-						</>
-					)}
+							</>
+						)}
 					{accessType === 'invitation' && (
 						<div className="text-center">
 							<div className="bg-white border border-neutral-200 rounded-lg p-3 inline-block mb-2">

@@ -96,7 +96,7 @@ public class StudentQuestionService {
     }
 
     public List<Question> markOpenAsSeen(Long lectureId) {
-        return store.values().stream()
+        List<Question> seenQuestions = store.values().stream()
                 .filter(q -> q.lectureId().equals(lectureId) && "OPEN".equals(q.status()))
                 .map(q -> {
                     Question seen = q.seen();
@@ -104,6 +104,10 @@ public class StudentQuestionService {
                     return seen;
                 })
                 .toList();
+        if (!seenQuestions.isEmpty()) {
+            publishQuestionChange(lectureId);
+        }
+        return seenQuestions;
     }
 
     public Optional<Question> answer(String id, String answer) {
