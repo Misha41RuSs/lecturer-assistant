@@ -28,6 +28,8 @@ services:
     depends_on:
       postgres:
         condition: service_started
+    volumes:
+      - content_slides:/app/storage/slides
     networks:
       - app-network
 
@@ -144,3 +146,4 @@ volumes:
   postgres_data:
   prometheus_data:
   grafana_data:
+  content_slides:

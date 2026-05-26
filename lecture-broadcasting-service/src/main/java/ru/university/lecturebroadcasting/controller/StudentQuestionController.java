@@ -25,7 +25,6 @@ public class StudentQuestionController {
 
     @GetMapping("/{id}/student-questions")
     public List<Map<String, Object>> getQuestions(@PathVariable Long id) {
-        boolean anonymous = Boolean.TRUE.equals(lectureService.getLecture(id).getAnonymousQuestions());
         Map<Long, StudentDto> studentsByChatId = lectureService.getAllStudents(id).stream()
                 .collect(Collectors.toMap(StudentDto::getChatId, Function.identity(), (left, right) -> left));
 
@@ -38,14 +37,15 @@ public class StudentQuestionController {
                     item.put("answer", q.answer());
                     item.put("status", q.status());
                     item.put("createdAt", q.createdAt().toString());
-                    if (!anonymous) {
+                    item.put("anonymous", q.anonymous());
+                    if (!q.anonymous()) {
                         item.put("chatId", q.chatId());
-                    }
-                    if (!anonymous && student != null) {
-                        item.put("realName", student.getRealName());
-                        item.put("groupName", student.getGroupName());
-                        item.put("studentName", studentDisplayName(student));
-                        item.put("username", student.getUsername());
+                        if (student != null) {
+                            item.put("realName", student.getRealName());
+                            item.put("groupName", student.getGroupName());
+                            item.put("studentName", studentDisplayName(student));
+                            item.put("username", student.getUsername());
+                        }
                     }
                     return item;
                 })

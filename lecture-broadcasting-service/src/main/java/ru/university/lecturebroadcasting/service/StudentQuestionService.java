@@ -24,17 +24,17 @@ public class StudentQuestionService {
     private static final Logger logger = LoggerFactory.getLogger(StudentQuestionService.class);
 
     public record Question(String id, Long lectureId, Long chatId, String text,
-                           String answer, String status, Instant createdAt) {
+                           String answer, String status, Instant createdAt, boolean anonymous) {
         Question withAnswer(String ans) {
-            return new Question(id, lectureId, chatId, text, ans, "ANSWERED", createdAt);
+            return new Question(id, lectureId, chatId, text, ans, "ANSWERED", createdAt, anonymous);
         }
 
         Question seen() {
-            return new Question(id, lectureId, chatId, text, answer, "SEEN", createdAt);
+            return new Question(id, lectureId, chatId, text, answer, "SEEN", createdAt, anonymous);
         }
 
         Question dismissed() {
-            return new Question(id, lectureId, chatId, text, answer, "DISMISSED", createdAt);
+            return new Question(id, lectureId, chatId, text, answer, "DISMISSED", createdAt, anonymous);
         }
     }
 
@@ -52,9 +52,9 @@ public class StudentQuestionService {
         this.messagingTemplate = messagingTemplate;
     }
 
-    public Question add(Long lectureId, Long chatId, String text, Long slideId) {
+    public Question add(Long lectureId, Long chatId, String text, Long slideId, boolean anonymous) {
         String id = String.valueOf(seq.getAndIncrement());
-        Question q = new Question(id, lectureId, chatId, text, null, "OPEN", Instant.now());
+        Question q = new Question(id, lectureId, chatId, text, null, "OPEN", Instant.now(), anonymous);
         store.put(id, q);
 
         // Отправляем xAPI событие "asked" для сбора метрик
