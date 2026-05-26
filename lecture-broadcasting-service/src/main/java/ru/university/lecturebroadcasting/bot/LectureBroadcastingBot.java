@@ -24,6 +24,7 @@ import ru.university.lecturebroadcasting.service.AnalyticsServiceClient;
 import ru.university.lecturebroadcasting.service.DeliveryMetricsService;
 import ru.university.lecturebroadcasting.service.LectureService;
 import ru.university.lecturebroadcasting.service.PasswordRequiredException;
+import ru.university.lecturebroadcasting.service.PostLectureSurveyService;
 import ru.university.lecturebroadcasting.service.QuizServiceClient;
 import ru.university.lecturebroadcasting.service.QuizServiceClient.ExamDetail.Question;
 import ru.university.lecturebroadcasting.service.StudentQuestionService;
@@ -49,6 +50,9 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private static final String CB_PROFILE_NAME = "profile:name";
     private static final String CB_PROFILE_GROUP = "profile:group";
     private static final String CB_PROFILE_CLOSE = "profile:close";
+    private static final String CB_POST_RATING = "post:rating:";
+    private static final String CB_POST_PACE = "post:pace:";
+    private static final String CB_POST_SKIP = "post:skip";
     private static final String CB_ANON_YES = "q:anon";
     private static final String CB_ANON_NO = "q:named";
     private static final String BTN_JOIN = "🔌 Подключиться";
@@ -80,6 +84,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final ConcurrentHashMap<Long, String> pendingPasswordJoin = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, String> pendingCommand = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, PendingProfileFlow> pendingProfileFlow = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, PendingPostSurvey> pendingPostSurvey = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, ExamSession> examSessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Integer> lastSlideMessageId = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Integer> lastStudentPhotoMessageId = new ConcurrentHashMap<>();
@@ -99,6 +104,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final QuizServiceClient quizServiceClient;
     private final AnalyticsServiceClient analyticsServiceClient;
     private final StudentQuestionService studentQuestionService;
+    private final PostLectureSurveyService postLectureSurveyService;
     private final DeliveryMetricsService deliveryMetricsService;
     private final RestTemplate restTemplate;
     private final io.micrometer.core.instrument.MeterRegistry meterRegistry;
@@ -107,6 +113,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private enum ProfileStep { NAME, GROUP, NAME_ONLY, GROUP_ONLY }
 
     private record PendingProfileFlow(ProfileStep step, Long lectureId, boolean completeJoinAfter) {}
+    private record PendingPostSurvey(Long lectureId, int rating, String paceSignal, boolean waitingOpenText) {}
 
     @Autowired
     public LectureBroadcastingBot(
@@ -118,6 +125,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             QuizServiceClient quizServiceClient,
             AnalyticsServiceClient analyticsServiceClient,
             StudentQuestionService studentQuestionService,
+            PostLectureSurveyService postLectureSurveyService,
             DeliveryMetricsService deliveryMetricsService,
             RestTemplate restTemplate,
             io.micrometer.core.instrument.MeterRegistry meterRegistry) {
@@ -130,6 +138,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         this.quizServiceClient = quizServiceClient;
         this.analyticsServiceClient = analyticsServiceClient;
         this.studentQuestionService = studentQuestionService;
+        this.postLectureSurveyService = postLectureSurveyService;
         this.deliveryMetricsService = deliveryMetricsService;
         this.restTemplate = restTemplate;
         this.meterRegistry = meterRegistry;
@@ -182,6 +191,12 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             } else {
                 handleProfileFlowAnswer(chatId, text);
             }
+            return;
+        }
+
+        PendingPostSurvey survey = pendingPostSurvey.get(chatId);
+        if (survey != null && survey.waitingOpenText() && !cmd.startsWith("/")) {
+            savePostSurvey(chatId, text);
             return;
         }
 
@@ -632,6 +647,29 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
 
+        if (data.startsWith(CB_POST_RATING)) {
+            int rating = Integer.parseInt(data.substring(CB_POST_RATING.length()));
+            PendingPostSurvey current = pendingPostSurvey.get(chatId);
+            if (current == null) return;
+            pendingPostSurvey.put(chatId, new PendingPostSurvey(current.lectureId(), rating, null, false));
+            sendPaceQuestion(chatId);
+            return;
+        }
+
+        if (data.startsWith(CB_POST_PACE)) {
+            String pace = data.substring(CB_POST_PACE.length());
+            PendingPostSurvey current = pendingPostSurvey.get(chatId);
+            if (current == null) return;
+            pendingPostSurvey.put(chatId, new PendingPostSurvey(current.lectureId(), current.rating(), pace, true));
+            sendOpenPostSurveyQuestion(chatId);
+            return;
+        }
+
+        if (CB_POST_SKIP.equals(data)) {
+            savePostSurvey(chatId, null);
+            return;
+        }
+
         if (data.startsWith(CB_EXAM_OPT)) {
             String optionId = data.substring(CB_EXAM_OPT.length());
             handleMultipleChoiceAnswer(chatId, optionId);
@@ -883,6 +921,86 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         String title = Objects.requireNonNullElse(lectureName, "лекция");
         String msg = "Лекция «" + title + "» завершена. Вы отключены.\n\n/join <название> — подключиться к другой.";
         for (Long chatId : chatIds) sendTrackedText(lectureId, chatId, msg);
+    }
+
+    public void sendPostLectureSurvey(Long lectureId, String lectureName, List<Long> chatIds) {
+        if (chatIds == null || chatIds.isEmpty()) return;
+        String title = Objects.requireNonNullElse(lectureName, "лекция");
+        for (Long chatId : chatIds) {
+            pendingPostSurvey.put(chatId, new PendingPostSurvey(lectureId, 0, null, false));
+            try {
+                execute(SendMessage.builder()
+                        .chatId(chatId)
+                        .text("Лекция «" + title + "» завершена. Оцени её:")
+                        .replyMarkup(InlineKeyboardMarkup.builder()
+                                .keyboard(List.of(List.of(
+                                        InlineKeyboardButton.builder().text("⭐").callbackData(CB_POST_RATING + "1").build(),
+                                        InlineKeyboardButton.builder().text("⭐⭐").callbackData(CB_POST_RATING + "2").build(),
+                                        InlineKeyboardButton.builder().text("⭐⭐⭐").callbackData(CB_POST_RATING + "3").build(),
+                                        InlineKeyboardButton.builder().text("⭐⭐⭐⭐").callbackData(CB_POST_RATING + "4").build(),
+                                        InlineKeyboardButton.builder().text("⭐⭐⭐⭐⭐").callbackData(CB_POST_RATING + "5").build()
+                                )))
+                                .build())
+                        .build());
+            } catch (TelegramApiException e) {
+                log.warn("post lecture survey failed chatId={}: {}", chatId, e.getMessage());
+            }
+        }
+    }
+
+    private void sendPaceQuestion(long chatId) {
+        try {
+            execute(SendMessage.builder()
+                    .chatId(chatId)
+                    .text("Успевал за темпом?")
+                    .replyMarkup(InlineKeyboardMarkup.builder()
+                            .keyboard(List.of(
+                                    List.of(InlineKeyboardButton.builder().text("✅ Да, комфортно").callbackData(CB_POST_PACE + "COMFORTABLE").build()),
+                                    List.of(InlineKeyboardButton.builder().text("⚡ Местами быстро").callbackData(CB_POST_PACE + "FAST").build()),
+                                    List.of(InlineKeyboardButton.builder().text("😵 Слишком быстро").callbackData(CB_POST_PACE + "TOO_FAST").build())
+                            ))
+                            .build())
+                    .build());
+        } catch (TelegramApiException e) {
+            log.warn("post lecture pace question failed chatId={}: {}", chatId, e.getMessage());
+        }
+    }
+
+    private void sendOpenPostSurveyQuestion(long chatId) {
+        try {
+            execute(SendMessage.builder()
+                    .chatId(chatId)
+                    .text("Что было непонятным? Напиши текст или нажми «Пропустить».")
+                    .replyMarkup(InlineKeyboardMarkup.builder()
+                            .keyboard(List.of(List.of(
+                                    InlineKeyboardButton.builder().text("Пропустить").callbackData(CB_POST_SKIP).build()
+                            )))
+                            .build())
+                    .build());
+        } catch (TelegramApiException e) {
+            log.warn("post lecture open question failed chatId={}: {}", chatId, e.getMessage());
+        }
+    }
+
+    private void savePostSurvey(long chatId, String openText) {
+        PendingPostSurvey survey = pendingPostSurvey.remove(chatId);
+        if (survey == null || survey.rating() < 1 || survey.paceSignal() == null) {
+            sendTextWithMainKeyboard(chatId, "Опрос не найден или уже завершён.");
+            return;
+        }
+        try {
+            postLectureSurveyService.saveResponse(
+                    survey.lectureId(),
+                    chatId,
+                    survey.rating(),
+                    ru.university.lecturebroadcasting.entity.PaceSignal.valueOf(survey.paceSignal()),
+                    openText
+            );
+            sendTextWithMainKeyboard(chatId, "Спасибо! Ответ записан.");
+        } catch (Exception e) {
+            log.warn("post survey save failed chatId={}: {}", chatId, e.getMessage());
+            sendTextWithMainKeyboard(chatId, "Не удалось сохранить ответ. Попробуйте позже.");
+        }
     }
 
     public void notifyLectureStartedToStudents(Long lectureId, String lectureName, int currentSlide, List<Long> chatIds) {

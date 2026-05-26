@@ -205,6 +205,17 @@ export async function getAllStudents(lectureId: string): Promise<StudentDto[]> {
 	return res.json()
 }
 
+export async function getPostSurveyResults(lectureId: string): Promise<{
+	totalStudents: number
+	responded: number
+	avgRating: number
+	ratingDistribution: Record<string, number>
+	pace: Record<string, number>
+	openTexts: string[]
+}> {
+	return apiFetch(`/lectures/${lectureId}/post-survey/results`)
+}
+
 export async function kickLectureStudent(lectureId: string, chatId: number): Promise<void> {
 	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/kick/${chatId}`, { method: 'POST' })
 	if (!res.ok) throw new Error('Failed to kick student')

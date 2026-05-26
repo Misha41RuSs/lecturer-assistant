@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { Users, ClipboardList, CheckCircle, ChevronDown, ChevronUp, Star, Download, UserCheck } from "lucide-react";
 import { toast } from "sonner";
-import { listLectures, LectureListItem, getAllStudents, StudentDto } from "../app/api/client";
+import { listLectures, LectureListItem, getAllStudents, StudentDto, getPostSurveyResults } from "../app/api/client";
 import { getSlideRequestStats } from "../app/api/analytics.api";
 import { getExamsByLecture, getExamSubmissions, getExamAnalytics } from "../app/api/quiz.api";
 
@@ -90,6 +90,14 @@ interface StudentExamRow {
   sub?: SubmRow
   pct: number | null
 }
+interface PostSurveyResults {
+  totalStudents: number
+  responded: number
+  avgRating: number
+  ratingDistribution: Record<string, number>
+  pace: Record<string, number>
+  openTexts: string[]
+}
 
 const STATUS_LABELS: Record<string, string> = {
   ACTIVE: 'Активен',
@@ -152,6 +160,7 @@ export function StatisticsPage() {
   const [exams, setExams] = useState<ExamRow[]>([]);
   const [surveys, setSurveys] = useState<SurveyRow[]>([]);
   const [slideStats, setSlideStats] = useState<SlideStats | null>(null);
+  const [postSurvey, setPostSurvey] = useState<PostSurveyResults | null>(null);
   const [loading, setLoading] = useState(false);
   const [studentsExpanded, setStudentsExpanded] = useState(false);
   const [examViewModes, setExamViewModes] = useState<Record<string, 'students' | 'groups'>>({});
@@ -177,6 +186,7 @@ export function StatisticsPage() {
       setExams([]);
       setSurveys([]);
       setSlideStats(null);
+      setPostSurvey(null);
       return;
     }
     setLoading(true);
@@ -185,9 +195,11 @@ export function StatisticsPage() {
       getAllStudents(String(selectedLectureId)).catch(() => []),
       getExamsByLecture(String(selectedLectureId)).catch(() => []),
       getSlideRequestStats(String(selectedLectureId)).catch(() => null),
-    ]).then(async ([studentList, examList, slideStatsData]: [StudentDto[], any[], any]) => {
+      getPostSurveyResults(String(selectedLectureId)).catch(() => null),
+    ]).then(async ([studentList, examList, slideStatsData, postSurveyData]: [StudentDto[], any[], any, any]) => {
       setStudents(studentList);
       setSlideStats(slideStatsData);
+      setPostSurvey(postSurveyData);
 
       const examRows: ExamRow[] = [];
       const surveyRows: SurveyRow[] = [];
@@ -521,6 +533,75 @@ export function StatisticsPage() {
     </div>
   );
 
+  const renderPostSurvey = () => {
+    if (!postSurvey || postSurvey.responded === 0) return null;
+    const paceItems = [
+      { key: 'COMFORTABLE', label: 'Комфортно', color: 'bg-green-400' },
+      { key: 'FAST', label: 'Местами быстро', color: 'bg-yellow-400' },
+      { key: 'TOO_FAST', label: 'Слишком быстро', color: 'bg-red-400' },
+    ];
+    return (
+      <div className="bg-white rounded-xl p-5 border border-neutral-200 mb-6">
+        <h3 className="text-sm font-medium">Пост-лекционная обратная связь</h3>
+        <p className="text-xs text-neutral-500 mt-1 mb-4">
+          Ответили {postSurvey.responded} из {postSurvey.totalStudents}
+        </p>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div>
+            <div className="text-sm text-neutral-500 mb-2">Средняя оценка</div>
+            <div className="text-2xl font-semibold text-yellow-600 mb-3">
+              {postSurvey.avgRating.toFixed(1)} / 5 ⭐
+            </div>
+            <div className="space-y-1.5">
+              {[5, 4, 3, 2, 1].map(star => {
+                const count = postSurvey.ratingDistribution[String(star)] || 0;
+                const pct = postSurvey.responded > 0 ? Math.round(count / postSurvey.responded * 100) : 0;
+                return (
+                  <div key={star} className="flex items-center gap-2">
+                    <span className="text-xs text-neutral-400 w-3">{star}</span>
+                    <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
+                    <div className="flex-1 bg-neutral-100 rounded-full h-1.5">
+                      <div className="bg-yellow-400 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-xs text-neutral-400 w-5">{count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <div className="text-sm text-neutral-500 mb-2">Темп</div>
+            <div className="space-y-2">
+              {paceItems.map(item => {
+                const count = postSurvey.pace[item.key] || 0;
+                const pct = postSurvey.responded > 0 ? Math.round(count / postSurvey.responded * 100) : 0;
+                return (
+                  <div key={item.key} className="flex items-center gap-3">
+                    <span className="w-32 text-sm text-neutral-600">{item.label}</span>
+                    <div className="flex-1 bg-neutral-100 rounded-full h-2">
+                      <div className={`${item.color} h-2 rounded-full`} style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="w-10 text-sm text-neutral-500">{pct}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        {postSurvey.openTexts.length > 0 && (
+          <div className="mt-4 border-t border-neutral-100 pt-4">
+            <div className="text-sm font-medium mb-2">Открытые ответы ({postSurvey.openTexts.length})</div>
+            <div className="space-y-1.5">
+              {postSurvey.openTexts.slice(0, 8).map((text, index) => (
+                <div key={index} className="text-sm text-neutral-600 bg-neutral-50 rounded-lg px-3 py-2">“{text}”</div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderQuestionAnalytics = (examId: string) => {
     const questions = (examAnalytics[examId]?.questionStats ?? [])
       .filter(question => question.questionType === 'MULTIPLE');
@@ -556,6 +637,59 @@ export function StatisticsPage() {
             );
           })}
         </div>
+      </div>
+    );
+  };
+
+  const renderGroupQuestionInsights = (exam: ExamRow) => {
+    const questions = (examAnalytics[exam.id]?.questionStats ?? [])
+      .filter(q => q.questionType === 'MULTIPLE');
+    const groupRows = buildExamGroupRows(exam).filter(g => g.avgCorrectPct !== null);
+
+    if (questions.length === 0 && groupRows.length < 2) return null;
+
+    const maxGroup = groupRows.length >= 2
+      ? groupRows.reduce((a, b) => (a.avgCorrectPct! > b.avgCorrectPct! ? a : b))
+      : null;
+    const minGroup = groupRows.length >= 2
+      ? groupRows.reduce((a, b) => (a.avgCorrectPct! < b.avgCorrectPct! ? a : b))
+      : null;
+    const gap = maxGroup && minGroup && maxGroup.key !== minGroup.key
+      ? Math.round(maxGroup.avgCorrectPct! - minGroup.avgCorrectPct!)
+      : null;
+
+    const hardest = questions.length > 0
+      ? [...questions].sort((a, b) => a.correctPct - b.correctPct)[0]
+      : null;
+
+    return (
+      <div className="mt-4 border-t border-neutral-100 pt-4 space-y-2">
+        <div className="text-sm font-medium text-neutral-700">Сравнение групп</div>
+        {gap !== null && maxGroup && minGroup && (
+          <div className={`rounded-lg px-3 py-2 text-sm flex flex-wrap items-center gap-x-2 gap-y-1 ${gap >= 20 ? 'bg-red-50' : 'bg-neutral-50'}`}>
+            <span className="text-neutral-500">Разрыв между группами:</span>
+            <span className={`font-semibold ${gap >= 20 ? 'text-red-600' : 'text-neutral-700'}`}>{gap}%</span>
+            <span className="text-neutral-400 text-xs">
+              ({maxGroup.groupName} — {Math.round(maxGroup.avgCorrectPct!)}% vs {minGroup.groupName} — {Math.round(minGroup.avgCorrectPct!)}%)
+            </span>
+          </div>
+        )}
+        {hardest && (
+          <div className="rounded-lg bg-neutral-50 px-3 py-2 text-sm flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <span className="text-neutral-500 mr-1">Сложнейший вопрос:</span>
+              <span className="text-neutral-800">«{hardest.questionText}»</span>
+            </div>
+            <span className={`shrink-0 font-semibold ${hardest.correctPct < 50 ? 'text-red-500' : 'text-yellow-600'}`}>
+              {hardest.correctPct}% верно
+            </span>
+          </div>
+        )}
+        {questions.length === 0 && groupRows.length >= 2 && (
+          <p className="text-xs text-neutral-400 italic">
+            Разверните тест — загрузятся детальные данные по вопросам
+          </p>
+        )}
       </div>
     );
   };
@@ -751,9 +885,12 @@ export function StatisticsPage() {
                   const mode = examViewModes[exam.id] || 'students';
                   return (
                     <div key={exam.id} className="border border-neutral-200 rounded-lg overflow-hidden">
-                      <button
+                      <div
+                        role="button"
+                        tabIndex={0}
                         onClick={() => toggleExam(exam.id)}
-                        className="w-full flex items-center justify-between gap-4 px-4 py-3 hover:bg-neutral-50 text-left"
+                        onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && toggleExam(exam.id)}
+                        className="w-full flex items-center justify-between gap-4 px-4 py-3 hover:bg-neutral-50 cursor-pointer"
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           <StatusBadge status={exam.status} />
@@ -770,13 +907,20 @@ export function StatisticsPage() {
                           />
                           {exam.expanded ? <ChevronUp className="w-4 h-4 text-neutral-400" /> : <ChevronDown className="w-4 h-4 text-neutral-400" />}
                         </div>
-                      </button>
+                      </div>
 
                       {exam.expanded && (
                         <div className="border-t border-neutral-200">
                           {mode === 'students'
                             ? renderExamStudents(exam)
-                            : renderGroupRows(buildExamGroupRows(exam), 'exam')}
+                            : (
+                              <>
+                                {renderGroupRows(buildExamGroupRows(exam), 'exam')}
+                                <div className="px-4 pb-4">
+                                  {renderGroupQuestionInsights(exam)}
+                                </div>
+                              </>
+                            )}
                         </div>
                       )}
                     </div>
@@ -822,6 +966,8 @@ export function StatisticsPage() {
               </div>
             </div>
           )}
+
+          {renderPostSurvey()}
 
           {slideStats && slideStats.totalRequests > 0 && (
             <div className="bg-white rounded-xl p-5 border border-neutral-200 mb-6">
