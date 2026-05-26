@@ -344,6 +344,9 @@ public class ExamService {
         }
 
         List<SubmissionResultDto> submissions = getSubmissions(examId);
+        if (submissions.stream().anyMatch(SubmissionResultDto::hasUngraded)) {
+            throw new IllegalStateException("Grade open answers before releasing feedback");
+        }
         Map<UUID, Integer> wrongPctByQuestion = calculateWrongPctByQuestion(submissions);
         List<Integer> percents = submissions.stream()
                 .map(this::submissionPercent)
@@ -443,15 +446,20 @@ public class ExamService {
                 : submissionRepository.findByChatIdOrderByStartedAtDesc(chatId);
 
         Map<Long, List<StudentStatsDto.ExamStatsDto>> examsByLecture = new LinkedHashMap<>();
+        Map<UUID, List<Integer>> percentsByExam = examPercents(studentSubmissions);
         int totalScore = 0;
         int totalMaxScore = 0;
+        int percentileSum = 0;
+        int percentileCount = 0;
 
         for (ExamSubmission submission : studentSubmissions) {
             SubmissionScore score = scoreSubmission(submission);
             totalScore += score.score();
             totalMaxScore += score.maxScore();
             int pct = score.maxScore() > 0 ? Math.round(score.score() * 100f / score.maxScore()) : 0;
-            int percentile = examPercentile(submission.getExam().getId(), pct);
+            int percentile = percentile(pct, percentsByExam.getOrDefault(submission.getExam().getId(), List.of()));
+            percentileSum += percentile;
+            percentileCount++;
 
             examsByLecture
                     .computeIfAbsent(submission.getExam().getLectureId(), ignored -> new ArrayList<>())
@@ -476,18 +484,24 @@ public class ExamService {
                 .toList();
 
         int overallPct = totalMaxScore > 0 ? Math.round(totalScore * 100f / totalMaxScore) : 0;
-        return new StudentStatsDto(chatId, overallPct, 0, lectures);
+        int overallPercentile = percentileCount > 0 ? Math.round(percentileSum * 1f / percentileCount) : 0;
+        return new StudentStatsDto(chatId, overallPct, overallPercentile, lectures);
     }
 
-    private int examPercentile(UUID examId, int pct) {
-        List<Integer> percents = submissionRepository.findByExam_IdOrderByStartedAtDesc(examId).stream()
-                .map(this::scoreSubmission)
-                .map(score -> score.maxScore() > 0 ? Math.round(score.score() * 100f / score.maxScore()) : 0)
-                .sorted()
-                .toList();
-        if (percents.isEmpty()) return 0;
-        long lower = percents.stream().filter(value -> value < pct).count();
-        return Math.round(lower * 100f / percents.size());
+    private Map<UUID, List<Integer>> examPercents(List<ExamSubmission> submissions) {
+        Map<UUID, List<Integer>> result = new HashMap<>();
+        Set<UUID> examIds = submissions.stream()
+                .map(submission -> submission.getExam().getId())
+                .collect(Collectors.toSet());
+        for (UUID examId : examIds) {
+            List<Integer> percents = submissionRepository.findByExam_IdOrderByStartedAtDesc(examId).stream()
+                    .map(this::scoreSubmission)
+                    .map(score -> score.maxScore() > 0 ? Math.round(score.score() * 100f / score.maxScore()) : 0)
+                    .sorted()
+                    .toList();
+            result.put(examId, percents);
+        }
+        return result;
     }
 
     private String examDate(UUID examId) {
@@ -512,7 +526,12 @@ public class ExamService {
 
     @Transactional(readOnly = true)
     public StudentCardDto getStudentCard(Long chatId) {
-        StudentStatsDto stats = getStudentStats(chatId, null);
+        return getStudentCard(chatId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public StudentCardDto getStudentCard(Long chatId, Long lectureId) {
+        StudentStatsDto stats = getStudentStats(chatId, lectureId);
         List<StudentStatsDto.ExamStatsDto> exams = stats.lectures().stream()
                 .flatMap(lecture -> lecture.exams().stream())
                 .toList();
@@ -526,13 +545,26 @@ public class ExamService {
         }
         return new StudentCardDto(
                 chatId,
-                exams.size(),
+                participationTotal(stats),
                 exams.size(),
                 stats.overallPct(),
                 trend,
                 alerts,
                 stats.lectures()
         );
+    }
+
+    private int participationTotal(StudentStatsDto stats) {
+        Set<Long> lectureIds = stats.lectures().stream()
+                .map(StudentStatsDto.LectureStatsDto::lectureId)
+                .collect(Collectors.toSet());
+        return lectureIds.stream()
+                .map(examRepository::findByLectureIdOrderByCreatedAtDesc)
+                .flatMap(List::stream)
+                .filter(exam -> exam.getStatus() != ExamStatus.DRAFT)
+                .map(Exam::getId)
+                .collect(Collectors.toSet())
+                .size();
     }
 
     private boolean hasThreeBelow(List<Integer> trend) {

@@ -116,16 +116,18 @@ public class StudentQuestionService {
 
     @Transactional(readOnly = true)
     public List<Question> getByLecture(Long lectureId) {
+        Map<UUID, Integer> upvotesByQuestion = upvoteCounts(lectureId);
         return questionRepository.findByLecture_Id(lectureId).stream()
-                .map(this::toQuestion)
+                .map(entity -> toQuestion(entity, upvotesByQuestion))
                 .sorted(Comparator.comparing(Question::status).thenComparing(Comparator.comparing(Question::upvotes).reversed()).thenComparing(Question::createdAt))
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public List<Question> topOpen(Long lectureId, int limit) {
+        Map<UUID, Integer> upvotesByQuestion = upvoteCounts(lectureId);
         return questionRepository.findByLecture_Id(lectureId).stream()
-                .map(this::toQuestion)
+                .map(entity -> toQuestion(entity, upvotesByQuestion))
                 .filter(q -> !"ANSWERED".equals(q.status()) && !"DISMISSED".equals(q.status()))
                 .sorted(Comparator.comparing(Question::upvotes).reversed().thenComparing(Question::createdAt))
                 .limit(limit)
@@ -203,8 +205,19 @@ public class StudentQuestionService {
         questionRepository.deleteByLecture_Id(lectureId);
     }
 
+    private Map<UUID, Integer> upvoteCounts(Long lectureId) {
+        Map<UUID, Integer> counts = new HashMap<>();
+        for (Object[] row : upvoteRepository.countByLectureId(lectureId)) {
+            counts.put((UUID) row[0], ((Number) row[1]).intValue());
+        }
+        return counts;
+    }
+
     private Question toQuestion(StudentQuestionEntity entity) {
-        int upvotes = (int) upvoteRepository.countByQuestion_Id(entity.getId());
+        return toQuestion(entity, Map.of(entity.getId(), (int) upvoteRepository.countByQuestion_Id(entity.getId())));
+    }
+
+    private Question toQuestion(StudentQuestionEntity entity, Map<UUID, Integer> upvotesByQuestion) {
         return new Question(
                 entity.getId().toString(),
                 entity.getLecture().getId(),
@@ -214,7 +227,7 @@ public class StudentQuestionService {
                 entity.getStatus(),
                 entity.getCreatedAt(),
                 entity.isAnonymous(),
-                upvotes
+                upvotesByQuestion.getOrDefault(entity.getId(), 0)
         );
     }
 

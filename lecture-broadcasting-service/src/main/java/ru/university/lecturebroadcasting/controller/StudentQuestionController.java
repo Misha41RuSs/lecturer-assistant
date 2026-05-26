@@ -90,18 +90,6 @@ public class StudentQuestionController {
         return ResponseEntity.ok().build();
     }
 
-    @PostMapping("/{id}/student-questions/{qId}/upvote")
-    public ResponseEntity<Void> upvote(
-            @PathVariable Long id,
-            @PathVariable String qId,
-            @RequestBody Map<String, String> body) {
-        Long chatId = Long.parseLong(body.get("chatId"));
-        questionService.upvote(qId, chatId).ifPresent(q ->
-                bot.sendTextMessage(id, chatId, "Вы подписались на вопрос: «" + q.text() + "»")
-        );
-        return ResponseEntity.ok().build();
-    }
-
     @PutMapping("/{id}/student-questions/{qId}/dismiss")
     public ResponseEntity<Void> dismiss(
             @PathVariable Long id,

@@ -19,7 +19,7 @@ import java.util.UUID;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/exams")
+@RequestMapping({"/api/exams", "/exams"})
 @RequiredArgsConstructor
 public class ExamLaunchController {
 

@@ -166,7 +166,6 @@ public class LectureController {
     public ResponseEntity<Lecture> stopLecture(@PathVariable Long id) {
         quizServiceClient.closeAllExamsForLecture(id);
         LectureService.StopLectureResult result = lectureService.stopLecture(id);
-        studentQuestionService.clearByLecture(id);
         bot.notifyLectureEndedToStudents(id, result.lecture().getName(), result.disconnectedChatIds());
         bot.sendPostLectureSurvey(id, result.lecture().getName(), result.disconnectedChatIds());
         return ResponseEntity.ok(result.lecture());

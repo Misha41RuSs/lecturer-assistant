@@ -162,6 +162,6 @@ public class ExamController {
     public ResponseEntity<StudentCardDto> getStudentCard(
             @PathVariable Long chatId,
             @RequestParam(required = false) Long lectureGroupId) {
-        return ResponseEntity.ok(examService.getStudentCard(chatId));
+        return ResponseEntity.ok(examService.getStudentCard(chatId, lectureGroupId));
     }
 }

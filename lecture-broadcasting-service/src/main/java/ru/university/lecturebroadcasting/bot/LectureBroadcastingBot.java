@@ -383,6 +383,10 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     }
 
     private void startProfileFlow(long chatId, Student student) {
+        if (student == null || student.getLecture() == null) {
+            sendText(chatId, "Подключение не найдено. Используйте /join ещё раз.");
+            return;
+        }
         profilePendingChatIds.add(chatId);
         ProfileStep step = student.getRealName() == null || student.getRealName().isBlank()
                 ? ProfileStep.NAME
@@ -695,7 +699,17 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         }
 
         if (data.startsWith(CB_POST_RATING)) {
-            int rating = Integer.parseInt(data.substring(CB_POST_RATING.length()));
+            int rating;
+            try {
+                rating = Integer.parseInt(data.substring(CB_POST_RATING.length()));
+            } catch (NumberFormatException e) {
+                sendText(chatId, "Оценка должна быть от 1 до 5.");
+                return;
+            }
+            if (rating < 1 || rating > 5) {
+                sendText(chatId, "Оценка должна быть от 1 до 5.");
+                return;
+            }
             PendingPostSurvey current = pendingPostSurvey.get(chatId);
             if (current == null) return;
             pendingPostSurvey.put(chatId, new PendingPostSurvey(current.lectureId(), rating, null, false));
@@ -978,6 +992,10 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             String username = tgUser != null ? tgUser.getUserName() : null;
             Student student = lectureService.joinLecture(lectureName, chatId, password, firstName, lastName, username);
             pendingPasswordJoin.remove(chatId);
+            if (student.getLecture() == null) {
+                sendText(chatId, "Подключение не найдено. Используйте /join ещё раз.");
+                return;
+            }
             if (Boolean.TRUE.equals(student.getLecture().getRequireStudentProfile()) && profileIncomplete(student)) {
                 startProfileFlow(chatId, student);
                 return;
