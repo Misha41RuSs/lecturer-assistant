@@ -37,6 +37,12 @@ public class Exam {
     @Column(name = "activated_at")
     private Instant activatedAt;
 
+    @Column(name = "feedback_released", nullable = false)
+    private boolean feedbackReleased = false;
+
+    @Column(name = "feedback_released_at")
+    private Instant feedbackReleasedAt;
+
     @OneToMany(mappedBy = "exam", cascade = CascadeType.ALL, orphanRemoval = true,
                fetch = FetchType.LAZY)
     @OrderBy("orderIndex ASC")
@@ -56,5 +62,9 @@ public class Exam {
     public Instant getCreatedAt() { return createdAt; }
     public Instant getActivatedAt() { return activatedAt; }
     public void setActivatedAt(Instant activatedAt) { this.activatedAt = activatedAt; }
+    public boolean isFeedbackReleased() { return feedbackReleased; }
+    public void setFeedbackReleased(boolean feedbackReleased) { this.feedbackReleased = feedbackReleased; }
+    public Instant getFeedbackReleasedAt() { return feedbackReleasedAt; }
+    public void setFeedbackReleasedAt(Instant feedbackReleasedAt) { this.feedbackReleasedAt = feedbackReleasedAt; }
     public List<ExamQuestion> getQuestions() { return questions; }
 }

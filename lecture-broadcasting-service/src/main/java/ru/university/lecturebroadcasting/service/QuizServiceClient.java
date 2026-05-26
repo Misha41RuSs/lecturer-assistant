@@ -75,6 +75,10 @@ public class QuizServiceClient {
         }
     }
 
+    public ExamFeedback releaseFeedback(UUID examId) {
+        return restTemplate.postForObject(baseUrl + "/exams/" + examId + "/release-feedback", null, ExamFeedback.class);
+    }
+
     public ExamDetail startSubmission(UUID examId, Long chatId) {
         try {
             HttpEntity<Map<String, Object>> req = jsonEntity(Map.of("chatId", chatId));
@@ -136,4 +140,13 @@ public class QuizServiceClient {
 
     public record SubmissionResult(String submissionId, Long chatId,
                                    int totalScore, int maxScore, boolean hasUngraded) {}
+
+    public record ExamFeedback(String examId, Long lectureId, String examTitle,
+                               String releasedAt, List<StudentFeedback> students) {}
+
+    public record StudentFeedback(Long chatId, int totalCorrect, int totalQuestions,
+                                  int percent, int percentile, List<QuestionFeedback> questions) {}
+
+    public record QuestionFeedback(int orderIndex, String questionText, String answerText,
+                                   Boolean correct, Integer wrongPct) {}
 }

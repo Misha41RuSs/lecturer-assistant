@@ -105,7 +105,8 @@ public class ExamService {
                 .stream()
                 .map(e -> new ExamSummaryDto(
                         e.getId(), e.getTitle(), e.getTotalTimeSec(),
-                        e.getStatus().name(), e.getExamType().name(), e.getQuestions().size()))
+                        e.getStatus().name(), e.getExamType().name(), e.getQuestions().size(),
+                        e.isFeedbackReleased()))
                 .toList();
     }
 
@@ -221,11 +222,14 @@ public class ExamService {
                 Boolean correct = null;
                 if (q != null && q.getType() == QuestionType.MULTIPLE && selectedOpt != null) {
                     correct = selectedOpt.isCorrect();
+                } else if (q != null && q.getType() == QuestionType.OPEN && a.getScore() != null) {
+                    correct = a.getScore() >= a.getMaxScore();
                 }
 
                 answerDtos.add(new SubmissionResultDto.AnswerDto(
                         a.getId(),
                         q != null ? q.getId() : null,
+                        q != null ? q.getOrderIndex() : 0,
                         q != null ? q.getText() : "",
                         q != null ? q.getType().name() : "",
                         a.getSelectedOptionId(),
@@ -324,8 +328,112 @@ public class ExamService {
 
         return new ExamDetailDto(
                 exam.getId(), exam.getLectureId(), exam.getTitle(),
-                exam.getTotalTimeSec(), exam.getStatus().name(), exam.getExamType().name(), questions
+                exam.getTotalTimeSec(), exam.getStatus().name(), exam.getExamType().name(),
+                exam.isFeedbackReleased(), questions
         );
+    }
+
+    @Transactional
+    public ExamFeedbackDto releaseFeedback(UUID examId) {
+        Exam exam = getExam(examId);
+        if (exam.getStatus() != ExamStatus.CLOSED) {
+            throw new IllegalStateException("Exam must be closed before releasing feedback");
+        }
+        if (exam.isFeedbackReleased()) {
+            throw new IllegalStateException("Exam feedback already released");
+        }
+
+        List<SubmissionResultDto> submissions = getSubmissions(examId);
+        Map<UUID, Integer> wrongPctByQuestion = calculateWrongPctByQuestion(submissions);
+        List<Integer> percents = submissions.stream()
+                .map(this::submissionPercent)
+                .sorted()
+                .toList();
+
+        List<ExamFeedbackDto.StudentFeedbackDto> studentFeedback = submissions.stream()
+                .map(submission -> toStudentFeedback(submission, wrongPctByQuestion, percents))
+                .toList();
+
+        Instant releasedAt = Instant.now();
+        exam.setFeedbackReleased(true);
+        exam.setFeedbackReleasedAt(releasedAt);
+        examRepository.save(exam);
+
+        return new ExamFeedbackDto(exam.getId(), exam.getLectureId(), exam.getTitle(), releasedAt, studentFeedback);
+    }
+
+    private Map<UUID, Integer> calculateWrongPctByQuestion(List<SubmissionResultDto> submissions) {
+        Map<UUID, List<SubmissionResultDto.AnswerDto>> byQuestion = submissions.stream()
+                .flatMap(submission -> submission.answers().stream())
+                .filter(answer -> answer.questionId() != null)
+                .collect(Collectors.groupingBy(SubmissionResultDto.AnswerDto::questionId));
+
+        Map<UUID, Integer> result = new HashMap<>();
+        byQuestion.forEach((questionId, answers) -> {
+            long total = answers.stream()
+                    .filter(answer -> answer.correct() != null)
+                    .count();
+            long wrong = answers.stream()
+                    .filter(answer -> Boolean.FALSE.equals(answer.correct()))
+                    .count();
+            result.put(questionId, total > 0 ? Math.round(wrong * 100f / total) : 0);
+        });
+        return result;
+    }
+
+    private ExamFeedbackDto.StudentFeedbackDto toStudentFeedback(
+            SubmissionResultDto submission,
+            Map<UUID, Integer> wrongPctByQuestion,
+            List<Integer> percents) {
+        List<SubmissionResultDto.AnswerDto> answers = submission.answers().stream()
+                .filter(answer -> answer.correct() != null)
+                .sorted(Comparator.comparingInt(SubmissionResultDto.AnswerDto::orderIndex))
+                .toList();
+        int totalQuestions = answers.size();
+        int totalCorrect = (int) answers.stream()
+                .filter(answer -> Boolean.TRUE.equals(answer.correct()))
+                .count();
+        int percent = submissionPercent(submission);
+        int percentile = percentile(percent, percents);
+
+        List<ExamFeedbackDto.QuestionFeedbackDto> questions = answers.stream()
+                .map(answer -> new ExamFeedbackDto.QuestionFeedbackDto(
+                        questionOrder(answer),
+                        answer.questionText(),
+                        selectedAnswerText(answer),
+                        answer.correct(),
+                        Boolean.FALSE.equals(answer.correct()) ? wrongPctByQuestion.getOrDefault(answer.questionId(), 0) : null
+                ))
+                .toList();
+
+        return new ExamFeedbackDto.StudentFeedbackDto(
+                submission.chatId(), totalCorrect, totalQuestions, percent, percentile, questions);
+    }
+
+    private int submissionPercent(SubmissionResultDto submission) {
+        return submission.maxScore() > 0
+                ? Math.round(submission.totalScore() * 100f / submission.maxScore())
+                : 0;
+    }
+
+    private int percentile(int percent, List<Integer> percents) {
+        if (percents.isEmpty()) return 0;
+        long lowerOrEqual = percents.stream().filter(value -> value <= percent).count();
+        return Math.round(lowerOrEqual * 100f / percents.size());
+    }
+
+    private int questionOrder(SubmissionResultDto.AnswerDto answer) {
+        return answer.orderIndex();
+    }
+
+    private String selectedAnswerText(SubmissionResultDto.AnswerDto answer) {
+        if (answer.selectedOptionText() != null && !answer.selectedOptionText().isBlank()) {
+            return answer.selectedOptionText();
+        }
+        if (answer.openText() != null && !answer.openText().isBlank()) {
+            return answer.openText();
+        }
+        return "Без ответа";
     }
 
     @Transactional(readOnly = true)

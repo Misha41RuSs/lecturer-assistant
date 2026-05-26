@@ -92,6 +92,10 @@ export function closeExam(examId: string) {
   return apiFetch(`/exams/${examId}/close`, { method: "POST" });
 }
 
+export function releaseExamFeedback(examId: string) {
+  return apiFetch(`/api/exams/${examId}/release-feedback`, { method: "POST" });
+}
+
 export function getExamSubmissions(examId: string) {
   return apiFetch(`/exams/${examId}/submissions`);
 }

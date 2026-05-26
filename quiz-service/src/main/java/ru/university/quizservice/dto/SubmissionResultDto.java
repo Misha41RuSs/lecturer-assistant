@@ -18,6 +18,7 @@ public record SubmissionResultDto(
     public record AnswerDto(
             UUID answerId,
             UUID questionId,
+            int orderIndex,
             String questionText,
             String questionType,
             UUID selectedOptionId,

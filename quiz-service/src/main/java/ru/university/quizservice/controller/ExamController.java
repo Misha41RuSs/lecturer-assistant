@@ -1,6 +1,8 @@
 package ru.university.quizservice.controller;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import ru.university.quizservice.dto.*;
@@ -69,6 +71,18 @@ public class ExamController {
     public ResponseEntity<ExamDetailDto> close(@PathVariable UUID examId) {
         examService.closeExam(examId);
         return ResponseEntity.ok(examService.getExamDetail(examId));
+    }
+
+    @PostMapping("/exams/{examId}/release-feedback")
+    public ResponseEntity<ExamFeedbackDto> releaseFeedback(@PathVariable UUID examId) {
+        try {
+            return ResponseEntity.ok(examService.releaseFeedback(examId));
+        } catch (IllegalStateException e) {
+            HttpStatus status = e.getMessage() != null && e.getMessage().contains("already released")
+                    ? HttpStatus.CONFLICT
+                    : HttpStatus.BAD_REQUEST;
+            throw new ResponseStatusException(status, e.getMessage());
+        }
     }
 
     @PostMapping("/exams/{examId}/submissions")

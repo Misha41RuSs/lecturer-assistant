@@ -2,8 +2,11 @@ package ru.university.lecturebroadcasting.controller;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.server.ResponseStatusException;
 import ru.university.lecturebroadcasting.bot.LectureBroadcastingBot;
 import ru.university.lecturebroadcasting.service.LectureService;
 import ru.university.lecturebroadcasting.service.QuizServiceClient;
@@ -102,5 +105,56 @@ public class ExamLaunchController {
                 "examId", examId,
                 "sentTo", 1
         ));
+    }
+
+    @PostMapping("/{examId}/release-feedback")
+    public ResponseEntity<Map<String, Object>> releaseFeedback(@PathVariable UUID examId) {
+        try {
+            QuizServiceClient.ExamFeedback feedback = quizServiceClient.releaseFeedback(examId);
+            if (feedback == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Quiz service did not return feedback");
+            }
+
+            int sent = 0;
+            for (QuizServiceClient.StudentFeedback student : feedback.students()) {
+                if (student.chatId() == null) continue;
+                bot.sendTextMessage(feedback.lectureId(), student.chatId(), formatFeedbackMessage(feedback, student));
+                sent++;
+            }
+
+            return ResponseEntity.ok(Map.of(
+                    "examId", examId,
+                    "sentTo", sent
+            ));
+        } catch (HttpStatusCodeException e) {
+            throw new ResponseStatusException(HttpStatus.valueOf(e.getStatusCode().value()), e.getResponseBodyAsString());
+        }
+    }
+
+    private String formatFeedbackMessage(QuizServiceClient.ExamFeedback feedback,
+                                         QuizServiceClient.StudentFeedback student) {
+        StringBuilder message = new StringBuilder();
+        message.append("📊 Результаты теста «").append(feedback.examTitle()).append("»\n\n");
+
+        for (QuizServiceClient.QuestionFeedback question : student.questions()) {
+            int number = question.orderIndex() + 1;
+            message.append("Вопрос ").append(number).append(": «")
+                    .append(question.questionText()).append("»\n");
+            if (Boolean.TRUE.equals(question.correct())) {
+                message.append("✅ Правильно — твой ответ: ").append(question.answerText()).append("\n\n");
+            } else if (Boolean.FALSE.equals(question.correct())) {
+                message.append("❌ Неправильно — твой ответ: ").append(question.answerText()).append("\n");
+                message.append("   Так ошиблись ").append(question.wrongPct() != null ? question.wrongPct() : 0)
+                        .append("% группы\n\n");
+            }
+        }
+
+        message.append("───────────────────────\n");
+        message.append("Итого: ").append(student.totalCorrect()).append(" из ")
+                .append(student.totalQuestions()).append(" правильных (")
+                .append(student.percent()).append("%)\n");
+        message.append("Твой перцентиль в группе: лучше ")
+                .append(student.percentile()).append("% участников");
+        return message.toString();
     }
 }

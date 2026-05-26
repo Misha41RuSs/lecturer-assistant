@@ -28,6 +28,7 @@ import {
 	gradeAnswer,
 	importGift,
 	launchExam,
+	releaseExamFeedback,
 	updateExam,
 	getExamAnalytics
 } from '../app/api/quiz.api'
@@ -55,6 +56,7 @@ interface ApiExam {
 	status: 'DRAFT' | 'ACTIVE' | 'CLOSED'
 	examType?: 'EXAM' | 'SURVEY'
 	questionCount?: number
+	feedbackReleased?: boolean
 	questions: ApiQuestion[]
 }
 interface ApiAnswer {
@@ -115,6 +117,7 @@ export function TestsPage() {
 	const [analytics, setAnalytics] = useState<ExamAnalytics | null>(null)
 	const [analyticsLoading, setAnalyticsLoading] = useState(false)
 	const [selectedChatId, setSelectedChatId] = useState<number | null>(null)
+	const [releasingFeedbackId, setReleasingFeedbackId] = useState<string | null>(null)
 	const [view, setView] = useState<
 		'list' | 'create' | 'stats' | 'student-detail'
 	>('list')
@@ -418,6 +421,19 @@ export function TestsPage() {
 			reloadExams()
 		} catch {
 			toast.error('Не удалось закрыть тест')
+		}
+	}
+
+	const handleReleaseFeedback = async (examId: string) => {
+		setReleasingFeedbackId(examId)
+		try {
+			await releaseExamFeedback(examId)
+			toast.success('Разбор отправлен студентам')
+			reloadExams()
+		} catch {
+			toast.error('Не удалось отправить разбор')
+		} finally {
+			setReleasingFeedbackId(null)
 		}
 	}
 
@@ -1442,6 +1458,21 @@ export function TestsPage() {
 												>
 													Закрыть тест
 												</button>
+											)}
+											{exam.status === 'CLOSED' && !exam.feedbackReleased && (
+												<button
+													onClick={() => handleReleaseFeedback(exam.id)}
+													disabled={releasingFeedbackId === exam.id}
+													className="flex items-center gap-1 px-3 py-1.5 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed"
+												>
+													<Send className="w-3.5 h-3.5" />
+													{releasingFeedbackId === exam.id ? 'Отправляем...' : 'Отправить разбор'}
+												</button>
+											)}
+											{exam.status === 'CLOSED' && exam.feedbackReleased && (
+												<span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-green-50 text-green-700 text-sm">
+													Разбор отправлен
+												</span>
 											)}
 											<button
 												onClick={() => handleDelete(exam.id)}
