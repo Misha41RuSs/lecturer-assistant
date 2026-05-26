@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Check, Loader2, NotebookPen, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -24,6 +24,34 @@ export function SlideNotesPanel({ lectureId, slideId, slideIndex, onClose }: Pro
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+  const dragOffset = useRef<{ x: number; y: number } | null>(null)
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!dragOffset.current) return
+    setPos({ x: e.clientX - dragOffset.current.x, y: e.clientY - dragOffset.current.y })
+  }, [])
+
+  const handleMouseUp = useCallback(() => {
+    dragOffset.current = null
+    document.removeEventListener('mousemove', handleMouseMove)
+    document.removeEventListener('mouseup', handleMouseUp)
+  }, [handleMouseMove])
+
+  const handleDragStart = (e: React.MouseEvent) => {
+    const panel = panelRef.current
+    if (!panel || !panel.offsetParent) return
+    const panelRect = panel.getBoundingClientRect()
+    const parentRect = panel.offsetParent.getBoundingClientRect()
+    const x = panelRect.left - parentRect.left
+    const y = panelRect.top - parentRect.top
+    dragOffset.current = { x: e.clientX - x, y: e.clientY - y }
+    setPos({ x, y })
+    e.preventDefault()
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }
 
   // Загрузка заметки при смене слайда
   useEffect(() => {
@@ -93,13 +121,15 @@ export function SlideNotesPanel({ lectureId, slideId, slideIndex, onClose }: Pro
 
   return (
     <div
+      ref={panelRef}
       id="slide-notes-panel"
       className="slide-notes-panel"
       role="dialog"
       aria-label="Заметки к слайду"
+      style={pos ? { top: pos.y, left: pos.x, bottom: 'auto' } : undefined}
     >
-      {/* Header */}
-      <div className="snp-header">
+      {/* Header — drag handle */}
+      <div className="snp-header snp-header--draggable" onMouseDown={handleDragStart}>
         <div className="snp-title">
           <NotebookPen size={15} />
           <span>Заметки — слайд {slideIndex}</span>
@@ -108,6 +138,7 @@ export function SlideNotesPanel({ lectureId, slideId, slideIndex, onClose }: Pro
           id="slide-notes-close-btn"
           className="snp-close-btn"
           onClick={onClose}
+          onMouseDown={e => e.stopPropagation()}
           title="Закрыть"
         >
           <X size={16} />

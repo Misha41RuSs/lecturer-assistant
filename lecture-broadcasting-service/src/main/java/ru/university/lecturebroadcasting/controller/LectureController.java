@@ -39,7 +39,13 @@ public class LectureController {
         java.util.UUID sequenceId = seqString != null ? java.util.UUID.fromString(seqString) : null;
         AccessType accessType = parseAccessType(body.get("accessType"));
         String password = body.get("password");
-        Lecture lecture = lectureService.createLecture(body.get("name"), sequenceId, accessType, password);
+        Integer durationMinutes = parseInteger(body.get("durationMinutes"));
+        Boolean allowQuestions = parseBoolean(body.get("allowQuestions"));
+        Boolean anonymousQuestions = parseBoolean(body.get("anonymousQuestions"));
+        Boolean requireStudentProfile = parseBoolean(body.get("requireStudentProfile"));
+        Lecture lecture = lectureService.createLecture(
+                body.get("name"), sequenceId, accessType, password, durationMinutes, allowQuestions,
+                anonymousQuestions, requireStudentProfile);
         return ResponseEntity.ok(lecture);
     }
 
@@ -84,7 +90,13 @@ public class LectureController {
         String name = body.get("name");
         AccessType accessType = parseAccessType(body.get("accessType"));
         String password = body.get("password");
-        return ResponseEntity.ok(lectureService.updateLecture(id, name, accessType, password));
+        Integer durationMinutes = parseInteger(body.get("durationMinutes"));
+        Boolean allowQuestions = parseBoolean(body.get("allowQuestions"));
+        Boolean anonymousQuestions = parseBoolean(body.get("anonymousQuestions"));
+        Boolean requireStudentProfile = parseBoolean(body.get("requireStudentProfile"));
+        return ResponseEntity.ok(lectureService.updateLecture(
+                id, name, accessType, password, durationMinutes, allowQuestions,
+                anonymousQuestions, requireStudentProfile));
     }
 
     @DeleteMapping("/{id}")
@@ -118,9 +130,30 @@ public class LectureController {
         }
     }
 
+    private static Integer parseInteger(String value) {
+        if (value == null || value.isBlank()) return null;
+        return Integer.parseInt(value.trim());
+    }
+
+    private static Boolean parseBoolean(String value) {
+        if (value == null || value.isBlank()) return null;
+        return Boolean.parseBoolean(value.trim());
+    }
+
     @PostMapping("/{id}/start")
     public ResponseEntity<Lecture> startLecture(@PathVariable Long id) {
-        return ResponseEntity.ok(lectureService.startLecture(id));
+        LectureService.StartLectureResult result = lectureService.startLecture(id);
+        Lecture lecture = result.lecture();
+        if (result.notifyStudents()) {
+            List<Long> chatIds = lectureService.getStudentChatIds(id);
+            bot.notifyLectureStartedToStudents(
+                    id,
+                    lecture.getName(),
+                    lecture.getCurrentSlide() != null ? lecture.getCurrentSlide() : 1,
+                    chatIds
+            );
+        }
+        return ResponseEntity.ok(lecture);
     }
 
     @PostMapping("/{id}/stop")

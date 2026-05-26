@@ -12,7 +12,6 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import {
-	BASE_URL,
 	listLectures,
 	stopLecture,
 	type LectureListItem
@@ -87,15 +86,7 @@ export function MyLecturesPage() {
 				<div>
 					<h1 className="mb-1">Мои лекции</h1>
 					<p className="text-sm text-neutral-500">
-						Данные с сервера: id и имя совпадают с базой (для Telegram:{' '}
-						<code className="text-xs bg-neutral-100 px-1 rounded">
-							/join имя
-						</code>{' '}
-						или{' '}
-						<code className="text-xs bg-neutral-100 px-1 rounded">
-							/join id
-						</code>
-						)
+						Создавайте лекции, управляйте доступом и запускайте занятия
 					</p>
 				</div>
 				<Tooltip>
@@ -111,17 +102,6 @@ export function MyLecturesPage() {
 						<p>Загрузить презентацию и создать новую лекцию</p>
 					</TooltipContent>
 				</Tooltip>
-			</div>
-
-			<div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-				<p className="font-medium mb-1">Проверка без фронта</p>
-				<p className="text-amber-800/90">
-					Откройте в браузере{' '}
-					<code className="text-xs bg-white/80 px-1 py-0.5 rounded border border-amber-200">
-						{BASE_URL}/lectures
-					</code>{' '}
-					— там JSON со всеми лекциями из PostgreSQL.
-				</p>
 			</div>
 
 			{loadError && (
@@ -166,7 +146,7 @@ export function MyLecturesPage() {
 			{loading ? (
 				<div className="flex flex-col items-center justify-center py-24 text-neutral-500 gap-2">
 					<Loader2 className="w-8 h-8 animate-spin text-orange-500" />
-					<span className="text-sm">Загрузка лекций из API…</span>
+					<span className="text-sm">Загрузка лекций…</span>
 				</div>
 			) : viewMode === 'grid' ? (
 				<div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">

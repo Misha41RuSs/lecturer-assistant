@@ -12,5 +12,7 @@ public class StudentDto {
     private String firstName;
     private String lastName;
     private String username;
+    private String realName;
+    private String groupName;
     private boolean kicked;
 }

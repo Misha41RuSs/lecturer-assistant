@@ -30,6 +30,9 @@ export function HomePage() {
 	const [loadError, setLoadError] = useState<string | null>(null)
 	const [search, setSearch] = useState('')
 	const [menuOpen, setMenuOpen] = useState<number | null>(null)
+	const [showOnboarding, setShowOnboarding] = useState(() => {
+		return localStorage.getItem('onboarding_done_v1') !== 'true'
+	})
 
 	useEffect(() => {
 		let cancelled = false
@@ -88,6 +91,11 @@ const handleDelete = async (id: number) => {
     }
 }
 
+	const closeOnboarding = () => {
+		localStorage.setItem('onboarding_done_v1', 'true')
+		setShowOnboarding(false)
+	}
+
 
 	const statusLabel = (status: string) => {
 		if (status === 'ACTIVE') return 'Live'
@@ -119,6 +127,38 @@ const handleDelete = async (id: number) => {
 					</TooltipContent>
 				</Tooltip>
 			</div>
+
+			{showOnboarding && (
+				<div className="mb-6 rounded-xl border border-orange-200 bg-orange-50 p-4 lg:p-5">
+					<div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+						<div>
+							<h3 className="text-base mb-2">Первый запуск</h3>
+							<div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-neutral-700">
+								<span>1. Загрузите презентацию</span>
+								<span>2. Настройте доступ</span>
+								<span>3. Запустите лекцию</span>
+							</div>
+						</div>
+						<div className="flex gap-2">
+							<button
+								onClick={closeOnboarding}
+								className="px-4 py-2 rounded-lg border border-orange-200 text-sm text-neutral-700 hover:bg-white"
+							>
+								Скрыть
+							</button>
+							<button
+								onClick={() => {
+									closeOnboarding()
+									navigate('/upload/new')
+								}}
+								className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm hover:bg-orange-600"
+							>
+								Создать лекцию
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 
 			{/* Stats */}
 			<div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
