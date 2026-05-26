@@ -9,15 +9,23 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.transaction.annotation.Transactional;
+import ru.university.lecturebroadcasting.entity.Lecture;
+import ru.university.lecturebroadcasting.entity.QuestionUpvote;
+import ru.university.lecturebroadcasting.entity.StudentQuestionEntity;
+import ru.university.lecturebroadcasting.repository.LectureRepository;
+import ru.university.lecturebroadcasting.repository.QuestionUpvoteRepository;
+import ru.university.lecturebroadcasting.repository.StudentQuestionRepository;
 
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.Set;
+import java.util.UUID;
 
 @Service
 public class StudentQuestionService {
@@ -42,25 +50,38 @@ public class StudentQuestionService {
         }
     }
 
-    private final AtomicLong seq = new AtomicLong(1);
-    private final ConcurrentHashMap<String, Question> store = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, java.util.Set<Long>> upvoters = new ConcurrentHashMap<>();
     private final RestTemplate restTemplate;
     private final String analyticsServiceUrl;
     private final SimpMessagingTemplate messagingTemplate;
+    private final LectureRepository lectureRepository;
+    private final StudentQuestionRepository questionRepository;
+    private final QuestionUpvoteRepository upvoteRepository;
 
     public StudentQuestionService(RestTemplate restTemplate,
                                   @Value("${analytics-service.url}") String analyticsServiceUrl,
-                                  SimpMessagingTemplate messagingTemplate) {
+                                  SimpMessagingTemplate messagingTemplate,
+                                  LectureRepository lectureRepository,
+                                  StudentQuestionRepository questionRepository,
+                                  QuestionUpvoteRepository upvoteRepository) {
         this.restTemplate = restTemplate;
         this.analyticsServiceUrl = analyticsServiceUrl;
         this.messagingTemplate = messagingTemplate;
+        this.lectureRepository = lectureRepository;
+        this.questionRepository = questionRepository;
+        this.upvoteRepository = upvoteRepository;
     }
 
+    @Transactional
     public Question add(Long lectureId, Long chatId, String text, Long slideId, boolean anonymous) {
-        String id = String.valueOf(seq.getAndIncrement());
-        Question q = new Question(id, lectureId, chatId, text, null, "OPEN", Instant.now(), anonymous, 0);
-        store.put(id, q);
+        Lecture lecture = lectureRepository.findById(lectureId)
+                .orElseThrow(() -> new IllegalArgumentException("Lecture not found: " + lectureId));
+        StudentQuestionEntity entity = new StudentQuestionEntity();
+        entity.setLecture(lecture);
+        entity.setChatId(chatId);
+        entity.setText(text);
+        entity.setAnonymous(anonymous);
+        StudentQuestionEntity saved = questionRepository.save(entity);
+        Question q = toQuestion(saved);
 
         // Отправляем xAPI событие "asked" для сбора метрик
         sendXapiQuestionEvent(lectureId, slideId, chatId, text);
@@ -93,46 +114,54 @@ public class StudentQuestionService {
         }
     }
 
+    @Transactional(readOnly = true)
     public List<Question> getByLecture(Long lectureId) {
-        return store.values().stream()
-                .filter(q -> q.lectureId().equals(lectureId))
+        return questionRepository.findByLecture_Id(lectureId).stream()
+                .map(this::toQuestion)
                 .sorted(Comparator.comparing(Question::status).thenComparing(Comparator.comparing(Question::upvotes).reversed()).thenComparing(Question::createdAt))
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public List<Question> topOpen(Long lectureId, int limit) {
-        return store.values().stream()
-                .filter(q -> q.lectureId().equals(lectureId) && !"ANSWERED".equals(q.status()) && !"DISMISSED".equals(q.status()))
+        return questionRepository.findByLecture_Id(lectureId).stream()
+                .map(this::toQuestion)
+                .filter(q -> !"ANSWERED".equals(q.status()) && !"DISMISSED".equals(q.status()))
                 .sorted(Comparator.comparing(Question::upvotes).reversed().thenComparing(Question::createdAt))
                 .limit(limit)
                 .toList();
     }
 
+    @Transactional
     public Optional<Question> upvote(String id, Long chatId) {
-        Question q = store.get(id);
-        if (q == null) return Optional.empty();
-        java.util.Set<Long> voters = upvoters.computeIfAbsent(id, ignored -> ConcurrentHashMap.newKeySet());
-        voters.add(chatId);
-        Question updated = q.withUpvotes(voters.size());
-        store.put(id, updated);
-        publishQuestionChange(updated.lectureId());
-        return Optional.of(updated);
+        UUID uuid = UUID.fromString(id);
+        return questionRepository.findById(uuid).map(question -> {
+            upvoteRepository.findByQuestion_IdAndChatId(uuid, chatId).orElseGet(() -> {
+                QuestionUpvote upvote = new QuestionUpvote();
+                upvote.setQuestion(question);
+                upvote.setChatId(chatId);
+                return upvoteRepository.save(upvote);
+            });
+            publishQuestionChange(question.getLecture().getId());
+            return toQuestion(question);
+        });
     }
 
-    public java.util.Set<Long> subscribers(String id) {
-        Question q = store.get(id);
-        java.util.Set<Long> result = new java.util.HashSet<>(upvoters.getOrDefault(id, java.util.Set.of()));
-        if (q != null && q.chatId() != null) result.add(q.chatId());
+    @Transactional(readOnly = true)
+    public Set<Long> subscribers(String id) {
+        UUID uuid = UUID.fromString(id);
+        Set<Long> result = new HashSet<>();
+        questionRepository.findById(uuid).ifPresent(q -> result.add(q.getChatId()));
+        upvoteRepository.findByQuestion_Id(uuid).forEach(upvote -> result.add(upvote.getChatId()));
         return result;
     }
 
+    @Transactional
     public List<Question> markOpenAsSeen(Long lectureId) {
-        List<Question> seenQuestions = store.values().stream()
-                .filter(q -> q.lectureId().equals(lectureId) && "OPEN".equals(q.status()))
+        List<Question> seenQuestions = questionRepository.findByLecture_IdAndStatus(lectureId, "OPEN").stream()
                 .map(q -> {
-                    Question seen = q.seen();
-                    store.put(q.id(), seen);
-                    return seen;
+                    q.setStatus("SEEN");
+                    return toQuestion(questionRepository.save(q));
                 })
                 .toList();
         if (!seenQuestions.isEmpty()) {
@@ -141,22 +170,25 @@ public class StudentQuestionService {
         return seenQuestions;
     }
 
+    @Transactional
     public Optional<Question> answer(String id, String answer) {
-        Question q = store.get(id);
-        if (q == null) return Optional.empty();
-        Question answered = q.withAnswer(answer);
-        store.put(id, answered);
-        publishQuestionChange(answered.lectureId());
-        return Optional.of(answered);
+        return questionRepository.findById(UUID.fromString(id)).map(q -> {
+            q.setAnswer(answer);
+            q.setStatus("ANSWERED");
+            Question answered = toQuestion(questionRepository.save(q));
+            publishQuestionChange(answered.lectureId());
+            return answered;
+        });
     }
 
+    @Transactional
     public Optional<Question> dismiss(String id) {
-        Question q = store.get(id);
-        if (q == null) return Optional.empty();
-        Question dismissed = q.dismissed();
-        store.put(id, dismissed);
-        publishQuestionChange(dismissed.lectureId());
-        return Optional.of(dismissed);
+        return questionRepository.findById(UUID.fromString(id)).map(q -> {
+            q.setStatus("DISMISSED");
+            Question dismissed = toQuestion(questionRepository.save(q));
+            publishQuestionChange(dismissed.lectureId());
+            return dismissed;
+        });
     }
 
     private void publishQuestionChange(Long lectureId) {
@@ -167,8 +199,23 @@ public class StudentQuestionService {
     }
 
     public void clearByLecture(Long lectureId) {
-        store.values().removeIf(q -> q.lectureId().equals(lectureId));
-        upvoters.keySet().removeIf(id -> !store.containsKey(id));
+        upvoteRepository.deleteByQuestion_Lecture_Id(lectureId);
+        questionRepository.deleteByLecture_Id(lectureId);
+    }
+
+    private Question toQuestion(StudentQuestionEntity entity) {
+        int upvotes = (int) upvoteRepository.countByQuestion_Id(entity.getId());
+        return new Question(
+                entity.getId().toString(),
+                entity.getLecture().getId(),
+                entity.getChatId(),
+                entity.getText(),
+                entity.getAnswer(),
+                entity.getStatus(),
+                entity.getCreatedAt(),
+                entity.isAnonymous(),
+                upvotes
+        );
     }
 
     public void sendRating(Long lectureId, Long chatId, Integer rating, Long slideId) {
