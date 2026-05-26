@@ -104,6 +104,10 @@ export function getExamAnalytics(examId: string) {
   return apiFetch(`/exams/${examId}/analytics`);
 }
 
+export function getStudentCard(chatId: number) {
+  return apiFetch(`/students/${chatId}/card`);
+}
+
 export function gradeAnswer(answerId: string, score: number) {
   return apiFetch(`/answers/${answerId}/grade`, {
     method: "PUT",

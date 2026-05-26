@@ -511,6 +511,50 @@ public class ExamService {
     private record SubmissionScore(int score, int maxScore) {}
 
     @Transactional(readOnly = true)
+    public StudentCardDto getStudentCard(Long chatId) {
+        StudentStatsDto stats = getStudentStats(chatId, null);
+        List<StudentStatsDto.ExamStatsDto> exams = stats.lectures().stream()
+                .flatMap(lecture -> lecture.exams().stream())
+                .toList();
+        List<Integer> trend = exams.stream().map(StudentStatsDto.ExamStatsDto::pct).toList();
+        List<String> alerts = new ArrayList<>();
+        if (hasThreeBelow(trend)) {
+            alerts.add("3 теста подряд ниже 50%");
+        }
+        if (isFallingTrend(trend)) {
+            alerts.add("Результат падает 3 теста подряд");
+        }
+        return new StudentCardDto(
+                chatId,
+                exams.size(),
+                exams.size(),
+                stats.overallPct(),
+                trend,
+                alerts,
+                stats.lectures()
+        );
+    }
+
+    private boolean hasThreeBelow(List<Integer> trend) {
+        int streak = 0;
+        for (Integer pct : trend) {
+            streak = pct < 50 ? streak + 1 : 0;
+            if (streak >= 3) return true;
+        }
+        return false;
+    }
+
+    private boolean isFallingTrend(List<Integer> trend) {
+        if (trend.size() < 3) return false;
+        for (int i = 0; i <= trend.size() - 3; i++) {
+            if (trend.get(i) > trend.get(i + 1) && trend.get(i + 1) > trend.get(i + 2)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Transactional(readOnly = true)
     public ExamAnalyticsDto getAnalytics(UUID examId) {
         Exam exam = getExam(examId);
         List<ExamSubmission> subs = submissionRepository.findByExam_IdOrderByStartedAtDesc(examId);

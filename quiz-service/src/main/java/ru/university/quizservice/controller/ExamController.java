@@ -157,4 +157,11 @@ public class ExamController {
             @RequestParam(required = false) Long lectureId) {
         return ResponseEntity.ok(examService.getStudentStats(chatId, lectureId));
     }
+
+    @GetMapping("/students/{chatId}/card")
+    public ResponseEntity<StudentCardDto> getStudentCard(
+            @PathVariable Long chatId,
+            @RequestParam(required = false) Long lectureGroupId) {
+        return ResponseEntity.ok(examService.getStudentCard(chatId));
+    }
 }

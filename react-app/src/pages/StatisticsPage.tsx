@@ -3,7 +3,7 @@ import { Users, ClipboardList, CheckCircle, ChevronDown, ChevronUp, Star, Downlo
 import { toast } from "sonner";
 import { listLectures, LectureListItem, getAllStudents, StudentDto, getPostSurveyResults } from "../app/api/client";
 import { getSlideRequestStats } from "../app/api/analytics.api";
-import { getExamsByLecture, getExamSubmissions, getExamAnalytics } from "../app/api/quiz.api";
+import { getExamsByLecture, getExamSubmissions, getExamAnalytics, getStudentCard } from "../app/api/quiz.api";
 
 interface ExamRow {
   id: string
@@ -98,6 +98,15 @@ interface PostSurveyResults {
   pace: Record<string, number>
   openTexts: string[]
 }
+interface StudentCard {
+  chatId: number
+  participationDone: number
+  participationTotal: number
+  averagePct: number
+  trend: number[]
+  alerts: string[]
+  lectures: { lectureId: number; lectureTitle: string; date: string; exams: { examTitle: string; pct: number; score: number; maxScore: number }[] }[]
+}
 
 const STATUS_LABELS: Record<string, string> = {
   ACTIVE: 'Активен',
@@ -167,6 +176,8 @@ export function StatisticsPage() {
   const [surveyViewModes, setSurveyViewModes] = useState<Record<string, 'students' | 'groups'>>({});
   const [examAnalytics, setExamAnalytics] = useState<Record<string, ExamAnalytics>>({});
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [expandedStudent, setExpandedStudent] = useState<number | null>(null);
+  const [studentCards, setStudentCards] = useState<Record<number, StudentCard>>({});
 
   useEffect(() => {
     listLectures()
@@ -180,6 +191,8 @@ export function StatisticsPage() {
     setSurveyViewModes({});
     setExamAnalytics({});
     setExpandedGroups({});
+    setExpandedStudent(null);
+    setStudentCards({});
 
     if (!selectedLectureId) {
       setStudents([]);
@@ -259,6 +272,18 @@ export function StatisticsPage() {
       setExamAnalytics(prev => ({ ...prev, [id]: data }));
     } catch {
       // Optional block: base statistics should stay usable if analytics is unavailable.
+    }
+  };
+
+  const toggleStudentCard = async (chatId: number) => {
+    setExpandedStudent(prev => prev === chatId ? null : chatId);
+    if (!studentCards[chatId]) {
+      try {
+        const card = await getStudentCard(chatId) as StudentCard;
+        setStudentCards(prev => ({ ...prev, [chatId]: card }));
+      } catch {
+        toast.error('Не удалось загрузить карточку студента');
+      }
     }
   };
 
@@ -598,6 +623,57 @@ export function StatisticsPage() {
             </div>
           </div>
         )}
+      </div>
+    );
+  };
+
+  const renderStudentCard = (chatId: number) => {
+    const card = studentCards[chatId];
+    if (!card) return <div className="p-4 text-sm text-neutral-400">Загрузка карточки...</div>;
+    return (
+      <div className="p-4 bg-neutral-50 border-t border-neutral-100">
+        <div className="grid gap-3 sm:grid-cols-3 mb-4">
+          <div className="bg-white rounded-lg p-3 border border-neutral-200">
+            <div className="text-xs text-neutral-500">Участие</div>
+            <div className="text-lg font-semibold">{card.participationDone} из {card.participationTotal}</div>
+          </div>
+          <div className="bg-white rounded-lg p-3 border border-neutral-200">
+            <div className="text-xs text-neutral-500">Среднее</div>
+            <div className="text-lg font-semibold">{card.averagePct}%</div>
+          </div>
+          <div className="bg-white rounded-lg p-3 border border-neutral-200">
+            <div className="text-xs text-neutral-500">Тревоги</div>
+            <div className="text-sm font-medium">{card.alerts.length || 'Нет'}</div>
+          </div>
+        </div>
+        {card.trend.length > 0 && (
+          <div className="mb-4">
+            <div className="text-xs text-neutral-500 mb-2">Тренд результатов</div>
+            <div className="flex items-end gap-2 h-24">
+              {card.trend.map((pct, index) => (
+                <div key={index} className="flex flex-col items-center gap-1">
+                  <div className="w-8 bg-orange-400 rounded-t" style={{ height: `${Math.max(8, pct)}%` }} />
+                  <div className="text-[10px] text-neutral-500">{pct}%</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {card.alerts.length > 0 && (
+          <div className="mb-4 space-y-1">
+            {card.alerts.map(alert => (
+              <div key={alert} className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">⚠️ {alert}</div>
+            ))}
+          </div>
+        )}
+        <div className="space-y-2">
+          {card.lectures.flatMap(lecture => lecture.exams.map(exam => (
+            <div key={`${lecture.lectureId}:${exam.examTitle}`} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 text-sm border border-neutral-200">
+              <span className="font-medium">{lecture.lectureTitle} · {exam.examTitle}</span>
+              <span className={exam.pct >= 60 ? 'text-green-600' : 'text-red-500'}>{exam.score}/{exam.maxScore} · {exam.pct}%</span>
+            </div>
+          )))}
+        </div>
       </div>
     );
   };
@@ -1017,22 +1093,32 @@ export function StatisticsPage() {
                       </thead>
                       <tbody>
                         {students.map((s) => (
-                          <tr key={s.chatId} className="border-b border-neutral-100 hover:bg-neutral-50">
-                            <td className="py-2 px-3 text-sm flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-neutral-200 flex items-center justify-center text-xs font-medium text-neutral-600">
-                                {getStudentName(s.chatId)[0] || 'С'}
-                              </div>
-                              <span className="font-medium">{getStudentName(s.chatId)}</span>
-                            </td>
-                            <td className="py-2 px-3 text-sm text-neutral-500">{s.username ? `@${s.username}` : '—'}</td>
-                            <td className="py-2 px-3 text-sm text-neutral-500">{getStudentGroup(s.chatId)}</td>
-                            <td className="py-2 px-3 text-sm">
-                              {s.kicked
-                                ? <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600">Выгнан</span>
-                                : <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-600">Участвовал</span>
-                              }
-                            </td>
-                          </tr>
+                          <Fragment key={s.chatId}>
+                            <tr
+                              className="border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer"
+                              onClick={() => toggleStudentCard(s.chatId)}
+                            >
+                              <td className="py-2 px-3 text-sm flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-neutral-200 flex items-center justify-center text-xs font-medium text-neutral-600">
+                                  {getStudentName(s.chatId)[0] || 'С'}
+                                </div>
+                                <span className="font-medium">{getStudentName(s.chatId)}</span>
+                              </td>
+                              <td className="py-2 px-3 text-sm text-neutral-500">{s.username ? `@${s.username}` : '—'}</td>
+                              <td className="py-2 px-3 text-sm text-neutral-500">{getStudentGroup(s.chatId)}</td>
+                              <td className="py-2 px-3 text-sm">
+                                {s.kicked
+                                  ? <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600">Выгнан</span>
+                                  : <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-600">Участвовал</span>
+                                }
+                              </td>
+                            </tr>
+                            {expandedStudent === s.chatId && (
+                              <tr>
+                                <td colSpan={4}>{renderStudentCard(s.chatId)}</td>
+                              </tr>
+                            )}
+                          </Fragment>
                         ))}
                       </tbody>
                     </table>
