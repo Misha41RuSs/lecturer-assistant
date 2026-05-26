@@ -2,6 +2,8 @@ package ru.university.quizservice.service;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import ru.university.quizservice.dto.*;
 import ru.university.quizservice.entity.*;
 import ru.university.quizservice.repository.*;
@@ -345,7 +347,7 @@ public class ExamService {
 
         List<SubmissionResultDto> submissions = getSubmissions(examId);
         if (submissions.stream().anyMatch(SubmissionResultDto::hasUngraded)) {
-            throw new IllegalStateException("Grade open answers before releasing feedback");
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Сначала проверьте открытые ответы");
         }
         Map<UUID, Integer> wrongPctByQuestion = calculateWrongPctByQuestion(submissions);
         List<Integer> percents = submissions.stream()
@@ -446,6 +448,7 @@ public class ExamService {
                 : submissionRepository.findByChatIdOrderByStartedAtDesc(chatId);
 
         Map<Long, List<StudentStatsDto.ExamStatsDto>> examsByLecture = new LinkedHashMap<>();
+        Map<Long, String> datesByLecture = lectureDates(studentSubmissions);
         Map<UUID, List<Integer>> percentsByExam = examPercents(studentSubmissions);
         int totalScore = 0;
         int totalMaxScore = 0;
@@ -478,7 +481,7 @@ public class ExamService {
                 .map(entry -> new StudentStatsDto.LectureStatsDto(
                         entry.getKey(),
                         "Лекция " + entry.getKey(),
-                        entry.getValue().isEmpty() ? "" : examDate(entry.getValue().get(0).examId()),
+                        datesByLecture.getOrDefault(entry.getKey(), ""),
                         entry.getValue()
                 ))
                 .toList();
@@ -504,11 +507,13 @@ public class ExamService {
         return result;
     }
 
-    private String examDate(UUID examId) {
-        return submissionRepository.findByExam_IdOrderByStartedAtDesc(examId).stream()
-                .findFirst()
-                .map(submission -> submission.getStartedAt().toString().substring(0, 10))
-                .orElse("");
+    private Map<Long, String> lectureDates(List<ExamSubmission> submissions) {
+        Map<Long, String> dates = new LinkedHashMap<>();
+        for (ExamSubmission submission : submissions) {
+            Long lectureId = submission.getExam().getLectureId();
+            dates.putIfAbsent(lectureId, submission.getStartedAt().toString().substring(0, 10));
+        }
+        return dates;
     }
 
     private SubmissionScore scoreSubmission(ExamSubmission submission) {

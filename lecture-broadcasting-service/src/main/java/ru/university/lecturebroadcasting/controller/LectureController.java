@@ -168,6 +168,7 @@ public class LectureController {
         LectureService.StopLectureResult result = lectureService.stopLecture(id);
         bot.notifyLectureEndedToStudents(id, result.lecture().getName(), result.disconnectedChatIds());
         bot.sendPostLectureSurvey(id, result.lecture().getName(), result.disconnectedChatIds());
+        studentQuestionService.clearByLecture(id);
         return ResponseEntity.ok(result.lecture());
     }
 
