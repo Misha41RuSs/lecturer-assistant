@@ -254,6 +254,7 @@ export async function getStudentQuestions(lectureId: string): Promise<{
 	groupName?: string
 	studentName?: string
 	username?: string
+	upvotes?: number
 }[]> {
 	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/student-questions`)
 	if (!res.ok) throw new Error('Failed to load questions')

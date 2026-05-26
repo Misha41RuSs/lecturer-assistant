@@ -24,22 +24,27 @@ public class StudentQuestionService {
     private static final Logger logger = LoggerFactory.getLogger(StudentQuestionService.class);
 
     public record Question(String id, Long lectureId, Long chatId, String text,
-                           String answer, String status, Instant createdAt, boolean anonymous) {
+                           String answer, String status, Instant createdAt, boolean anonymous, int upvotes) {
         Question withAnswer(String ans) {
-            return new Question(id, lectureId, chatId, text, ans, "ANSWERED", createdAt, anonymous);
+            return new Question(id, lectureId, chatId, text, ans, "ANSWERED", createdAt, anonymous, upvotes);
         }
 
         Question seen() {
-            return new Question(id, lectureId, chatId, text, answer, "SEEN", createdAt, anonymous);
+            return new Question(id, lectureId, chatId, text, answer, "SEEN", createdAt, anonymous, upvotes);
         }
 
         Question dismissed() {
-            return new Question(id, lectureId, chatId, text, answer, "DISMISSED", createdAt, anonymous);
+            return new Question(id, lectureId, chatId, text, answer, "DISMISSED", createdAt, anonymous, upvotes);
+        }
+
+        Question withUpvotes(int value) {
+            return new Question(id, lectureId, chatId, text, answer, status, createdAt, anonymous, value);
         }
     }
 
     private final AtomicLong seq = new AtomicLong(1);
     private final ConcurrentHashMap<String, Question> store = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, java.util.Set<Long>> upvoters = new ConcurrentHashMap<>();
     private final RestTemplate restTemplate;
     private final String analyticsServiceUrl;
     private final SimpMessagingTemplate messagingTemplate;
@@ -54,7 +59,7 @@ public class StudentQuestionService {
 
     public Question add(Long lectureId, Long chatId, String text, Long slideId, boolean anonymous) {
         String id = String.valueOf(seq.getAndIncrement());
-        Question q = new Question(id, lectureId, chatId, text, null, "OPEN", Instant.now(), anonymous);
+        Question q = new Question(id, lectureId, chatId, text, null, "OPEN", Instant.now(), anonymous, 0);
         store.put(id, q);
 
         // Отправляем xAPI событие "asked" для сбора метрик
@@ -91,8 +96,34 @@ public class StudentQuestionService {
     public List<Question> getByLecture(Long lectureId) {
         return store.values().stream()
                 .filter(q -> q.lectureId().equals(lectureId))
-                .sorted(Comparator.comparing(Question::createdAt))
+                .sorted(Comparator.comparing(Question::status).thenComparing(Comparator.comparing(Question::upvotes).reversed()).thenComparing(Question::createdAt))
                 .toList();
+    }
+
+    public List<Question> topOpen(Long lectureId, int limit) {
+        return store.values().stream()
+                .filter(q -> q.lectureId().equals(lectureId) && !"ANSWERED".equals(q.status()) && !"DISMISSED".equals(q.status()))
+                .sorted(Comparator.comparing(Question::upvotes).reversed().thenComparing(Question::createdAt))
+                .limit(limit)
+                .toList();
+    }
+
+    public Optional<Question> upvote(String id, Long chatId) {
+        Question q = store.get(id);
+        if (q == null) return Optional.empty();
+        java.util.Set<Long> voters = upvoters.computeIfAbsent(id, ignored -> ConcurrentHashMap.newKeySet());
+        voters.add(chatId);
+        Question updated = q.withUpvotes(voters.size());
+        store.put(id, updated);
+        publishQuestionChange(updated.lectureId());
+        return Optional.of(updated);
+    }
+
+    public java.util.Set<Long> subscribers(String id) {
+        Question q = store.get(id);
+        java.util.Set<Long> result = new java.util.HashSet<>(upvoters.getOrDefault(id, java.util.Set.of()));
+        if (q != null && q.chatId() != null) result.add(q.chatId());
+        return result;
     }
 
     public List<Question> markOpenAsSeen(Long lectureId) {
@@ -137,6 +168,7 @@ public class StudentQuestionService {
 
     public void clearByLecture(Long lectureId) {
         store.values().removeIf(q -> q.lectureId().equals(lectureId));
+        upvoters.keySet().removeIf(id -> !store.containsKey(id));
     }
 
     public void sendRating(Long lectureId, Long chatId, Integer rating, Long slideId) {

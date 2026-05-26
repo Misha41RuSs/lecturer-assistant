@@ -92,6 +92,7 @@ interface Question {
 	status: 'OPEN' | 'SEEN' | 'ANSWERED' | 'DISMISSED'
 	isNew: boolean
 	index: number
+	upvotes: number
 }
 
 interface LiveExamOption {
@@ -196,6 +197,7 @@ function mapStudentQuestion(
 		groupName?: string
 		studentName?: string
 		username?: string
+		upvotes?: number
 	},
 	idx: number
 ): Question {
@@ -220,7 +222,8 @@ function mapStudentQuestion(
 		answer: q.answer,
 		status: q.status || 'OPEN',
 		isNew: mins < 2,
-		index: num
+		index: num,
+		upvotes: q.upvotes || 0
 	}
 }
 
@@ -1446,6 +1449,9 @@ export function LivePresentationPage() {
 														</div>
 														<div className="text-neutral-400 text-xs">
 															{q.time}
+															{q.upvotes > 0 && (
+																<span className="ml-2 text-orange-400">+{q.upvotes}</span>
+															)}
 														</div>
 													</div>
 												</div>

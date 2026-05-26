@@ -56,6 +56,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private static final String CB_POST_PACE = "post:pace:";
     private static final String CB_POST_SKIP = "post:skip";
     private static final String CB_COMP = "comp:";
+    private static final String CB_Q_UPVOTE = "q:up:";
     private static final String CB_ANON_YES = "q:anon";
     private static final String CB_ANON_NO = "q:named";
     private static final String BTN_JOIN = "🔌 Подключиться";
@@ -73,6 +74,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             Команды бота:
             /join <название или id> — подключиться к лекции
             /question <текст> — задать вопрос преподавателю
+            /questions — посмотреть вопросы аудитории и подписаться
             /rate <1-5> — оценить понимание текущего слайда
             /current — повторно получить текущий слайд
             /prev — получить предыдущий слайд
@@ -282,6 +284,11 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             } else {
                 requestInput(chatId, "question", "Введите текст вашего вопроса:");
             }
+            return;
+        }
+
+        if ("/questions".equals(cmd)) {
+            showOpenQuestions(chatId);
             return;
         }
 
@@ -555,6 +562,40 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         }, () -> sendTextWithMainKeyboard(chatId, "Вы не подключены. Используйте /join."));
     }
 
+    private void showOpenQuestions(long chatId) {
+        studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
+            if (student.getLecture() == null ||
+                    student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
+                sendTextWithMainKeyboard(chatId, "Вы не подключены к активной лекции.");
+                return;
+            }
+            List<StudentQuestionService.Question> questions =
+                    studentQuestionService.topOpen(student.getLecture().getId(), 5);
+            if (questions.isEmpty()) {
+                sendTextWithMainKeyboard(chatId, "Пока нет открытых вопросов.");
+                return;
+            }
+            for (StudentQuestionService.Question question : questions) {
+                try {
+                    execute(SendMessage.builder()
+                            .chatId(chatId)
+                            .text("Вопрос +" + question.upvotes() + ":\n" + question.text())
+                            .replyMarkup(InlineKeyboardMarkup.builder()
+                                    .keyboard(List.of(List.of(
+                                            InlineKeyboardButton.builder()
+                                                    .text("+1 Тоже хочу знать")
+                                                    .callbackData(CB_Q_UPVOTE + question.id())
+                                                    .build()
+                                    )))
+                                    .build())
+                            .build());
+                } catch (TelegramApiException e) {
+                    log.warn("questions list failed chatId={}: {}", chatId, e.getMessage());
+                }
+            }
+        }, () -> sendTextWithMainKeyboard(chatId, "Вы не подключены. Используйте /join."));
+    }
+
     private void handleRatingText(long chatId, String ratingText, org.telegram.telegrambots.meta.api.objects.User from) {
         studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
             if (student.getLecture() == null || student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
@@ -678,6 +719,15 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
 
         if (data.startsWith(CB_COMP)) {
             handleComprehensionSignal(chatId, data.substring(CB_COMP.length()));
+            return;
+        }
+
+        if (data.startsWith(CB_Q_UPVOTE)) {
+            String questionId = data.substring(CB_Q_UPVOTE.length());
+            studentQuestionService.upvote(questionId, chatId).ifPresentOrElse(
+                    q -> sendTextWithMainKeyboard(chatId, "Вы подписались на вопрос: «" + q.text() + "»"),
+                    () -> sendTextWithMainKeyboard(chatId, "Вопрос уже закрыт или не найден.")
+            );
             return;
         }
 
