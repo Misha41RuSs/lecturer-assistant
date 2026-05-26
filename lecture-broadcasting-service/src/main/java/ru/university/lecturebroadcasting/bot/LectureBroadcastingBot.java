@@ -18,9 +18,11 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.Keyboard
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.university.lecturebroadcasting.entity.Student;
+import ru.university.lecturebroadcasting.entity.ComprehensionSignalValue;
 import ru.university.lecturebroadcasting.repository.StudentRepository;
 import io.micrometer.core.instrument.Timer;
 import ru.university.lecturebroadcasting.service.AnalyticsServiceClient;
+import ru.university.lecturebroadcasting.service.ComprehensionService;
 import ru.university.lecturebroadcasting.service.DeliveryMetricsService;
 import ru.university.lecturebroadcasting.service.LectureService;
 import ru.university.lecturebroadcasting.service.PasswordRequiredException;
@@ -53,6 +55,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private static final String CB_POST_RATING = "post:rating:";
     private static final String CB_POST_PACE = "post:pace:";
     private static final String CB_POST_SKIP = "post:skip";
+    private static final String CB_COMP = "comp:";
     private static final String CB_ANON_YES = "q:anon";
     private static final String CB_ANON_NO = "q:named";
     private static final String BTN_JOIN = "🔌 Подключиться";
@@ -105,6 +108,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final AnalyticsServiceClient analyticsServiceClient;
     private final StudentQuestionService studentQuestionService;
     private final PostLectureSurveyService postLectureSurveyService;
+    private final ComprehensionService comprehensionService;
     private final DeliveryMetricsService deliveryMetricsService;
     private final RestTemplate restTemplate;
     private final io.micrometer.core.instrument.MeterRegistry meterRegistry;
@@ -126,6 +130,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             AnalyticsServiceClient analyticsServiceClient,
             StudentQuestionService studentQuestionService,
             PostLectureSurveyService postLectureSurveyService,
+            ComprehensionService comprehensionService,
             DeliveryMetricsService deliveryMetricsService,
             RestTemplate restTemplate,
             io.micrometer.core.instrument.MeterRegistry meterRegistry) {
@@ -139,6 +144,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         this.analyticsServiceClient = analyticsServiceClient;
         this.studentQuestionService = studentQuestionService;
         this.postLectureSurveyService = postLectureSurveyService;
+        this.comprehensionService = comprehensionService;
         this.deliveryMetricsService = deliveryMetricsService;
         this.restTemplate = restTemplate;
         this.meterRegistry = meterRegistry;
@@ -670,6 +676,11 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
 
+        if (data.startsWith(CB_COMP)) {
+            handleComprehensionSignal(chatId, data.substring(CB_COMP.length()));
+            return;
+        }
+
         if (data.startsWith(CB_EXAM_OPT)) {
             String optionId = data.substring(CB_EXAM_OPT.length());
             handleMultipleChoiceAnswer(chatId, optionId);
@@ -694,6 +705,39 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 sendText(chatId, "Не удалось загрузить слайд.");
             }
         }, () -> sendText(chatId, "Вы не подключены. Используйте /join."));
+    }
+
+    private void handleComprehensionSignal(long chatId, String signalValue) {
+        studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
+            if (student.getLecture() == null ||
+                    student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
+                sendText(chatId, "Вы не подключены к активной лекции.");
+                return;
+            }
+            int slideIndex = student.getLecture().getCurrentSlide() != null ? student.getLecture().getCurrentSlide() : 1;
+            try {
+                comprehensionService.save(
+                        student.getLecture().getId(),
+                        chatId,
+                        slideIndex,
+                        ComprehensionSignalValue.valueOf(signalValue)
+                );
+                sendText(chatId, "Сигнал понимания записан.");
+            } catch (Exception e) {
+                log.warn("comprehension signal failed chatId={}: {}", chatId, e.getMessage());
+                sendText(chatId, "Не удалось записать сигнал.");
+            }
+        }, () -> sendText(chatId, "Вы не подключены. Используйте /join."));
+    }
+
+    private InlineKeyboardMarkup comprehensionKeyboard() {
+        return InlineKeyboardMarkup.builder()
+                .keyboard(List.of(List.of(
+                        InlineKeyboardButton.builder().text("🟢 Понял").callbackData(CB_COMP + "GREEN").build(),
+                        InlineKeyboardButton.builder().text("🟡 Не до конца").callbackData(CB_COMP + "YELLOW").build(),
+                        InlineKeyboardButton.builder().text("🔴 Потерялся").callbackData(CB_COMP + "RED").build()
+                )))
+                .build();
     }
 
     private void cancelQuestionTimer(long chatId) {
@@ -1010,6 +1054,15 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 + "Используйте /current, чтобы повторно получить текущий слайд.";
         for (Long chatId : chatIds) {
             sendTrackedText(lectureId, chatId, msg);
+            try {
+                execute(SendMessage.builder()
+                        .chatId(chatId)
+                        .text("Как идёт понимание? Можно менять сигнал в любой момент лекции.")
+                        .replyMarkup(comprehensionKeyboard())
+                        .build());
+            } catch (TelegramApiException e) {
+                log.warn("comprehension keyboard failed chatId={}: {}", chatId, e.getMessage());
+            }
             if (currentSlide > 0) {
                 sendSlideToStudent(lectureId, chatId, null, currentSlide);
             }

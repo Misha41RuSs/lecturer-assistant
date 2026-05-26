@@ -29,6 +29,7 @@ import {
 	dismissStudentQuestion,
 	getLecture,
 	getLectureStudents,
+	getCurrentComprehension,
 	getSlideSequence,
 	getStudentQuestions,
 	kickLectureStudent,
@@ -71,6 +72,14 @@ interface SlideData {
 	index: number
 	imageUrl: string
 	isQrSlide?: boolean
+}
+
+interface ComprehensionAggregate {
+	slideIndex: number
+	totalResponses: number
+	green: { count: number; pct: number }
+	yellow: { count: number; pct: number }
+	red: { count: number; pct: number }
 }
 
 interface Question {
@@ -226,6 +235,7 @@ export function LivePresentationPage() {
 	const [isLoading, setIsLoading] = useState(true)
 	const [lectureName, setLectureName] = useState('')
 	const [lectureStatus, setLectureStatus] = useState('')
+	const [comprehension, setComprehension] = useState<ComprehensionAggregate | null>(null)
 
 	const [quickMessage, setQuickMessage] = useState('')
 	const [activeTab, setActiveTab] = useState<'questions' | 'polls' | 'students'>(
@@ -387,6 +397,27 @@ export function LivePresentationPage() {
 		if (!activeQuestions.some(q => q.status === 'OPEN')) return
 		markStudentQuestionsSeen(lectureId).catch(() => {})
 	}, [lectureId, activeTab, sidebarOpen, activeQuestions.length])
+
+	useEffect(() => {
+		if (!lectureId) return
+		let cancelled = false
+		const load = () => {
+			getCurrentComprehension(lectureId)
+				.then(data => {
+					if (!cancelled) setComprehension(data)
+				})
+				.catch(() => {})
+		}
+		load()
+		const socket = createStompTopicSocket(
+			`/topic/comprehension/${lectureId}`,
+			data => setComprehension(data)
+		)
+		return () => {
+			cancelled = true
+			socket.close()
+		}
+	}, [lectureId, currentSlide])
 
 	// Реальное число студентов из lecture-broadcasting-service
 	useEffect(() => {
@@ -1215,6 +1246,29 @@ export function LivePresentationPage() {
 								/>
 							)}
 						</div>
+
+						{/* Nav */}
+						{comprehension && (
+							<div className="mt-4 bg-neutral-900 border border-neutral-800 rounded-xl p-4 text-white">
+								<div className="flex items-center justify-between mb-3">
+									<div className="text-sm font-medium">Понимание аудитории</div>
+									<div className="text-xs text-neutral-400">{comprehension.totalResponses} ответов</div>
+								</div>
+								{[
+									{ label: '🟢 Понял', bucket: comprehension.green, color: 'bg-green-500' },
+									{ label: '🟡 Не до конца', bucket: comprehension.yellow, color: 'bg-yellow-400' },
+									{ label: '🔴 Потерялся', bucket: comprehension.red, color: 'bg-red-500' }
+								].map(item => (
+									<div key={item.label} className="flex items-center gap-3 mb-2 last:mb-0">
+										<span className="w-28 text-sm text-neutral-300">{item.label}</span>
+										<div className="flex-1 bg-neutral-800 rounded-full h-2">
+											<div className={`${item.color} h-2 rounded-full`} style={{ width: `${item.bucket.pct}%` }} />
+										</div>
+										<span className="w-10 text-sm text-neutral-300 text-right">{item.bucket.pct}%</span>
+									</div>
+								))}
+							</div>
+						)}
 
 						{/* Nav */}
 						<div className="flex items-center justify-between mt-4">

@@ -11,8 +11,10 @@ import ru.university.lecturebroadcasting.bot.LectureBroadcastingBot;
 import ru.university.lecturebroadcasting.dto.LectureListItem;
 import ru.university.lecturebroadcasting.dto.StudentDto;
 import ru.university.lecturebroadcasting.entity.AccessType;
+import ru.university.lecturebroadcasting.entity.ComprehensionSignalValue;
 import ru.university.lecturebroadcasting.entity.Lecture;
 import ru.university.lecturebroadcasting.entity.PaceSignal;
+import ru.university.lecturebroadcasting.service.ComprehensionService;
 import ru.university.lecturebroadcasting.service.LectureService;
 import ru.university.lecturebroadcasting.service.PostLectureSurveyService;
 import ru.university.lecturebroadcasting.service.QuizServiceClient;
@@ -35,6 +37,7 @@ public class LectureController {
     private final QuizServiceClient quizServiceClient;
     private final StudentQuestionService studentQuestionService;
     private final PostLectureSurveyService postLectureSurveyService;
+    private final ComprehensionService comprehensionService;
 
     @PostMapping
     public ResponseEntity<Lecture> createLecture(@RequestBody Map<String, String> body) {
@@ -191,6 +194,28 @@ public class LectureController {
                 "pace", results.paceCounts(),
                 "openTexts", results.openTexts()
         );
+    }
+
+    @PostMapping("/{id}/comprehension")
+    public ResponseEntity<ComprehensionService.Aggregate> saveComprehension(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        return ResponseEntity.ok(comprehensionService.save(
+                id,
+                Long.parseLong(body.get("chatId")),
+                Integer.parseInt(body.get("slideIndex")),
+                ComprehensionSignalValue.valueOf(body.get("signal"))
+        ));
+    }
+
+    @GetMapping("/{id}/comprehension/current")
+    public ComprehensionService.Aggregate getCurrentComprehension(@PathVariable Long id) {
+        return comprehensionService.current(id);
+    }
+
+    @GetMapping("/{id}/comprehension/history")
+    public Map<Integer, ComprehensionService.Aggregate> getComprehensionHistory(@PathVariable Long id) {
+        return comprehensionService.history(id);
     }
 
     @PostMapping("/{id}/broadcast-message")
