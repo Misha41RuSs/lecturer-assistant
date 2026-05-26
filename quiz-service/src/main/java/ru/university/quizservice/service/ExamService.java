@@ -437,6 +437,80 @@ public class ExamService {
     }
 
     @Transactional(readOnly = true)
+    public StudentStatsDto getStudentStats(Long chatId, Long lectureId) {
+        List<ExamSubmission> studentSubmissions = lectureId != null
+                ? submissionRepository.findByExam_LectureIdAndChatIdOrderByStartedAtDesc(lectureId, chatId)
+                : submissionRepository.findByChatIdOrderByStartedAtDesc(chatId);
+
+        Map<Long, List<StudentStatsDto.ExamStatsDto>> examsByLecture = new LinkedHashMap<>();
+        int totalScore = 0;
+        int totalMaxScore = 0;
+
+        for (ExamSubmission submission : studentSubmissions) {
+            SubmissionScore score = scoreSubmission(submission);
+            totalScore += score.score();
+            totalMaxScore += score.maxScore();
+            int pct = score.maxScore() > 0 ? Math.round(score.score() * 100f / score.maxScore()) : 0;
+            int percentile = examPercentile(submission.getExam().getId(), pct);
+
+            examsByLecture
+                    .computeIfAbsent(submission.getExam().getLectureId(), ignored -> new ArrayList<>())
+                    .add(new StudentStatsDto.ExamStatsDto(
+                            submission.getExam().getId(),
+                            submission.getExam().getTitle(),
+                            score.score(),
+                            score.maxScore(),
+                            pct,
+                            percentile,
+                            true
+                    ));
+        }
+
+        List<StudentStatsDto.LectureStatsDto> lectures = examsByLecture.entrySet().stream()
+                .map(entry -> new StudentStatsDto.LectureStatsDto(
+                        entry.getKey(),
+                        "Лекция " + entry.getKey(),
+                        entry.getValue().isEmpty() ? "" : examDate(entry.getValue().get(0).examId()),
+                        entry.getValue()
+                ))
+                .toList();
+
+        int overallPct = totalMaxScore > 0 ? Math.round(totalScore * 100f / totalMaxScore) : 0;
+        return new StudentStatsDto(chatId, overallPct, 0, lectures);
+    }
+
+    private int examPercentile(UUID examId, int pct) {
+        List<Integer> percents = submissionRepository.findByExam_IdOrderByStartedAtDesc(examId).stream()
+                .map(this::scoreSubmission)
+                .map(score -> score.maxScore() > 0 ? Math.round(score.score() * 100f / score.maxScore()) : 0)
+                .sorted()
+                .toList();
+        if (percents.isEmpty()) return 0;
+        long lower = percents.stream().filter(value -> value < pct).count();
+        return Math.round(lower * 100f / percents.size());
+    }
+
+    private String examDate(UUID examId) {
+        return submissionRepository.findByExam_IdOrderByStartedAtDesc(examId).stream()
+                .findFirst()
+                .map(submission -> submission.getStartedAt().toString().substring(0, 10))
+                .orElse("");
+    }
+
+    private SubmissionScore scoreSubmission(ExamSubmission submission) {
+        List<ExamAnswer> answers = answerRepository.findBySubmission_Id(submission.getId());
+        int score = 0;
+        int maxScore = 0;
+        for (ExamAnswer answer : answers) {
+            if (answer.getScore() != null) score += answer.getScore();
+            maxScore += answer.getMaxScore();
+        }
+        return new SubmissionScore(score, maxScore);
+    }
+
+    private record SubmissionScore(int score, int maxScore) {}
+
+    @Transactional(readOnly = true)
     public ExamAnalyticsDto getAnalytics(UUID examId) {
         Exam exam = getExam(examId);
         List<ExamSubmission> subs = submissionRepository.findByExam_IdOrderByStartedAtDesc(examId);

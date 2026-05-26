@@ -150,4 +150,11 @@ public class ExamController {
     public ResponseEntity<ExamAnalyticsDto> getAnalytics(@PathVariable UUID examId) {
         return ResponseEntity.ok(examService.getAnalytics(examId));
     }
+
+    @GetMapping("/students/{chatId}/stats")
+    public ResponseEntity<StudentStatsDto> getStudentStats(
+            @PathVariable Long chatId,
+            @RequestParam(required = false) Long lectureId) {
+        return ResponseEntity.ok(examService.getStudentStats(chatId, lectureId));
+    }
 }

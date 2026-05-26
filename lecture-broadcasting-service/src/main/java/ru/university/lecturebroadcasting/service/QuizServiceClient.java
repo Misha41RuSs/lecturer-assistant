@@ -79,6 +79,15 @@ public class QuizServiceClient {
         return restTemplate.postForObject(baseUrl + "/exams/" + examId + "/release-feedback", null, ExamFeedback.class);
     }
 
+    public StudentStats getStudentStats(Long chatId) {
+        try {
+            return restTemplate.getForObject(baseUrl + "/students/" + chatId + "/stats", StudentStats.class);
+        } catch (Exception e) {
+            log.error("getStudentStats failed chatId={}: {}", chatId, e.getMessage());
+            return null;
+        }
+    }
+
     public ExamDetail startSubmission(UUID examId, Long chatId) {
         try {
             HttpEntity<Map<String, Object>> req = jsonEntity(Map.of("chatId", chatId));
@@ -149,4 +158,13 @@ public class QuizServiceClient {
 
     public record QuestionFeedback(int orderIndex, String questionText, String answerText,
                                    Boolean correct, Integer wrongPct) {}
+
+    public record StudentStats(Long chatId, int overallPct, int overallPercentile,
+                               List<LectureStats> lectures) {}
+
+    public record LectureStats(Long lectureId, String lectureTitle, String date,
+                               List<ExamStats> exams) {}
+
+    public record ExamStats(String examId, String examTitle, int score, int maxScore,
+                            int pct, int groupPercentile, boolean submitted) {}
 }

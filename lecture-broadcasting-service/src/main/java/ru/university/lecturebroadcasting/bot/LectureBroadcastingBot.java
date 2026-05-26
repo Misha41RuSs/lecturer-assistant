@@ -71,6 +71,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             /prev — получить предыдущий слайд
             /slide — выбрать слайд по номеру
             /profile — посмотреть или изменить ФИО и группу
+            /mystats — посмотреть свою статистику по тестам
             /help — показать эту подсказку
 
             Когда преподаватель запустит тест, вопросы придут автоматически.
@@ -236,6 +237,11 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
 
         if ("/profile".equals(cmd)) {
             showProfile(chatId);
+            return;
+        }
+
+        if ("/mystats".equals(cmd)) {
+            sendMyStats(chatId);
             return;
         }
 
@@ -443,6 +449,33 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         }, () -> {
             sendText(chatId, "Профиль ещё не создан. Подключитесь к лекции через /join.");
         });
+    }
+
+    private void sendMyStats(long chatId) {
+        QuizServiceClient.StudentStats stats = quizServiceClient.getStudentStats(chatId);
+        if (stats == null || stats.lectures() == null || stats.lectures().isEmpty()) {
+            sendTextWithMainKeyboard(chatId, "Пока нет данных. Сдай первый тест!");
+            return;
+        }
+
+        StringBuilder text = new StringBuilder("📈 Твоя статистика\n\n");
+        for (QuizServiceClient.LectureStats lecture : stats.lectures()) {
+            text.append(lecture.lectureTitle());
+            if (lecture.date() != null && !lecture.date().isBlank()) {
+                text.append(" (").append(lecture.date()).append(")");
+            }
+            text.append("\n");
+            for (QuizServiceClient.ExamStats exam : lecture.exams()) {
+                text.append("  ").append(exam.examTitle()).append(": ")
+                        .append(exam.score()).append("/").append(exam.maxScore())
+                        .append(" (").append(exam.pct()).append("%)")
+                        .append(" · лучше ").append(exam.groupPercentile()).append("% группы\n");
+            }
+            text.append("\n");
+        }
+        text.append("───────────────────────\n");
+        text.append("Среднее по всем тестам: ").append(stats.overallPct()).append("%");
+        sendTextWithMainKeyboard(chatId, text.toString());
     }
 
     private InlineKeyboardMarkup profileKeyboard() {
