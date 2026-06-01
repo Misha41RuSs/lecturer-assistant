@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron')
 const path = require('node:path')
 const fs = require('fs')
 
@@ -132,13 +132,24 @@ ipcMain.handle('projector:open', async (_event, lectureId) => {
 
 	projectorWindow.setMenuBarVisibility(false)
 
-	projectorWindow.loadFile(path.join(__dirname, 'index.html'), {
-		hash: `/projection/${lectureId}`
+	projectorWindow.loadFile(path.join(__dirname, 'index.html'))
+
+	projectorWindow.webContents.once('did-finish-load', () => {
+		projectorWindow.webContents.executeJavaScript(`
+			if (window.location.pathname !== '/') {
+				window.history.pushState({}, '', '/#/projection/${lectureId}');
+				window.dispatchEvent(new PopStateEvent('popstate'));
+			}
+		`)
 	})
 
 	projectorWindow.on('closed', () => {
 		projectorWindow = null
 	})
+})
+
+ipcMain.handle('shell:openExternal', async (_event, url) => {
+	await shell.openExternal(url)
 })
 
 // Creating window

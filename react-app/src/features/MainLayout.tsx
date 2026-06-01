@@ -1,7 +1,8 @@
-import { BarChart3, BookOpen, ClipboardList, Home, Menu, Radio, X } from 'lucide-react'
+import { BarChart3, BookOpen, ClipboardList, Home, Menu, Radio, X, Gauge } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../shared/tooltip'
+import { BASE_URL } from '../app/api/client'
 
 export function MainLayout() {
 	const location = useLocation()
@@ -20,6 +21,24 @@ export function MainLayout() {
 		window.addEventListener('storage', handler)
 		return () => window.removeEventListener('storage', handler)
 	}, [])
+
+	const handleOpenGrafana = () => {
+		let url = 'http://localhost:3000'
+		try {
+			const base = new URL(BASE_URL)
+			url = `${base.protocol}//${base.hostname}:3000`
+		} catch (e) {
+			console.error('Failed to parse BASE_URL for Grafana:', e)
+		}
+
+		if (window.electronAPI?.openExternal) {
+			window.electronAPI.openExternal(url).catch(e => {
+				console.error('Failed to open external link in Electron:', e)
+			})
+		} else {
+			window.open(url, '_blank')
+		}
+	}
 
 	const navItems = [
 		{ path: '/', icon: Home, label: 'Главная' },
@@ -113,6 +132,23 @@ export function MainLayout() {
 						)
 					})}
 				</nav>
+
+				<div className="p-3 border-t border-neutral-200">
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								onClick={handleOpenGrafana}
+								className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-neutral-600 hover:bg-neutral-100 transition-colors text-sm font-normal cursor-pointer"
+							>
+								<Gauge className="w-4 h-4 text-neutral-500" />
+								<span>Мониторинг</span>
+							</button>
+						</TooltipTrigger>
+						<TooltipContent>
+							<p>Открыть дашборды Grafana в браузере</p>
+						</TooltipContent>
+					</Tooltip>
+				</div>
 			</aside>
 
 			<div className="flex-1 flex flex-col min-w-0">
