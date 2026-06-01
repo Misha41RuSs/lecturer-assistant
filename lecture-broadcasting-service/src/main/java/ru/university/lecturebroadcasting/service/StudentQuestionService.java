@@ -200,6 +200,7 @@ public class StudentQuestionService {
         );
     }
 
+    @Transactional
     public void clearByLecture(Long lectureId) {
         upvoteRepository.deleteByQuestion_Lecture_Id(lectureId);
         questionRepository.deleteByLecture_Id(lectureId);
