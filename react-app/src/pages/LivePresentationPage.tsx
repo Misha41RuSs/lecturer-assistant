@@ -867,6 +867,7 @@ export function LivePresentationPage() {
 	const handleExitToMenu = () => {
 		if (lectureId) {
 			localStorage.setItem('active_lecture_id', lectureId)
+			window.dispatchEvent(new StorageEvent('storage', { key: 'active_lecture_id', newValue: lectureId }))
 		}
 		navigate('/')
 	}
@@ -877,6 +878,7 @@ export function LivePresentationPage() {
 		try {
 			await stopLecture(parseInt(lectureId, 10))
 			localStorage.removeItem('active_lecture_id')
+			window.dispatchEvent(new StorageEvent('storage', { key: 'active_lecture_id', newValue: null }))
 			setShowConfirmEnd(false)
 			toast.success('Лекция завершена, студенты отключены')
 			navigate('/')

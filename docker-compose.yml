@@ -19,6 +19,7 @@ services:
   content-service:
     build: ./content-service
     container_name: content_service
+    restart: unless-stopped
     ports:
       - "8081:8081"
     environment:
@@ -36,6 +37,7 @@ services:
   lecture-broadcasting-service:
     build: ./lecture-broadcasting-service
     container_name: lecture_broadcasting_service
+    restart: unless-stopped
     ports:
       - "8082:8082"
     environment:
@@ -56,6 +58,7 @@ services:
   quiz-service:
     build: ./quiz-service
     container_name: quiz_service
+    restart: unless-stopped
     ports:
       - "8083:8083"
     environment:
@@ -71,6 +74,7 @@ services:
   analytics-service:
     build: ./analytics-service
     container_name: analytics_service
+    restart: unless-stopped
     ports:
       - "8084:8084"
     environment:
@@ -86,6 +90,7 @@ services:
   admin-gateway:
     build: ./admin-gateway
     container_name: admin_gateway
+    restart: unless-stopped
     ports:
       - "8080:8080"
     environment:

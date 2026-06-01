@@ -93,7 +93,7 @@ export function closeExam(examId: string) {
 }
 
 export function releaseExamFeedback(examId: string) {
-  return apiFetch(`/exams/${examId}/release-feedback`, { method: "POST" });
+  return apiFetch(`/api/exams/${examId}/release-feedback`, { method: "POST" });
 }
 
 export function getExamSubmissions(examId: string) {
@@ -133,14 +133,14 @@ export function duplicateExam(examId: string) {
 }
 
 export function broadcastExam(examId: string, lectureId: string) {
-  return apiFetch(`/exams/launch`, {
+  return apiFetch(`/api/exams/launch`, {
     method: "POST",
     body: JSON.stringify({ examId, lectureId }),
   });
 }
 
 export function sendExamToUser(examId: string, chatId: number) {
-  return apiFetch(`/exams/launch-to-user`, {
+  return apiFetch(`/api/exams/launch-to-user`, {
     method: "POST",
     body: JSON.stringify({ examId, chatId: String(chatId) }),
   });
