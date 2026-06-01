@@ -2,6 +2,8 @@ package ru.university.quizservice.service;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import ru.university.quizservice.dto.*;
 import ru.university.quizservice.entity.*;
 import ru.university.quizservice.repository.*;
@@ -105,7 +107,8 @@ public class ExamService {
                 .stream()
                 .map(e -> new ExamSummaryDto(
                         e.getId(), e.getTitle(), e.getTotalTimeSec(),
-                        e.getStatus().name(), e.getExamType().name(), e.getQuestions().size()))
+                        e.getStatus().name(), e.getExamType().name(), e.getQuestions().size(),
+                        e.isFeedbackReleased()))
                 .toList();
     }
 
@@ -221,11 +224,14 @@ public class ExamService {
                 Boolean correct = null;
                 if (q != null && q.getType() == QuestionType.MULTIPLE && selectedOpt != null) {
                     correct = selectedOpt.isCorrect();
+                } else if (q != null && q.getType() == QuestionType.OPEN && a.getScore() != null) {
+                    correct = a.getScore() >= a.getMaxScore();
                 }
 
                 answerDtos.add(new SubmissionResultDto.AnswerDto(
                         a.getId(),
                         q != null ? q.getId() : null,
+                        q != null ? q.getOrderIndex() : 0,
                         q != null ? q.getText() : "",
                         q != null ? q.getType().name() : "",
                         a.getSelectedOptionId(),
@@ -324,8 +330,265 @@ public class ExamService {
 
         return new ExamDetailDto(
                 exam.getId(), exam.getLectureId(), exam.getTitle(),
-                exam.getTotalTimeSec(), exam.getStatus().name(), exam.getExamType().name(), questions
+                exam.getTotalTimeSec(), exam.getStatus().name(), exam.getExamType().name(),
+                exam.isFeedbackReleased(), questions
         );
+    }
+
+    @Transactional
+    public ExamFeedbackDto releaseFeedback(UUID examId) {
+        Exam exam = getExam(examId);
+        if (exam.getStatus() != ExamStatus.CLOSED) {
+            throw new IllegalStateException("Exam must be closed before releasing feedback");
+        }
+        if (exam.isFeedbackReleased()) {
+            throw new IllegalStateException("Exam feedback already released");
+        }
+
+        List<SubmissionResultDto> submissions = getSubmissions(examId);
+        if (submissions.stream().anyMatch(SubmissionResultDto::hasUngraded)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Сначала проверьте открытые ответы");
+        }
+        Map<UUID, Integer> wrongPctByQuestion = calculateWrongPctByQuestion(submissions);
+        List<Integer> percents = submissions.stream()
+                .map(this::submissionPercent)
+                .sorted()
+                .toList();
+
+        List<ExamFeedbackDto.StudentFeedbackDto> studentFeedback = submissions.stream()
+                .map(submission -> toStudentFeedback(submission, wrongPctByQuestion, percents))
+                .toList();
+
+        Instant releasedAt = Instant.now();
+        exam.setFeedbackReleased(true);
+        exam.setFeedbackReleasedAt(releasedAt);
+        examRepository.save(exam);
+
+        return new ExamFeedbackDto(exam.getId(), exam.getLectureId(), exam.getTitle(), releasedAt, studentFeedback);
+    }
+
+    private Map<UUID, Integer> calculateWrongPctByQuestion(List<SubmissionResultDto> submissions) {
+        Map<UUID, List<SubmissionResultDto.AnswerDto>> byQuestion = submissions.stream()
+                .flatMap(submission -> submission.answers().stream())
+                .filter(answer -> answer.questionId() != null)
+                .collect(Collectors.groupingBy(SubmissionResultDto.AnswerDto::questionId));
+
+        Map<UUID, Integer> result = new HashMap<>();
+        byQuestion.forEach((questionId, answers) -> {
+            long total = answers.stream()
+                    .filter(answer -> answer.correct() != null)
+                    .count();
+            long wrong = answers.stream()
+                    .filter(answer -> Boolean.FALSE.equals(answer.correct()))
+                    .count();
+            result.put(questionId, total > 0 ? Math.round(wrong * 100f / total) : 0);
+        });
+        return result;
+    }
+
+    private ExamFeedbackDto.StudentFeedbackDto toStudentFeedback(
+            SubmissionResultDto submission,
+            Map<UUID, Integer> wrongPctByQuestion,
+            List<Integer> percents) {
+        List<SubmissionResultDto.AnswerDto> answers = submission.answers().stream()
+                .filter(answer -> answer.correct() != null)
+                .sorted(Comparator.comparingInt(SubmissionResultDto.AnswerDto::orderIndex))
+                .toList();
+        int totalQuestions = answers.size();
+        int totalCorrect = (int) answers.stream()
+                .filter(answer -> Boolean.TRUE.equals(answer.correct()))
+                .count();
+        int percent = submissionPercent(submission);
+        int percentile = percentile(percent, percents);
+
+        List<ExamFeedbackDto.QuestionFeedbackDto> questions = answers.stream()
+                .map(answer -> new ExamFeedbackDto.QuestionFeedbackDto(
+                        questionOrder(answer),
+                        answer.questionText(),
+                        selectedAnswerText(answer),
+                        answer.correct(),
+                        Boolean.FALSE.equals(answer.correct()) ? wrongPctByQuestion.getOrDefault(answer.questionId(), 0) : null
+                ))
+                .toList();
+
+        return new ExamFeedbackDto.StudentFeedbackDto(
+                submission.chatId(), totalCorrect, totalQuestions, percent, percentile, questions);
+    }
+
+    private int submissionPercent(SubmissionResultDto submission) {
+        return submission.maxScore() > 0
+                ? Math.round(submission.totalScore() * 100f / submission.maxScore())
+                : 0;
+    }
+
+    private int percentile(int percent, List<Integer> percents) {
+        if (percents.isEmpty()) return 0;
+        long lowerOrEqual = percents.stream().filter(value -> value <= percent).count();
+        return Math.round(lowerOrEqual * 100f / percents.size());
+    }
+
+    private int questionOrder(SubmissionResultDto.AnswerDto answer) {
+        return answer.orderIndex();
+    }
+
+    private String selectedAnswerText(SubmissionResultDto.AnswerDto answer) {
+        if (answer.selectedOptionText() != null && !answer.selectedOptionText().isBlank()) {
+            return answer.selectedOptionText();
+        }
+        if (answer.openText() != null && !answer.openText().isBlank()) {
+            return answer.openText();
+        }
+        return "Без ответа";
+    }
+
+    @Transactional(readOnly = true)
+    public StudentStatsDto getStudentStats(Long chatId, Long lectureId) {
+        List<ExamSubmission> studentSubmissions = lectureId != null
+                ? submissionRepository.findByExam_LectureIdAndChatIdOrderByStartedAtDesc(lectureId, chatId)
+                : submissionRepository.findByChatIdOrderByStartedAtDesc(chatId);
+
+        Map<Long, List<StudentStatsDto.ExamStatsDto>> examsByLecture = new LinkedHashMap<>();
+        Map<Long, String> datesByLecture = lectureDates(studentSubmissions);
+        Map<UUID, List<Integer>> percentsByExam = examPercents(studentSubmissions);
+        int totalScore = 0;
+        int totalMaxScore = 0;
+        int percentileSum = 0;
+        int percentileCount = 0;
+
+        for (ExamSubmission submission : studentSubmissions) {
+            SubmissionScore score = scoreSubmission(submission);
+            totalScore += score.score();
+            totalMaxScore += score.maxScore();
+            int pct = score.maxScore() > 0 ? Math.round(score.score() * 100f / score.maxScore()) : 0;
+            int percentile = percentile(pct, percentsByExam.getOrDefault(submission.getExam().getId(), List.of()));
+            percentileSum += percentile;
+            percentileCount++;
+
+            examsByLecture
+                    .computeIfAbsent(submission.getExam().getLectureId(), ignored -> new ArrayList<>())
+                    .add(new StudentStatsDto.ExamStatsDto(
+                            submission.getExam().getId(),
+                            submission.getExam().getTitle(),
+                            score.score(),
+                            score.maxScore(),
+                            pct,
+                            percentile,
+                            true
+                    ));
+        }
+
+        List<StudentStatsDto.LectureStatsDto> lectures = examsByLecture.entrySet().stream()
+                .map(entry -> new StudentStatsDto.LectureStatsDto(
+                        entry.getKey(),
+                        "Лекция " + entry.getKey(),
+                        datesByLecture.getOrDefault(entry.getKey(), ""),
+                        entry.getValue()
+                ))
+                .toList();
+
+        int overallPct = totalMaxScore > 0 ? Math.round(totalScore * 100f / totalMaxScore) : 0;
+        int overallPercentile = percentileCount > 0 ? Math.round(percentileSum * 1f / percentileCount) : 0;
+        return new StudentStatsDto(chatId, overallPct, overallPercentile, lectures);
+    }
+
+    private Map<UUID, List<Integer>> examPercents(List<ExamSubmission> submissions) {
+        Map<UUID, List<Integer>> result = new HashMap<>();
+        Set<UUID> examIds = submissions.stream()
+                .map(submission -> submission.getExam().getId())
+                .collect(Collectors.toSet());
+        for (UUID examId : examIds) {
+            List<Integer> percents = submissionRepository.findByExam_IdOrderByStartedAtDesc(examId).stream()
+                    .map(this::scoreSubmission)
+                    .map(score -> score.maxScore() > 0 ? Math.round(score.score() * 100f / score.maxScore()) : 0)
+                    .sorted()
+                    .toList();
+            result.put(examId, percents);
+        }
+        return result;
+    }
+
+    private Map<Long, String> lectureDates(List<ExamSubmission> submissions) {
+        Map<Long, String> dates = new LinkedHashMap<>();
+        for (ExamSubmission submission : submissions) {
+            Long lectureId = submission.getExam().getLectureId();
+            dates.putIfAbsent(lectureId, submission.getStartedAt().toString().substring(0, 10));
+        }
+        return dates;
+    }
+
+    private SubmissionScore scoreSubmission(ExamSubmission submission) {
+        List<ExamAnswer> answers = answerRepository.findBySubmission_Id(submission.getId());
+        int score = 0;
+        int maxScore = 0;
+        for (ExamAnswer answer : answers) {
+            if (answer.getScore() != null) score += answer.getScore();
+            maxScore += answer.getMaxScore();
+        }
+        return new SubmissionScore(score, maxScore);
+    }
+
+    private record SubmissionScore(int score, int maxScore) {}
+
+    @Transactional(readOnly = true)
+    public StudentCardDto getStudentCard(Long chatId) {
+        return getStudentCard(chatId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public StudentCardDto getStudentCard(Long chatId, Long lectureId) {
+        StudentStatsDto stats = getStudentStats(chatId, lectureId);
+        List<StudentStatsDto.ExamStatsDto> exams = stats.lectures().stream()
+                .flatMap(lecture -> lecture.exams().stream())
+                .toList();
+        List<Integer> trend = exams.stream().map(StudentStatsDto.ExamStatsDto::pct).toList();
+        List<String> alerts = new ArrayList<>();
+        if (hasThreeBelow(trend)) {
+            alerts.add("3 теста подряд ниже 50%");
+        }
+        if (isFallingTrend(trend)) {
+            alerts.add("Результат падает 3 теста подряд");
+        }
+        return new StudentCardDto(
+                chatId,
+                participationTotal(stats),
+                exams.size(),
+                stats.overallPct(),
+                trend,
+                alerts,
+                stats.lectures()
+        );
+    }
+
+    private int participationTotal(StudentStatsDto stats) {
+        Set<Long> lectureIds = stats.lectures().stream()
+                .map(StudentStatsDto.LectureStatsDto::lectureId)
+                .collect(Collectors.toSet());
+        return lectureIds.stream()
+                .map(examRepository::findByLectureIdOrderByCreatedAtDesc)
+                .flatMap(List::stream)
+                .filter(exam -> exam.getStatus() != ExamStatus.DRAFT)
+                .map(Exam::getId)
+                .collect(Collectors.toSet())
+                .size();
+    }
+
+    private boolean hasThreeBelow(List<Integer> trend) {
+        int streak = 0;
+        for (Integer pct : trend) {
+            streak = pct < 50 ? streak + 1 : 0;
+            if (streak >= 3) return true;
+        }
+        return false;
+    }
+
+    private boolean isFallingTrend(List<Integer> trend) {
+        if (trend.size() < 3) return false;
+        for (int i = 0; i <= trend.size() - 3; i++) {
+            if (trend.get(i) > trend.get(i + 1) && trend.get(i + 1) > trend.get(i + 2)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Transactional(readOnly = true)

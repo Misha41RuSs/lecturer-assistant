@@ -11,8 +11,12 @@ import ru.university.lecturebroadcasting.bot.LectureBroadcastingBot;
 import ru.university.lecturebroadcasting.dto.LectureListItem;
 import ru.university.lecturebroadcasting.dto.StudentDto;
 import ru.university.lecturebroadcasting.entity.AccessType;
+import ru.university.lecturebroadcasting.entity.ComprehensionSignalValue;
 import ru.university.lecturebroadcasting.entity.Lecture;
+import ru.university.lecturebroadcasting.entity.PaceSignal;
+import ru.university.lecturebroadcasting.service.ComprehensionService;
 import ru.university.lecturebroadcasting.service.LectureService;
+import ru.university.lecturebroadcasting.service.PostLectureSurveyService;
 import ru.university.lecturebroadcasting.service.QuizServiceClient;
 import ru.university.lecturebroadcasting.service.StudentQuestionService;
 import ru.university.lecturebroadcasting.websocket.SlideUpdateMessage;
@@ -32,6 +36,8 @@ public class LectureController {
     private final SimpMessagingTemplate messagingTemplate;
     private final QuizServiceClient quizServiceClient;
     private final StudentQuestionService studentQuestionService;
+    private final PostLectureSurveyService postLectureSurveyService;
+    private final ComprehensionService comprehensionService;
 
     @PostMapping
     public ResponseEntity<Lecture> createLecture(@RequestBody Map<String, String> body) {
@@ -160,9 +166,56 @@ public class LectureController {
     public ResponseEntity<Lecture> stopLecture(@PathVariable Long id) {
         quizServiceClient.closeAllExamsForLecture(id);
         LectureService.StopLectureResult result = lectureService.stopLecture(id);
-        studentQuestionService.clearByLecture(id);
         bot.notifyLectureEndedToStudents(id, result.lecture().getName(), result.disconnectedChatIds());
+        bot.sendPostLectureSurvey(id, result.lecture().getName(), result.disconnectedChatIds());
+        studentQuestionService.clearByLecture(id);
         return ResponseEntity.ok(result.lecture());
+    }
+
+    @PostMapping("/{id}/post-survey")
+    public ResponseEntity<Void> savePostSurvey(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        Long chatId = Long.parseLong(body.get("chatId"));
+        int rating = Integer.parseInt(body.get("rating"));
+        PaceSignal pace = PaceSignal.valueOf(body.get("paceSignal"));
+        postLectureSurveyService.saveResponse(id, chatId, rating, pace, body.get("openText"));
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/{id}/post-survey/results")
+    public Map<String, Object> getPostSurveyResults(@PathVariable Long id) {
+        PostLectureSurveyService.Results results = postLectureSurveyService.results(id);
+        return Map.of(
+                "totalStudents", results.totalStudents(),
+                "responded", results.responded(),
+                "avgRating", results.avgRating(),
+                "ratingDistribution", results.ratingDistribution(),
+                "pace", results.paceCounts(),
+                "openTexts", results.openTexts()
+        );
+    }
+
+    @PostMapping("/{id}/comprehension")
+    public ResponseEntity<ComprehensionService.Aggregate> saveComprehension(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        return ResponseEntity.ok(comprehensionService.save(
+                id,
+                Long.parseLong(body.get("chatId")),
+                Integer.parseInt(body.get("slideIndex")),
+                ComprehensionSignalValue.valueOf(body.get("signal"))
+        ));
+    }
+
+    @GetMapping("/{id}/comprehension/current")
+    public ComprehensionService.Aggregate getCurrentComprehension(@PathVariable Long id) {
+        return comprehensionService.current(id);
+    }
+
+    @GetMapping("/{id}/comprehension/history")
+    public Map<Integer, ComprehensionService.Aggregate> getComprehensionHistory(@PathVariable Long id) {
+        return comprehensionService.history(id);
     }
 
     @PostMapping("/{id}/broadcast-message")

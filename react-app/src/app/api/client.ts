@@ -205,6 +205,27 @@ export async function getAllStudents(lectureId: string): Promise<StudentDto[]> {
 	return res.json()
 }
 
+export async function getPostSurveyResults(lectureId: string): Promise<{
+	totalStudents: number
+	responded: number
+	avgRating: number
+	ratingDistribution: Record<string, number>
+	pace: Record<string, number>
+	openTexts: string[]
+}> {
+	return apiFetch(`/lectures/${lectureId}/post-survey/results`)
+}
+
+export async function getCurrentComprehension(lectureId: string): Promise<{
+	slideIndex: number
+	totalResponses: number
+	green: { count: number; pct: number }
+	yellow: { count: number; pct: number }
+	red: { count: number; pct: number }
+}> {
+	return apiFetch(`/lectures/${lectureId}/comprehension/current`)
+}
+
 export async function kickLectureStudent(lectureId: string, chatId: number): Promise<void> {
 	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/kick/${chatId}`, { method: 'POST' })
 	if (!res.ok) throw new Error('Failed to kick student')
@@ -233,6 +254,7 @@ export async function getStudentQuestions(lectureId: string): Promise<{
 	groupName?: string
 	studentName?: string
 	username?: string
+	upvotes?: number
 }[]> {
 	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/student-questions`)
 	if (!res.ok) throw new Error('Failed to load questions')

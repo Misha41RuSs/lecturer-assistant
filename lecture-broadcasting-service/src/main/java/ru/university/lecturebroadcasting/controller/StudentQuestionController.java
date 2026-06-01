@@ -38,6 +38,7 @@ public class StudentQuestionController {
                     item.put("status", q.status());
                     item.put("createdAt", q.createdAt().toString());
                     item.put("anonymous", q.anonymous());
+                    item.put("upvotes", q.upvotes());
                     if (!q.anonymous()) {
                         item.put("chatId", q.chatId());
                         if (student != null) {
@@ -80,10 +81,12 @@ public class StudentQuestionController {
             @PathVariable String qId,
             @RequestBody Map<String, String> body) {
         String replyText = body.get("text");
-        questionService.answer(qId, replyText).ifPresent(q ->
-                bot.sendTextMessage(id, q.chatId(),
-                        "Преподаватель ответил на ваш вопрос:\n«" + q.text() + "»\n\nОтвет: " + replyText)
-        );
+        questionService.answer(qId, replyText).ifPresent(q -> {
+            String msg = "Преподаватель ответил на вопрос:\n«" + q.text() + "»\n\nОтвет: " + replyText;
+            for (Long chatId : questionService.subscribers(qId)) {
+                bot.sendTextMessage(id, chatId, msg);
+            }
+        });
         return ResponseEntity.ok().build();
     }
 

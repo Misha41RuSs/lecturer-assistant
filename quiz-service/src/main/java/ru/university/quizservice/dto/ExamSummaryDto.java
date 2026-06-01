@@ -9,5 +9,6 @@ public record ExamSummaryDto(
         Integer totalTimeSec,
         String status,
         String examType,
-        int questionCount
+        int questionCount,
+        boolean feedbackReleased
 ) {}
