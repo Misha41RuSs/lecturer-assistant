@@ -884,7 +884,11 @@ export function LivePresentationPage() {
 			navigate('/')
 		} catch (e) {
 			console.error(e)
-			toast.error('Не удалось завершить лекцию на сервере')
+			toast.error('Лекция не найдена на сервере, локальная сессия сброшена')
+			localStorage.removeItem('active_lecture_id')
+			window.dispatchEvent(new StorageEvent('storage', { key: 'active_lecture_id', newValue: null }))
+			setShowConfirmEnd(false)
+			navigate('/')
 		} finally {
 			setEndingLecture(false)
 		}
