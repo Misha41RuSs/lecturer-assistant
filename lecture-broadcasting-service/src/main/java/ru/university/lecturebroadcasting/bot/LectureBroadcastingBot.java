@@ -1068,11 +1068,11 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                         .text("Лекция «" + title + "» завершена. Оцени её:")
                         .replyMarkup(InlineKeyboardMarkup.builder()
                                 .keyboard(List.of(List.of(
-                                        InlineKeyboardButton.builder().text("⭐").callbackData(CB_POST_RATING + "1").build(),
-                                        InlineKeyboardButton.builder().text("⭐⭐").callbackData(CB_POST_RATING + "2").build(),
-                                        InlineKeyboardButton.builder().text("⭐⭐⭐").callbackData(CB_POST_RATING + "3").build(),
-                                        InlineKeyboardButton.builder().text("⭐⭐⭐⭐").callbackData(CB_POST_RATING + "4").build(),
-                                        InlineKeyboardButton.builder().text("⭐⭐⭐⭐⭐").callbackData(CB_POST_RATING + "5").build()
+                                        InlineKeyboardButton.builder().text("1").callbackData(CB_POST_RATING + "1").build(),
+                                        InlineKeyboardButton.builder().text("2").callbackData(CB_POST_RATING + "2").build(),
+                                        InlineKeyboardButton.builder().text("3").callbackData(CB_POST_RATING + "3").build(),
+                                        InlineKeyboardButton.builder().text("4").callbackData(CB_POST_RATING + "4").build(),
+                                        InlineKeyboardButton.builder().text("5").callbackData(CB_POST_RATING + "5").build()
                                 )))
                                 .build())
                         .build());
