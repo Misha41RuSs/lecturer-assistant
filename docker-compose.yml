@@ -12,6 +12,12 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres-init/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d root_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     networks:
       - app-network
     restart: unless-stopped
@@ -28,7 +34,7 @@ services:
       - SPRING_DATASOURCE_PASSWORD=password
     depends_on:
       postgres:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - content_slides:/app/storage/slides
     networks:
@@ -51,7 +57,7 @@ services:
       - QUIZ_SERVICE_URL=http://quiz-service:8083
     depends_on:
       postgres:
-        condition: service_started
+        condition: service_healthy
     networks:
       - app-network
 
@@ -67,7 +73,7 @@ services:
       - SPRING_DATASOURCE_PASSWORD=password
     depends_on:
       postgres:
-        condition: service_started
+        condition: service_healthy
     networks:
       - app-network
 
@@ -83,7 +89,7 @@ services:
       - SPRING_DATASOURCE_PASSWORD=password
     depends_on:
       postgres:
-        condition: service_started
+        condition: service_healthy
     networks:
       - app-network
 
