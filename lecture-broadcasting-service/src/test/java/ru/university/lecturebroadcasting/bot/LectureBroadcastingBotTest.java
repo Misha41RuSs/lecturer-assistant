@@ -11,6 +11,7 @@ import org.telegram.telegrambots.meta.api.objects.Chat;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.User;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import ru.university.lecturebroadcasting.entity.Lecture;
 import ru.university.lecturebroadcasting.entity.Student;
 import ru.university.lecturebroadcasting.repository.StudentRepository;
@@ -136,6 +137,89 @@ class LectureBroadcastingBotTest {
     }
 
     @Test
+    void postLectureSurvey_usesCompactNumericRatingButtons() {
+        bot.sendPostLectureSurvey(1L, "Алгебра", List.of(100L));
+
+        SendMessage message = bot.lastSendMessage().orElseThrow();
+        InlineKeyboardMarkup keyboard = (InlineKeyboardMarkup) message.getReplyMarkup();
+
+        assertAll(
+                () -> assertTrue(message.getText().contains("от 1 до 5")),
+                () -> assertEquals(List.of("1", "2", "3", "4", "5"), firstRowTexts(keyboard)),
+                () -> assertTrue(firstRowTexts(keyboard).stream().allMatch(text -> text.length() == 1))
+        );
+    }
+
+    @Test
+    void lectureStartedComprehensionKeyboard_stacksLongButtons() {
+        bot.notifyLectureStartedToStudents(1L, "Алгебра", 0, List.of(100L));
+
+        SendMessage message = bot.lastSendMessage().orElseThrow();
+        InlineKeyboardMarkup keyboard = (InlineKeyboardMarkup) message.getReplyMarkup();
+
+        assertAll(
+                () -> assertEquals(3, keyboard.getKeyboard().size()),
+                () -> assertTrue(keyboard.getKeyboard().stream().allMatch(row -> row.size() == 1)),
+                () -> assertEquals(List.of("🟢 Понял", "🟡 Не до конца", "🔴 Потерялся"),
+                        keyboard.getKeyboard().stream()
+                                .map(row -> row.get(0).getText())
+                                .toList())
+        );
+    }
+
+    @Test
+    void slideNavigation_usesCompactButtonsWithLegendInMessage() {
+        bot.sendSlideToStudent(1L, 100L, null, 7);
+
+        SendMessage message = bot.lastSendMessage().orElseThrow();
+        InlineKeyboardMarkup keyboard = (InlineKeyboardMarkup) message.getReplyMarkup();
+
+        assertAll(
+                () -> assertTrue(message.getText().contains("◀ назад")),
+                () -> assertTrue(message.getText().contains("№ выбрать")),
+                () -> assertEquals(List.of("◀", "📍", "№"), firstRowTexts(keyboard))
+        );
+    }
+
+    @Test
+    void multipleChoiceQuestion_usesNumberButtonsAndListsOptionsInText() {
+        UUID examId = UUID.randomUUID();
+        UUID option1 = UUID.randomUUID();
+        UUID option2 = UUID.randomUUID();
+        QuizServiceClient.ExamDetail.Question question = new QuizServiceClient.ExamDetail.Question(
+                UUID.randomUUID().toString(),
+                0,
+                "Какой вариант выбрать?",
+                "MULTIPLE",
+                null,
+                List.of(
+                        new QuizServiceClient.ExamDetail.Option(option1.toString(), "Очень длинный вариант ответа, который не должен становиться кнопкой"),
+                        new QuizServiceClient.ExamDetail.Option(option2.toString(), "Короткий ответ")
+                )
+        );
+        QuizServiceClient.ExamDetail detail = new QuizServiceClient.ExamDetail(
+                examId.toString(),
+                "1",
+                "Пробный тест",
+                null,
+                "ACTIVE",
+                List.of(question)
+        );
+        when(quizServiceClient.startSubmission(examId, 100L)).thenReturn(detail);
+
+        bot.sendExamToStudent(100L, examId);
+
+        SendMessage message = bot.lastSendMessage().orElseThrow();
+        InlineKeyboardMarkup keyboard = (InlineKeyboardMarkup) message.getReplyMarkup();
+
+        assertAll(
+                () -> assertTrue(message.getText().contains("1. Очень длинный вариант ответа")),
+                () -> assertTrue(message.getText().contains("2. Короткий ответ")),
+                () -> assertEquals(List.of("1", "2"), firstRowTexts(keyboard))
+        );
+    }
+
+    @Test
     void testTelegramTrafficMetrics() throws Exception {
         io.micrometer.core.instrument.simple.SimpleMeterRegistry registry = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         TelegramTrafficInterceptor interceptor = new TelegramTrafficInterceptor(registry);
@@ -225,6 +309,11 @@ class LectureBroadcastingBotTest {
         @Override
         public <T extends Serializable, Method extends BotApiMethod<T>> T execute(Method method) {
             sentMethods.add(method);
+            if (method instanceof SendMessage) {
+                Message message = new Message();
+                message.setMessageId(sentMethods.size());
+                return (T) message;
+            }
             return null;
         }
 
@@ -234,5 +323,11 @@ class LectureBroadcastingBotTest {
                     .map(SendMessage.class::cast)
                     .reduce((first, second) -> second);
         }
+    }
+
+    private static List<String> firstRowTexts(InlineKeyboardMarkup keyboard) {
+        return keyboard.getKeyboard().get(0).stream()
+                .map(button -> button.getText())
+                .toList();
     }
 }

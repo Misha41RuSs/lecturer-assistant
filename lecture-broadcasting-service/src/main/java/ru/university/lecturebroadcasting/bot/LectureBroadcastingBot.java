@@ -797,11 +797,11 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
 
     private InlineKeyboardMarkup comprehensionKeyboard() {
         return InlineKeyboardMarkup.builder()
-                .keyboard(List.of(List.of(
-                        InlineKeyboardButton.builder().text("🟢 Понял").callbackData(CB_COMP + "GREEN").build(),
-                        InlineKeyboardButton.builder().text("🟡 Не до конца").callbackData(CB_COMP + "YELLOW").build(),
-                        InlineKeyboardButton.builder().text("🔴 Потерялся").callbackData(CB_COMP + "RED").build()
-                )))
+                .keyboard(List.of(
+                        List.of(InlineKeyboardButton.builder().text("🟢 Понял").callbackData(CB_COMP + "GREEN").build()),
+                        List.of(InlineKeyboardButton.builder().text("🟡 Не до конца").callbackData(CB_COMP + "YELLOW").build()),
+                        List.of(InlineKeyboardButton.builder().text("🔴 Потерялся").callbackData(CB_COMP + "RED").build())
+                ))
                 .build();
     }
 
@@ -811,18 +811,38 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     }
 
     private InlineKeyboardMarkup buildQuestionKeyboard(Question q) {
-        List<List<InlineKeyboardButton>> keyboard = q.options().stream()
-                .map(opt -> {
-                    String btnText = opt.text().length() > 60
-                            ? opt.text().substring(0, 57) + "..."
-                            : opt.text();
-                    return List.of(InlineKeyboardButton.builder()
-                            .text(btnText)
-                            .callbackData(CB_EXAM_OPT + opt.id())
-                            .build());
-                })
-                .toList();
+        List<List<InlineKeyboardButton>> keyboard = new ArrayList<>();
+        List<InlineKeyboardButton> row = new ArrayList<>();
+        for (int i = 0; i < q.options().size(); i++) {
+            if (i > 0 && i % 5 == 0) {
+                keyboard.add(row);
+                row = new ArrayList<>();
+            }
+            row.add(InlineKeyboardButton.builder()
+                    .text(String.valueOf(i + 1))
+                    .callbackData(CB_EXAM_OPT + q.options().get(i).id())
+                    .build());
+        }
+        if (!row.isEmpty()) {
+            keyboard.add(row);
+        }
         return InlineKeyboardMarkup.builder().keyboard(keyboard).build();
+    }
+
+    private String buildMultipleChoicePrompt(String header, String timeHint, Question q) {
+        StringBuilder text = new StringBuilder(header)
+                .append(timeHint)
+                .append("\n\n")
+                .append(q.text())
+                .append("\n\nВарианты ответа:\n");
+        for (int i = 0; i < q.options().size(); i++) {
+            text.append(i + 1)
+                    .append(". ")
+                    .append(q.options().get(i).text())
+                    .append("\n");
+        }
+        text.append("\nНажмите номер ответа:");
+        return text.toString();
     }
 
     private void scheduleQuestionTimer(long chatId, ExamSession session, Question q, Integer msgId) {
@@ -833,7 +853,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         int qIdx = session.currentIndex();
         String header = String.format("Вопрос %d/%d", qIdx + 1, session.total());
         boolean isMultiple = session.isMultiple();
-        String suffix = isMultiple ? "\n\nВыберите ответ:" : "\n\n✏️ Напишите ответ:";
+        String suffix = "\n\n✏️ Напишите ответ:";
         InlineKeyboardMarkup markup = isMultiple ? buildQuestionKeyboard(q) : null;
 
         if (msgId != null) {
@@ -847,7 +867,9 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                         Integer curMsgId = lastQuestionMessageId.get(chatId);
                         if (!msgId.equals(curMsgId)) return;
                         try {
-                            String updatedText = header + " ⏱ " + remaining + " с\n\n" + q.text() + suffix;
+                            String updatedText = isMultiple
+                                    ? buildMultipleChoicePrompt(header, " ⏱ " + remaining + " с", q)
+                                    : header + " ⏱ " + remaining + " с\n\n" + q.text() + suffix;
                             EditMessageText edit = EditMessageText.builder()
                                     .chatId(chatId).messageId(msgId)
                                     .text(updatedText)
@@ -929,7 +951,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         Message sent = null;
         try {
             if (session.isMultiple()) {
-                String msgText = header + timeHint + "\n\n" + q.text() + "\n\nВыберите ответ:";
+                String msgText = buildMultipleChoicePrompt(header, timeHint, q);
                 SendMessage msg = SendMessage.builder()
                         .chatId(chatId)
                         .text(msgText)
@@ -1048,14 +1070,14 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             try {
                 execute(SendMessage.builder()
                         .chatId(chatId)
-                        .text("Лекция «" + title + "» завершена. Оцени её:")
+                        .text("Лекция «" + title + "» завершена. Оцени её от 1 до 5:")
                         .replyMarkup(InlineKeyboardMarkup.builder()
                                 .keyboard(List.of(List.of(
-                                        InlineKeyboardButton.builder().text("⭐").callbackData(CB_POST_RATING + "1").build(),
-                                        InlineKeyboardButton.builder().text("⭐⭐").callbackData(CB_POST_RATING + "2").build(),
-                                        InlineKeyboardButton.builder().text("⭐⭐⭐").callbackData(CB_POST_RATING + "3").build(),
-                                        InlineKeyboardButton.builder().text("⭐⭐⭐⭐").callbackData(CB_POST_RATING + "4").build(),
-                                        InlineKeyboardButton.builder().text("⭐⭐⭐⭐⭐").callbackData(CB_POST_RATING + "5").build()
+                                        InlineKeyboardButton.builder().text("1").callbackData(CB_POST_RATING + "1").build(),
+                                        InlineKeyboardButton.builder().text("2").callbackData(CB_POST_RATING + "2").build(),
+                                        InlineKeyboardButton.builder().text("3").callbackData(CB_POST_RATING + "3").build(),
+                                        InlineKeyboardButton.builder().text("4").callbackData(CB_POST_RATING + "4").build(),
+                                        InlineKeyboardButton.builder().text("5").callbackData(CB_POST_RATING + "5").build()
                                 )))
                                 .build())
                         .build());
@@ -1162,9 +1184,9 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
 
         InlineKeyboardMarkup markup = InlineKeyboardMarkup.builder()
                 .keyboardRow(List.of(
-                        InlineKeyboardButton.builder().text("◀ Предыдущий").callbackData(CB_PREV_SLIDE).build(),
-                        InlineKeyboardButton.builder().text("📍 Текущий").callbackData(CB_CURRENT_SLIDE).build(),
-                        InlineKeyboardButton.builder().text("🔢 Слайд №…").callbackData(CB_GOTO_SLIDE).build()
+                        InlineKeyboardButton.builder().text("◀").callbackData(CB_PREV_SLIDE).build(),
+                        InlineKeyboardButton.builder().text("📍").callbackData(CB_CURRENT_SLIDE).build(),
+                        InlineKeyboardButton.builder().text("№").callbackData(CB_GOTO_SLIDE).build()
                 ))
                 .build();
 
@@ -1172,7 +1194,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             Timer.Sample sample = Timer.start(meterRegistry);
             Message sent = execute(SendMessage.builder()
                     .chatId(chatId)
-                    .text("Лектор показывает слайд " + slideNumber)
+                    .text("Лектор показывает слайд " + slideNumber + "\n◀ назад · 📍 текущий · № выбрать")
                     .replyMarkup(markup)
                     .build());
             sample.stop(buildTelegramApiTimer("sendMessage", lectureId != null ? lectureId.toString() : "unknown"));
