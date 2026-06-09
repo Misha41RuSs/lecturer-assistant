@@ -274,6 +274,7 @@ export function LivePresentationPage() {
 
 	const drawingRef = useRef<DrawingOverlayHandle>(null)
 	const broadcastChannelRef = useRef<BroadcastChannel | null>(null)
+	const handleSlideChangeRef = useRef<(index: number) => void>(() => {})
 
 	const [accessType, setAccessType] = useState<
 		'open' | 'password' | 'invitation'
@@ -565,10 +566,10 @@ export function LivePresentationPage() {
 				return
 			if (e.key === 'ArrowRight' || e.key === ' ') {
 				e.preventDefault()
-				handleSlideChange(Math.min(currentSlide + 1, slidesData.length - 1))
+				handleSlideChangeRef.current(Math.min(currentSlide + 1, slidesData.length - 1))
 			}
 			if (e.key === 'ArrowLeft')
-				handleSlideChange(Math.max(currentSlide - 1, 0))
+				handleSlideChangeRef.current(Math.max(currentSlide - 1, 0))
 		}
 		window.addEventListener('keydown', handler)
 		return () => window.removeEventListener('keydown', handler)
@@ -854,6 +855,7 @@ export function LivePresentationPage() {
 			setIsChangingSlide(false)
 		}
 	}
+	handleSlideChangeRef.current = handleSlideChange
 
 	const openProjection = () => {
 		if (window.electronAPI?.openProjector) {
