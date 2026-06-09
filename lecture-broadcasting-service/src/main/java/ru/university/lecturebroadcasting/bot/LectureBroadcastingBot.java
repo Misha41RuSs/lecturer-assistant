@@ -202,6 +202,12 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
 
+        // Студент проходит тест — ввёл открытый ответ (приоритет выше опроса)
+        if (examSessions.containsKey(chatId) && !cmd.startsWith("/")) {
+            handleOpenAnswer(chatId, text.trim());
+            return;
+        }
+
         PendingPostSurvey survey = pendingPostSurvey.get(chatId);
         if (survey != null && survey.waitingOpenText() && !cmd.startsWith("/")) {
             savePostSurvey(chatId, text);
@@ -236,11 +242,6 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
 
-        // Студент проходит тест — ввёл открытый ответ
-        if (examSessions.containsKey(chatId) && !cmd.startsWith("/")) {
-            handleOpenAnswer(chatId, text.trim());
-            return;
-        }
 
         if ("/start".equals(cmd)) {
             String[] parts = text.split("\\s+", 2);
@@ -1050,6 +1051,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         if (chatIds == null || chatIds.isEmpty()) return;
         String title = Objects.requireNonNullElse(lectureName, "лекция");
         for (Long chatId : chatIds) {
+            if (examSessions.containsKey(chatId)) continue; // не прерываем активный тест
             pendingPostSurvey.put(chatId, new PendingPostSurvey(lectureId, 0, null, false));
             try {
                 execute(SendMessage.builder()
