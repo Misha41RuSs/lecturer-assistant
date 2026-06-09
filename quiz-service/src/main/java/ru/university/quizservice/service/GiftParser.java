@@ -15,7 +15,11 @@ public class GiftParser {
 
     public List<CreateExamDto.QuestionDto> parse(String giftText) {
         List<CreateExamDto.QuestionDto> questions = new ArrayList<>();
+        if (giftText == null || giftText.isBlank()) {
+            return questions;
+        }
         giftText = giftText.replace("\r\n", "\n").replace("\r", "\n");
+        giftText = stripBom(giftText);
         giftText = removeLineComments(giftText);
         giftText = removeSubheadings(giftText);
 
@@ -28,7 +32,7 @@ public class GiftParser {
         return questions;
     }
 
-    // Extracts question blocks by finding each { ... } pair with everything preceding it
+    // Extracts question blocks by pairing each closing brace with the nearest answer opening brace.
     private List<String> extractBlocks(String text) {
         List<String> blocks = new ArrayList<>();
         int pos = 0;
@@ -40,21 +44,18 @@ public class GiftParser {
                 pos += 2;
                 continue;
             }
-            if (text.charAt(pos) == '{') {
-                int depth = 1;
-                pos++;
-                while (pos < len && depth > 0) {
-                    if (text.charAt(pos) == '\\' && pos + 1 < len) { pos += 2; continue; }
-                    if (text.charAt(pos) == '{') depth++;
-                    else if (text.charAt(pos) == '}') depth--;
-                    pos++;
+            if (text.charAt(pos) == '}') {
+                int braceStart = findLastUnescaped(text, '{', blockStart, pos);
+                if (braceStart >= 0) {
+                    String answerBlock = text.substring(braceStart + 1, pos).trim();
+                    if (looksLikeAnswerBlock(answerBlock)) {
+                        String block = text.substring(blockStart, pos + 1).trim();
+                        if (!block.isEmpty()) blocks.add(block);
+                        blockStart = pos + 1;
+                    }
                 }
-                String block = text.substring(blockStart, pos).trim();
-                if (!block.isEmpty()) blocks.add(block);
-                blockStart = pos;
-            } else {
-                pos++;
             }
+            pos++;
         }
         return blocks;
     }
@@ -79,14 +80,15 @@ public class GiftParser {
     }
 
     private CreateExamDto.QuestionDto parseBlock(String block) {
+        block = stripBom(block);
         // Remove optional ::title:: prefix
         if (block.startsWith("::")) {
             int end = block.indexOf("::", 2);
             if (end >= 0) block = block.substring(end + 2).trim();
         }
 
-        int braceStart = block.indexOf('{');
-        int braceEnd = block.lastIndexOf('}');
+        int braceEnd = findLastUnescaped(block, '}', 0, block.length());
+        int braceStart = braceEnd >= 0 ? findLastUnescaped(block, '{', 0, braceEnd) : -1;
         if (braceStart < 0 || braceEnd < 0 || braceEnd <= braceStart) return null;
 
         String questionText = unescape(block.substring(0, braceStart).trim());
@@ -133,7 +135,7 @@ public class GiftParser {
             String text = m.group(2).trim();
 
             // Remove feedback (#...)
-            int hashIdx = text.indexOf('#');
+            int hashIdx = findUnescaped(text, '#', 0, text.length());
             if (hashIdx >= 0) text = text.substring(0, hashIdx).trim();
 
             // Check percentage before stripping: %50% → correct, %-50% → wrong
@@ -150,6 +152,82 @@ public class GiftParser {
             options.add(new CreateExamDto.OptionDto(unescape(text), correct));
         }
         return options;
+    }
+
+    private String stripBom(String text) {
+        return text != null && !text.isEmpty() && text.charAt(0) == '\uFEFF'
+                ? text.substring(1)
+                : text;
+    }
+
+    private int findUnescaped(String text, char target, int startInclusive, int endExclusive) {
+        boolean escaped = false;
+        for (int i = startInclusive; i < endExclusive; i++) {
+            char c = text.charAt(i);
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (c == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (c == target) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int findLastUnescaped(String text, char target, int startInclusive, int endExclusive) {
+        int result = -1;
+        boolean escaped = false;
+        for (int i = startInclusive; i < endExclusive; i++) {
+            char c = text.charAt(i);
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (c == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (c == target) {
+                result = i;
+            }
+        }
+        return result;
+    }
+
+    private boolean looksLikeAnswerBlock(String answerBlock) {
+        String trimmed = answerBlock.trim();
+        String upper = trimmed.toUpperCase();
+        return trimmed.isEmpty()
+                || upper.equals("TRUE")
+                || upper.equals("FALSE")
+                || upper.equals("T")
+                || upper.equals("F")
+                || trimmed.startsWith("#")
+                || hasOptionPrefix(trimmed);
+    }
+
+    private boolean hasOptionPrefix(String text) {
+        boolean escaped = false;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (c == '\\') {
+                escaped = true;
+                continue;
+            }
+            if ((c == '=' || c == '~') && (i == 0 || Character.isWhitespace(text.charAt(i - 1)))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String unescape(String text) {

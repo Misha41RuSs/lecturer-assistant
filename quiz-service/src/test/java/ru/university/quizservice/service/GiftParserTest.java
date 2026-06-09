@@ -1,26 +1,29 @@
 package ru.university.quizservice.service;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import ru.university.quizservice.dto.CreateExamDto;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
 
-public class GiftParserTest {
+class GiftParserTest {
 
     private GiftParser giftParser;
 
-    @Before
-    public void setUp() {
+    @BeforeEach
+    void setUp() {
         giftParser = new GiftParser();
     }
 
     // ========== ТЕСТЫ НА СТРОКАХ (без файлов) ==========
 
     @Test
-    public void shouldParseValidMultipleChoiceQuestion() {
+    void shouldParseValidMultipleChoiceQuestion() {
         // given
         String giftText = "Столица Франции? { ~Лондон =Париж ~Берлин ~Мадрид }";
 
@@ -40,7 +43,7 @@ public class GiftParserTest {
     }
 
     @Test
-    public void shouldParseTrueFalseQuestion() {
+    void shouldParseTrueFalseQuestion() {
         // given
         String giftText = "Земля круглая. {TRUE}";
 
@@ -56,7 +59,7 @@ public class GiftParserTest {
     }
 
     @Test
-    public void shouldParseMultipleQuestions() {
+    void shouldParseMultipleQuestions() {
         // given
         String giftText = """
             Вопрос 1? { =Ответ1 ~Ответ2 }
@@ -72,7 +75,7 @@ public class GiftParserTest {
     }
 
     @Test
-    public void shouldReturnEmptyListForEmptyString() {
+    void shouldReturnEmptyListForEmptyString() {
         // when
         List<CreateExamDto.QuestionDto> questions = giftParser.parse("");
 
@@ -84,7 +87,7 @@ public class GiftParserTest {
     // ========== НЕГАТИВНЫЕ ТЕСТЫ (fail-fast — нет 500 ошибки) ==========
 
     @Test
-    public void shouldNotCrashOnNoCorrectAnswer() {
+    void shouldNotCrashOnNoCorrectAnswer() {
         // given — вопрос без правильного ответа (нет =)
         String giftText = "Столица Франции? { ~Лондон ~Париж ~Берлин }";
 
@@ -96,7 +99,7 @@ public class GiftParserTest {
     }
 
     @Test
-    public void shouldNotCrashOnBrokenBrackets() {
+    void shouldNotCrashOnBrokenBrackets() {
         // given
         String giftText = "Вопрос? { ~Ответ1 =Ответ2";
 
@@ -108,7 +111,7 @@ public class GiftParserTest {
     }
 
     @Test
-    public void shouldNotCrashOnEmptyQuestion() {
+    void shouldNotCrashOnEmptyQuestion() {
         // given
         String giftText = "{ ~А =Б }";
 
@@ -120,7 +123,7 @@ public class GiftParserTest {
     }
 
     @Test
-    public void shouldNotCrashOnMalformedOptions() {
+    void shouldNotCrashOnMalformedOptions() {
         // given
         String giftText = "Вопрос? { А Б В }";
 
@@ -132,7 +135,7 @@ public class GiftParserTest {
     }
 
     @Test
-    public void shouldNotCrashOnCompletelyInvalidFormat() {
+    void shouldNotCrashOnCompletelyInvalidFormat() {
         // given
         String giftText = "Это просто текст, не GIFT формат";
 
@@ -146,7 +149,7 @@ public class GiftParserTest {
     // ========== ТЕСТ НА ЭКРАНИРОВАНИЕ ==========
 
     @Test
-    public void shouldHandleEscapedCharacters() {
+    void shouldHandleEscapedCharacters() {
         // given — экранированные символы \= \{ \}
         String giftText = "Вопрос с \\= экранированием \\{скобок\\}? { ~Обычный =Ответ с \\= знаком }";
 
@@ -155,5 +158,69 @@ public class GiftParserTest {
                 .doesNotThrowAnyException();
 
         System.out.println("✅ Escaped characters handled");
+    }
+
+    @Test
+    void shouldStripBomFromGiftFiles() throws IOException {
+        // given
+        String giftText = readResource("/gift/valid/simple-mc.txt");
+
+        // when
+        List<CreateExamDto.QuestionDto> questions = giftParser.parse(giftText);
+
+        // then
+        assertThat(questions).hasSize(1);
+        assertThat(questions.get(0).text()).isEqualTo("Столица Франции?");
+        assertThat(questions.get(0).text()).doesNotStartWith("\uFEFF");
+    }
+
+    @Test
+    void shouldParseAllSupportedGiftResourceFormats() throws IOException {
+        // given
+        String giftText = readResource("/gift/valid/all-formats.txt");
+
+        // when
+        List<CreateExamDto.QuestionDto> questions = giftParser.parse(giftText);
+
+        // then
+        assertThat(questions).hasSize(7);
+        assertThat(questions).extracting(CreateExamDto.QuestionDto::type)
+                .containsExactly("MULTIPLE", "MULTIPLE", "OPEN", "MULTIPLE", "OPEN", "OPEN", "OPEN");
+    }
+
+    @Test
+    void shouldKeepEscapedHashInsideAnswerOption() {
+        // given
+        String giftText = "Какой язык использует CLR? { =C\\# ~Java }";
+
+        // when
+        List<CreateExamDto.QuestionDto> questions = giftParser.parse(giftText);
+
+        // then
+        assertThat(questions).hasSize(1);
+        assertThat(questions.get(0).options())
+                .extracting(CreateExamDto.OptionDto::text)
+                .contains("C#");
+    }
+
+    @Test
+    void shouldParseQuestionTextContainingBraces() {
+        // given
+        String giftText = "Что вернёт map {key=value}? { =value ~key }";
+
+        // when
+        List<CreateExamDto.QuestionDto> questions = giftParser.parse(giftText);
+
+        // then
+        assertThat(questions).hasSize(1);
+        assertThat(questions.get(0).text()).isEqualTo("Что вернёт map {key=value}?");
+        assertThat(questions.get(0).options()).hasSize(2);
+    }
+
+    private String readResource(String path) throws IOException {
+        try (InputStream in = getClass().getResourceAsStream(path)) {
+            assertThat(in).as("resource %s", path).isNotNull();
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
     }
 }
