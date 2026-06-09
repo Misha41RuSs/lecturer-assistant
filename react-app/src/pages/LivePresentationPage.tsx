@@ -1299,7 +1299,7 @@ export function LivePresentationPage() {
 							</Tooltip>
 							<div className="flex items-center gap-2">
 								<span className="text-white text-sm bg-neutral-800 px-3 py-1.5 rounded-lg">
-									{currentSlide + 1} / {slidesData.length}
+									{slide?.isQrSlide ? 'QR' : slide?.index} / {slidesData.filter(s => !s.isQrSlide).length}
 								</span>
 								<span className="text-neutral-300 text-sm bg-neutral-800 px-3 py-1.5 rounded-lg">
 									На слайде {formatTime(slideElapsed)}
