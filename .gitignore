@@ -57,3 +57,6 @@ yarn-debug.log*
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Local-only working files (not for git)
+*.local.md
