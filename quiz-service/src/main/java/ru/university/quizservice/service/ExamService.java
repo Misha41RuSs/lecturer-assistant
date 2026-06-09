@@ -115,6 +115,11 @@ public class ExamService {
     @Transactional
     public Exam launchExam(UUID examId) {
         Exam exam = getExam(examId);
+        boolean hasActive = examRepository.findByLectureIdOrderByCreatedAtDesc(exam.getLectureId()).stream()
+                .anyMatch(e -> e.getStatus() == ExamStatus.ACTIVE && !e.getId().equals(examId));
+        if (hasActive) {
+            throw new IllegalStateException("Для этой лекции уже запущен другой тест");
+        }
         exam.setStatus(ExamStatus.ACTIVE);
         exam.setActivatedAt(Instant.now());
         return examRepository.save(exam);
@@ -217,6 +222,7 @@ public class ExamService {
                 if (a.getScore() != null) totalScore += a.getScore();
                 else hasUngraded = true;
 
+
                 ExamQuestion q = questionMap.get(a.getQuestion().getId());
                 ExamOption selectedOpt = a.getSelectedOptionId() != null
                         ? optionMap.get(a.getSelectedOptionId()) : null;
@@ -242,6 +248,9 @@ public class ExamService {
                         correct
                 ));
             }
+            // Неотвеченные вопросы: score=0, но добавляют к maxScore
+            int unanswered = exam.getQuestions().size() - answers.size();
+            if (unanswered > 0) maxScore += unanswered * 10;
 
             return new SubmissionResultDto(
                     sub.getId(), sub.getChatId(),
@@ -524,6 +533,9 @@ public class ExamService {
             if (answer.getScore() != null) score += answer.getScore();
             maxScore += answer.getMaxScore();
         }
+        // Неотвеченные вопросы: score=0, но учитываются в maxScore
+        int unanswered = submission.getExam().getQuestions().size() - answers.size();
+        if (unanswered > 0) maxScore += unanswered * 10;
         return new SubmissionScore(score, maxScore);
     }
 
