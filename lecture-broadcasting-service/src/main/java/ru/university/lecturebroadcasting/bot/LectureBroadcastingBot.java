@@ -90,6 +90,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final ConcurrentHashMap<Long, String> pendingCommand = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, PendingProfileFlow> pendingProfileFlow = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, PendingPostSurvey> pendingPostSurvey = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, DeferredSurvey> deferredPostSurvey = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, ExamSession> examSessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Integer> lastSlideMessageId = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Integer> lastStudentPhotoMessageId = new ConcurrentHashMap<>();
@@ -120,6 +121,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
 
     private record PendingProfileFlow(ProfileStep step, Long lectureId, boolean completeJoinAfter) {}
     private record PendingPostSurvey(Long lectureId, int rating, String paceSignal, boolean waitingOpenText) {}
+    private record DeferredSurvey(Long lectureId, String lectureTitle) {}
 
     @Autowired
     public LectureBroadcastingBot(
@@ -919,6 +921,10 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             examSessions.remove(chatId);
             cancelQuestionTimer(chatId);
             sendText(chatId, buildExamResultMessage(chatId, examId));
+            DeferredSurvey deferred = deferredPostSurvey.remove(chatId);
+            if (deferred != null) {
+                sendPostLectureSurvey(deferred.lectureId(), deferred.lectureTitle(), List.of(chatId));
+            }
             return;
         }
 
@@ -1051,7 +1057,10 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         if (chatIds == null || chatIds.isEmpty()) return;
         String title = Objects.requireNonNullElse(lectureName, "лекция");
         for (Long chatId : chatIds) {
-            if (examSessions.containsKey(chatId)) continue; // не прерываем активный тест
+            if (examSessions.containsKey(chatId)) {
+                deferredPostSurvey.put(chatId, new DeferredSurvey(lectureId, title));
+                continue;
+            }
             pendingPostSurvey.put(chatId, new PendingPostSurvey(lectureId, 0, null, false));
             try {
                 execute(SendMessage.builder()
