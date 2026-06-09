@@ -1215,7 +1215,7 @@ export function LivePresentationPage() {
 									onClose={() => setShowNotes(false)}
 								/>
 							)}
-							<div className="relative aspect-video bg-neutral-900 rounded-lg shadow-2xl overflow-hidden flex items-center justify-center">
+							<div className="aspect-video bg-neutral-900 rounded-lg shadow-2xl overflow-hidden flex items-center justify-center">
 								{slide.isQrSlide ? (
 									<div className="flex flex-col items-center justify-center gap-4 text-white p-8">
 										<div className="bg-white rounded-2xl p-4">

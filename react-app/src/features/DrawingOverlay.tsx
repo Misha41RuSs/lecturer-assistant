@@ -348,9 +348,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
               </div>
             </div>
           )}
-        </div>
-
-        {active && (
+          {active && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 bg-neutral-900/95 backdrop-blur border border-neutral-700 rounded-xl p-1.5 shadow-xl">
             {tools.map((t) => (
               <button key={t.id} onClick={() => setTool(t.id)} title={t.label}
@@ -391,7 +389,8 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
-        )}
+          )}
+        </div>
 
           {(active && totalAnnotations > 0) && (
               <div className="relative z-30 flex items-center justify-between mt-2 gap-2">
