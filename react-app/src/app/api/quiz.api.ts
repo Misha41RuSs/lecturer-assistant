@@ -92,12 +92,20 @@ export function closeExam(examId: string) {
   return apiFetch(`/exams/${examId}/close`, { method: "POST" });
 }
 
+export function releaseExamFeedback(examId: string) {
+  return apiFetch(`/api/exams/${examId}/release-feedback`, { method: "POST" });
+}
+
 export function getExamSubmissions(examId: string) {
   return apiFetch(`/exams/${examId}/submissions`);
 }
 
 export function getExamAnalytics(examId: string) {
   return apiFetch(`/exams/${examId}/analytics`);
+}
+
+export function getStudentCard(chatId: number) {
+  return apiFetch(`/students/${chatId}/card`);
 }
 
 export function gradeAnswer(answerId: string, score: number) {

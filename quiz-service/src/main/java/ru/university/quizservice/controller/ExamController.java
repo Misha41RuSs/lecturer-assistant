@@ -1,6 +1,8 @@
 package ru.university.quizservice.controller;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import ru.university.quizservice.dto.*;
@@ -71,6 +73,18 @@ public class ExamController {
         return ResponseEntity.ok(examService.getExamDetail(examId));
     }
 
+    @PostMapping("/exams/{examId}/release-feedback")
+    public ResponseEntity<ExamFeedbackDto> releaseFeedback(@PathVariable UUID examId) {
+        try {
+            return ResponseEntity.ok(examService.releaseFeedback(examId));
+        } catch (IllegalStateException e) {
+            HttpStatus status = e.getMessage() != null && e.getMessage().contains("already released")
+                    ? HttpStatus.CONFLICT
+                    : HttpStatus.BAD_REQUEST;
+            throw new ResponseStatusException(status, e.getMessage());
+        }
+    }
+
     @PostMapping("/exams/{examId}/submissions")
     public ResponseEntity<ExamDetailDto> startSubmission(
             @PathVariable UUID examId,
@@ -135,5 +149,19 @@ public class ExamController {
     @GetMapping("/exams/{examId}/analytics")
     public ResponseEntity<ExamAnalyticsDto> getAnalytics(@PathVariable UUID examId) {
         return ResponseEntity.ok(examService.getAnalytics(examId));
+    }
+
+    @GetMapping("/students/{chatId}/stats")
+    public ResponseEntity<StudentStatsDto> getStudentStats(
+            @PathVariable Long chatId,
+            @RequestParam(required = false) Long lectureId) {
+        return ResponseEntity.ok(examService.getStudentStats(chatId, lectureId));
+    }
+
+    @GetMapping("/students/{chatId}/card")
+    public ResponseEntity<StudentCardDto> getStudentCard(
+            @PathVariable Long chatId,
+            @RequestParam(required = false) Long lectureGroupId) {
+        return ResponseEntity.ok(examService.getStudentCard(chatId, lectureGroupId));
     }
 }

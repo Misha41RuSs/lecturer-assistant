@@ -20,16 +20,20 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
-import { sendLectureEvent } from '../app/api/analytics.api'
+import { sendLectureEvent, sendXapiSlideShown } from '../app/api/analytics.api'
 import {
 	BASE_URL,
 	broadcastMessage,
 	broadcastSlideImage,
+	createStompTopicSocket,
+	dismissStudentQuestion,
 	getLecture,
 	getLectureStudents,
+	getCurrentComprehension,
 	getSlideSequence,
 	getStudentQuestions,
 	kickLectureStudent,
+	markStudentQuestionsSeen,
 	sendBroadcastReply,
 	sendPrivateReply,
 	stopLecture,
@@ -38,14 +42,28 @@ import {
 } from '../app/api/client'
 import {
 	broadcastExam,
+	closeExam,
 	createExam,
+	getExam,
+	getExamSubmissions,
 	getExamsByLecture,
 	sendExamToUser
 } from '../app/api/quiz.api'
 import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle
+} from '../shared/alert-dialog'
+import {
 	DrawingOverlay,
 	DrawingOverlayHandle
 } from '../features/DrawingOverlay'
+import { QRCodeSVG } from 'qrcode.react'
 import { SlideNotesPanel } from '../features/SlideNotesPanel'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../shared/tooltip'
 
@@ -56,14 +74,47 @@ interface SlideData {
 	isQrSlide?: boolean
 }
 
+interface ComprehensionAggregate {
+	slideIndex: number
+	totalResponses: number
+	green: { count: number; pct: number }
+	yellow: { count: number; pct: number }
+	red: { count: number; pct: number }
+}
+
 interface Question {
 	id: string
 	student: string
 	initials: string
 	time: string
 	text: string
+	answer?: string | null
+	status: 'OPEN' | 'SEEN' | 'ANSWERED' | 'DISMISSED'
 	isNew: boolean
 	index: number
+	upvotes: number
+}
+
+interface LiveExamOption {
+	id: string
+	text: string
+	correct: boolean
+}
+
+interface LiveExamQuestion {
+	id: string
+	text: string
+	type: 'MULTIPLE' | 'OPEN'
+	timeLimitSec?: number | null
+	options?: LiveExamOption[]
+}
+
+interface LivePollState {
+	examId: string
+	title: string
+	questionText: string
+	questionType: 'MULTIPLE' | 'OPEN'
+	correctAnswer?: string
 }
 
 function QuizLaunchForm({
@@ -124,24 +175,60 @@ function QuizLaunchForm({
 	)
 }
 
+function questionInitials(name: string): string {
+	const normalized = name.replace(/^@/, '').trim()
+	if (!normalized) return '?'
+	const parts = normalized.split(/\s+/).filter(Boolean)
+	if (parts.length > 1) {
+		return (parts[0][0] + parts[1][0]).toUpperCase()
+	}
+	return normalized.slice(0, 2).toUpperCase()
+}
+
 function mapStudentQuestion(
-	q: { id: string; text: string; createdAt: string },
+	q: {
+		id: string
+		text: string
+		answer?: string | null
+		status?: 'OPEN' | 'SEEN' | 'ANSWERED' | 'DISMISSED'
+		createdAt: string
+		chatId?: number
+		realName?: string
+		groupName?: string
+		studentName?: string
+		username?: string
+		upvotes?: number
+	},
 	idx: number
 ): Question {
 	const created = new Date(q.createdAt)
 	const mins = Math.round((Date.now() - created.getTime()) / 60000)
 	const time = mins < 1 ? 'только что' : `${mins} мин.`
 	const num = idx + 1
+	const student =
+		q.realName ||
+		q.studentName ||
+		(q.username
+			? `@${q.username}`
+			: q.chatId
+				? `ID: ${q.chatId}`
+				: `Анонимный вопрос #${num}`)
 	return {
 		id: q.id,
-		student: `Студент #${num}`,
-		initials: `С${num}`,
+		student,
+		initials: questionInitials(student),
 		time,
 		text: q.text,
+		answer: q.answer,
+		status: q.status || 'OPEN',
 		isNew: mins < 2,
-		index: num
+		index: num,
+		upvotes: q.upvotes || 0
 	}
 }
+
+const isLivePollExam = (exam: { title?: string }) =>
+	exam.title?.startsWith('Быстрый вопрос:') ?? false
 
 export function LivePresentationPage() {
 	const navigate = useNavigate()
@@ -150,13 +237,21 @@ export function LivePresentationPage() {
 	const [slidesData, setSlidesData] = useState<SlideData[]>([])
 	const [isLoading, setIsLoading] = useState(true)
 	const [lectureName, setLectureName] = useState('')
+	const [lectureStatus, setLectureStatus] = useState('')
+	const [comprehension, setComprehension] = useState<ComprehensionAggregate | null>(null)
 
 	const [quickMessage, setQuickMessage] = useState('')
-	const [activeTab, setActiveTab] = useState<'questions' | 'students'>(
+	const [activeTab, setActiveTab] = useState<'questions' | 'polls' | 'students'>(
 		'questions'
 	)
-	const [sidebarOpen, setSidebarOpen] = useState(true)
+	const [questionView, setQuestionView] = useState<'active' | 'archive'>(
+		'active'
+	)
+	const [sidebarOpen, setSidebarOpen] = useState(() =>
+		typeof window === 'undefined' ? true : window.innerWidth >= 1024
+	)
 	const [elapsed, setElapsed] = useState(0)
+	const [slideElapsed, setSlideElapsed] = useState(0)
 	const [showConfirmEnd, setShowConfirmEnd] = useState(false)
 	const [showConfirmExit, setShowConfirmExit] = useState(false)
 	const [replyTo, setReplyTo] = useState<string | null>(null)
@@ -174,6 +269,8 @@ export function LivePresentationPage() {
 	const [isChangingSlide, setIsChangingSlide] = useState(false)
 	const [showNotes, setShowNotes] = useState(false)
 	const [isMessageCoolingDown, setIsMessageCoolingDown] = useState(false)
+	const [kickTarget, setKickTarget] = useState<StudentDto | null>(null)
+	const [kickingChatId, setKickingChatId] = useState<number | null>(null)
 
 	const drawingRef = useRef<DrawingOverlayHandle>(null)
 	const broadcastChannelRef = useRef<BroadcastChannel | null>(null)
@@ -183,11 +280,23 @@ export function LivePresentationPage() {
 	>('open')
 	const [password, setPassword] = useState('')
 	const telegramJoinUrl = `https://t.me/lecturer_assistant_bot?start=join_${lectureId}`
-	const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(telegramJoinUrl)}`
 
 	const [questions, setQuestions] = useState<Question[]>([])
 	const [students, setStudents] = useState<StudentDto[]>([])
 	const studentsCount = students.length
+	const isActiveQuestion = (q: Question) =>
+		q.status === 'OPEN' || q.status === 'SEEN'
+	const activeQuestions = questions.filter(isActiveQuestion)
+	const archivedQuestions = questions.filter(q => !isActiveQuestion(q))
+	const visibleQuestions =
+		questionView === 'active' ? activeQuestions : archivedQuestions
+	const [bankExams, setBankExams] = useState<{ id: string; title: string; status?: string }[]>([])
+	const [selectedBankExamId, setSelectedBankExamId] = useState('')
+	const [bankQuestions, setBankQuestions] = useState<LiveExamQuestion[]>([])
+	const [loadingBankQuestions, setLoadingBankQuestions] = useState(false)
+	const [launchingQuestionId, setLaunchingQuestionId] = useState<string | null>(null)
+	const [livePoll, setLivePoll] = useState<LivePollState | null>(null)
+	const [livePollSubmissions, setLivePollSubmissions] = useState<any[]>([])
 
 	// Load lecture data and slides from backend
 	useEffect(() => {
@@ -198,9 +307,10 @@ export function LivePresentationPage() {
 				setIsLoading(true)
 				const lecture = await getLecture(parseInt(lectureId))
 				setLectureName(lecture.name || 'Лекция')
+				setLectureStatus(lecture.status || '')
 				if (lecture.accessType === 'PASSWORD') {
 					setAccessType('password')
-					setPassword(lecture.password || '')
+					setPassword('')
 				} else if (lecture.accessType === 'INVITATION') {
 					setAccessType('invitation')
 					setPassword('')
@@ -251,18 +361,66 @@ export function LivePresentationPage() {
 		loadLecture()
 	}, [lectureId])
 
-	// Polling вопросов студентов из бота каждые 10 секунд
+	useEffect(() => {
+		const handler = (e: BeforeUnloadEvent) => {
+			if (lectureStatus !== 'ACTIVE') return
+			e.preventDefault()
+			e.returnValue = ''
+		}
+		window.addEventListener('beforeunload', handler)
+		return () => window.removeEventListener('beforeunload', handler)
+	}, [lectureStatus])
+
+	// Вопросы студентов: начальная загрузка + WS + polling-fallback каждые 5 сек
 	useEffect(() => {
 		if (!lectureId) return
+		let cancelled = false
 		const load = () => {
 			getStudentQuestions(lectureId)
-				.then(list => setQuestions(list.map(mapStudentQuestion)))
+				.then(list => {
+					if (!cancelled) setQuestions(list.map(mapStudentQuestion))
+				})
 				.catch(() => {})
 		}
 		load()
-		const interval = setInterval(load, 5000)
-		return () => clearInterval(interval)
+		const socket = createStompTopicSocket(
+			`/topic/student-questions/${lectureId}`,
+			load
+		)
+		const poll = setInterval(load, 5000)
+		return () => {
+			cancelled = true
+			socket.close()
+			clearInterval(poll)
+		}
 	}, [lectureId])
+
+	useEffect(() => {
+		if (!lectureId || activeTab !== 'questions' || !sidebarOpen) return
+		if (!activeQuestions.some(q => q.status === 'OPEN')) return
+		markStudentQuestionsSeen(lectureId).catch(() => {})
+	}, [lectureId, activeTab, sidebarOpen, activeQuestions.length])
+
+	useEffect(() => {
+		if (!lectureId) return
+		let cancelled = false
+		const load = () => {
+			getCurrentComprehension(lectureId)
+				.then(data => {
+					if (!cancelled) setComprehension(data)
+				})
+				.catch(() => {})
+		}
+		load()
+		const socket = createStompTopicSocket(
+			`/topic/comprehension/${lectureId}`,
+			data => setComprehension(data)
+		)
+		return () => {
+			cancelled = true
+			socket.close()
+		}
+	}, [lectureId, currentSlide])
 
 	// Реальное число студентов из lecture-broadcasting-service
 	useEffect(() => {
@@ -278,9 +436,60 @@ export function LivePresentationPage() {
 	}, [lectureId])
 
 	useEffect(() => {
+		if (!lectureId) return
+		getExamsByLecture(lectureId)
+			.then((list: any[]) => {
+				const reusableExams = list.filter(exam => !isLivePollExam(exam))
+				setBankExams(reusableExams)
+				if (reusableExams.length > 0)
+					setSelectedBankExamId(current => current || reusableExams[0].id)
+			})
+			.catch(() => {})
+	}, [lectureId])
+
+	useEffect(() => {
+		if (!selectedBankExamId) {
+			setBankQuestions([])
+			return
+		}
+		setLoadingBankQuestions(true)
+		getExam(selectedBankExamId)
+			.then((exam: any) => setBankQuestions(exam.questions || []))
+			.catch(() => {
+				setBankQuestions([])
+				toast.error('Не удалось загрузить вопросы теста')
+			})
+			.finally(() => setLoadingBankQuestions(false))
+	}, [selectedBankExamId])
+
+	useEffect(() => {
+		if (!livePoll) return
+		let cancelled = false
+		const load = () => {
+			getExamSubmissions(livePoll.examId)
+				.then((list: any[]) => {
+					if (!cancelled) setLivePollSubmissions(list)
+				})
+				.catch(() => {})
+		}
+		load()
+		const interval = setInterval(load, 2000)
+		return () => {
+			cancelled = true
+			clearInterval(interval)
+		}
+	}, [livePoll])
+
+	useEffect(() => {
 		const timer = setInterval(() => setElapsed(p => p + 1), 1000)
 		return () => clearInterval(timer)
 	}, [])
+
+	useEffect(() => {
+		setSlideElapsed(0)
+		const timer = setInterval(() => setSlideElapsed(p => p + 1), 1000)
+		return () => clearInterval(timer)
+	}, [currentSlide])
 
 	useEffect(() => {
 		if (!lectureId) return
@@ -370,6 +579,26 @@ export function LivePresentationPage() {
 			.toString()
 			.padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`
 	const slide = slidesData[currentSlide]
+	const livePollAnswers = livePollSubmissions.flatMap(s => s.answers || [])
+	const livePollAnswered = livePollAnswers.length
+	const livePollCorrect = livePollAnswers.filter((a: any) => a.correct === true).length
+	const livePollDistribution = livePollAnswers.reduce<Record<string, number>>((acc, answer: any) => {
+		const key = answer.selectedOptionText || answer.openText || 'Без ответа'
+		acc[key] = (acc[key] || 0) + 1
+		return acc
+	}, {})
+
+	const getStudentDisplayName = (student: StudentDto) => {
+		if (student.realName) return student.realName
+		const fullName = `${student.firstName || ''} ${student.lastName || ''}`.trim()
+		return fullName || student.username || `ID: ${student.chatId}`
+	}
+
+	const getStudentSecondary = (student: StudentDto) => {
+		if (student.groupName) return student.groupName
+		if (student.username) return `@${student.username}`
+		return `ID: ${student.chatId}`
+	}
 
 	const handleSendMessage = () => {
 		if (!quickMessage.trim() || !lectureId || isMessageCoolingDown) return
@@ -389,7 +618,11 @@ export function LivePresentationPage() {
 		const text = replyText.trim()
 		const q = questions.find(x => x.id === qId)
 		
-		setQuestions(questions.filter(x => x.id !== qId))
+		setQuestions(prev =>
+			prev.map(x =>
+				x.id === qId ? { ...x, status: 'ANSWERED', answer: text } : x
+			)
+		)
 		setReplyTo(null)
 		setReplyText('')
 		
@@ -406,7 +639,11 @@ export function LivePresentationPage() {
 		const text = replyText.trim()
 		const q = questions.find(x => x.id === qId)
 		
-		setQuestions(questions.filter(x => x.id !== qId))
+		setQuestions(prev =>
+			prev.map(x =>
+				x.id === qId ? { ...x, status: 'ANSWERED', answer: text } : x
+			)
+		)
 		setReplyTo(null)
 		setReplyText('')
 
@@ -418,10 +655,36 @@ export function LivePresentationPage() {
 			.catch(() => toast.error('Не удалось отправить ответ'))
 	}
 
-	const handleDismissQuestion = (qId: string) => {
-		setQuestions(questions.filter(x => x.id !== qId))
+	const handleDismissQuestion = async (qId: string) => {
+		if (!lectureId) return
+		setQuestions(prev =>
+			prev.map(x => (x.id === qId ? { ...x, status: 'DISMISSED' } : x))
+		)
 		setReplyTo(null)
-		toast.info('Вопрос отклонён')
+		try {
+			await dismissStudentQuestion(lectureId, qId)
+			toast.info('Вопрос отправлен в архив')
+		} catch {
+			setQuestions(prev =>
+				prev.map(x => (x.id === qId ? { ...x, status: 'OPEN' } : x))
+			)
+			toast.error('Не удалось отправить вопрос в архив')
+		}
+	}
+
+	const handleKickStudent = async () => {
+		if (!lectureId || !kickTarget) return
+		setKickingChatId(kickTarget.chatId)
+		try {
+			await kickLectureStudent(lectureId, kickTarget.chatId)
+			setStudents(prev => prev.filter(x => x.chatId !== kickTarget.chatId))
+			toast.success('Студент отключен')
+			setKickTarget(null)
+		} catch {
+			toast.error('Не удалось отключить студента')
+		} finally {
+			setKickingChatId(null)
+		}
 	}
 
 	const handleAssignTestAll = async (examId: string) => {
@@ -440,8 +703,74 @@ export function LivePresentationPage() {
 		setShowTestModal(null)
 	}
 
+	const handleAskLiveQuestion = async (sourceQuestion: LiveExamQuestion) => {
+		if (!lectureId) return
+		setLaunchingQuestionId(sourceQuestion.id)
+		try {
+			const title = `Быстрый вопрос: ${sourceQuestion.text.slice(0, 60)}`
+			const exam = await createExam({
+				lectureId,
+				title,
+				examType: 'EXAM',
+				questions: [
+					{
+						text: sourceQuestion.text,
+						type: sourceQuestion.type,
+						timeLimitSec: null,
+						options:
+							sourceQuestion.type === 'MULTIPLE'
+								? (sourceQuestion.options || []).map(option => ({
+										text: option.text,
+										correct: option.correct
+									}))
+								: undefined
+					}
+				]
+			})
+			await broadcastExam(exam.id, lectureId)
+			setLivePoll({
+				examId: exam.id,
+				title,
+				questionText: sourceQuestion.text,
+				questionType: sourceQuestion.type,
+				correctAnswer: sourceQuestion.options?.find(option => option.correct)?.text
+			})
+			setLivePollSubmissions([])
+			toast.success(`Вопрос отправлен студентам (${studentsCount})`)
+		} catch {
+			toast.error('Не удалось отправить вопрос')
+		} finally {
+			setLaunchingQuestionId(null)
+		}
+	}
+
+	const handleFinishLivePoll = async () => {
+		if (!lectureId || !livePoll) return
+		try {
+			await closeExam(livePoll.examId)
+			if (livePoll.correctAnswer) {
+				await broadcastMessage(
+					lectureId,
+					`Быстрый вопрос завершён. Правильный ответ: ${livePoll.correctAnswer}`
+				)
+			}
+			setLivePoll(null)
+			setLivePollSubmissions([])
+			toast.success('Опрос завершён')
+		} catch {
+			toast.error('Не удалось завершить опрос')
+		}
+	}
+
 	const handleSendSatisfaction = async () => {
 		if (!lectureId) return
+		const questionText = (
+			editingSatisfaction ? satisfactionDraft : satisfactionPreset
+		).trim()
+		if (!questionText) {
+			toast.error('Введите текст вопроса')
+			return
+		}
 		try {
 			const exam = await createExam({
 				lectureId,
@@ -449,7 +778,7 @@ export function LivePresentationPage() {
 				examType: 'SURVEY',
 				questions: [
 					{
-						text: satisfactionPreset,
+						text: questionText,
 						type: 'MULTIPLE',
 						options: [
 							{ text: '1 ⭐', correct: false },
@@ -462,11 +791,14 @@ export function LivePresentationPage() {
 				]
 			})
 			await broadcastExam(exam.id, lectureId)
+			setSatisfactionPreset(questionText)
+			setSatisfactionDraft(questionText)
+			setEditingSatisfaction(false)
+			setShowSatisfactionModal(false)
 			toast.success(`Опрос запущен для студентов (${studentsCount})`)
 		} catch {
 			toast.error('Не удалось запустить опрос')
 		}
-		setShowSatisfactionModal(false)
 	}
 
 	const handleSlideChange = async (newSlideIndex: number) => {
@@ -502,6 +834,9 @@ export function LivePresentationPage() {
 				payload: JSON.stringify({ slideNumber: newSlide.index })
 			}).catch(() => {})
 
+			// xAPI: отправляем событие появления слайда для сбора метрик
+			sendXapiSlideShown(parseInt(lectureId), newSlide.id as any)
+
 			if (drawingRef.current?.hasAnnotations(newSlideIndex)) {
 				drawingRef.current
 					.getCompositeBlob(newSlideIndex, newSlide.imageUrl)
@@ -532,6 +867,7 @@ export function LivePresentationPage() {
 	const handleExitToMenu = () => {
 		if (lectureId) {
 			localStorage.setItem('active_lecture_id', lectureId)
+			window.dispatchEvent(new StorageEvent('storage', { key: 'active_lecture_id', newValue: lectureId }))
 		}
 		navigate('/')
 	}
@@ -542,12 +878,17 @@ export function LivePresentationPage() {
 		try {
 			await stopLecture(parseInt(lectureId, 10))
 			localStorage.removeItem('active_lecture_id')
+			window.dispatchEvent(new StorageEvent('storage', { key: 'active_lecture_id', newValue: null }))
 			setShowConfirmEnd(false)
 			toast.success('Лекция завершена, студенты отключены')
 			navigate('/')
 		} catch (e) {
 			console.error(e)
-			toast.error('Не удалось завершить лекцию на сервере')
+			toast.error('Лекция не найдена на сервере, локальная сессия сброшена')
+			localStorage.removeItem('active_lecture_id')
+			window.dispatchEvent(new StorageEvent('storage', { key: 'active_lecture_id', newValue: null }))
+			setShowConfirmEnd(false)
+			navigate('/')
 		} finally {
 			setEndingLecture(false)
 		}
@@ -630,9 +971,9 @@ export function LivePresentationPage() {
 									) : (
 										<QrCode className="w-3 h-3" />
 									)}
-									<span className="hidden sm:inline">
-										{accessType === 'password' ? password : 'QR'}
-									</span>
+										<span className="hidden sm:inline">
+											{accessType === 'password' ? 'Пароль' : 'QR'}
+										</span>
 								</button>
 							</TooltipTrigger>
 							<TooltipContent>
@@ -700,7 +1041,7 @@ export function LivePresentationPage() {
 						<TooltipTrigger asChild>
 							<button
 								onClick={() => setSidebarOpen(!sidebarOpen)}
-								className="p-1.5 text-neutral-400 hover:text-white hidden lg:block"
+								className="p-1.5 text-neutral-400 hover:text-white"
 							>
 								<MessageSquare className="w-4 h-4" />
 							</button>
@@ -744,29 +1085,22 @@ export function LivePresentationPage() {
 					</div>
 					{accessType === 'password' && (
 						<>
-							<div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-center mb-2">
-								<div className="text-2xl tracking-wider text-orange-700">
-									{password}
+								<div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-center mb-2">
+									<div className="text-lg text-orange-700">Пароль задан</div>
+									<p className="text-xs text-neutral-500 mt-1">
+										Изменить или показать новый пароль можно в настройках лекции.
+									</p>
 								</div>
-							</div>
-							<button
-								onClick={() => {
-									navigator.clipboard.writeText(password)
-									toast.success('Скопировано')
-								}}
-								className="flex items-center gap-1 text-sm text-orange-500 hover:text-orange-600 mx-auto"
-							>
-								<Copy className="w-3.5 h-3.5" /> Копировать
-							</button>
-						</>
-					)}
+							</>
+						)}
 					{accessType === 'invitation' && (
 						<div className="text-center">
 							<div className="bg-white border border-neutral-200 rounded-lg p-3 inline-block mb-2">
-								<img
-									src={qrUrl}
-									alt="QR"
-									className="w-40 h-40"
+								<QRCodeSVG
+									value={telegramJoinUrl}
+									size={160}
+									level="M"
+									aria-label="QR для подключения"
 								/>
 							</div>
 							<p className="text-xs text-neutral-500">Покажите студентам</p>
@@ -833,6 +1167,39 @@ export function LivePresentationPage() {
 				</div>
 			)}
 
+			<AlertDialog
+				open={kickTarget !== null}
+				onOpenChange={open => {
+					if (!open && kickingChatId === null) setKickTarget(null)
+				}}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Отключить студента?</AlertDialogTitle>
+						<AlertDialogDescription>
+							{kickTarget
+								? `${getStudentDisplayName(kickTarget)} больше не сможет подключиться к этой лекции.`
+								: 'Студент больше не сможет подключиться к этой лекции.'}
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel disabled={kickingChatId !== null}>
+							Отмена
+						</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={e => {
+								e.preventDefault()
+								handleKickStudent()
+							}}
+							disabled={kickingChatId !== null}
+							className="bg-red-600 text-white hover:bg-red-700"
+						>
+							{kickingChatId !== null ? 'Отключение…' : 'Отключить'}
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+
 			<div className="flex-1 flex overflow-hidden">
 				{/* Main area */}
 				<div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 min-w-0">
@@ -852,10 +1219,11 @@ export function LivePresentationPage() {
 								{slide.isQrSlide ? (
 									<div className="flex flex-col items-center justify-center gap-4 text-white p-8">
 										<div className="bg-white rounded-2xl p-4">
-											<img
-												src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(`https://t.me/lecturer_assistant_bot?start=join_${lectureId}`)}`}
-												alt="QR для подключения"
-												className="w-48 h-48"
+											<QRCodeSVG
+												value={telegramJoinUrl}
+												size={192}
+												level="M"
+												aria-label="QR для подключения"
 											/>
 										</div>
 										<p className="text-lg font-medium">
@@ -889,6 +1257,29 @@ export function LivePresentationPage() {
 						</div>
 
 						{/* Nav */}
+						{comprehension && (
+							<div className="mt-4 bg-neutral-900 border border-neutral-800 rounded-xl p-4 text-white">
+								<div className="flex items-center justify-between mb-3">
+									<div className="text-sm font-medium">Понимание аудитории</div>
+									<div className="text-xs text-neutral-400">{comprehension.totalResponses} ответов</div>
+								</div>
+								{[
+									{ label: '🟢 Понял', bucket: comprehension.green, color: 'bg-green-500' },
+									{ label: '🟡 Не до конца', bucket: comprehension.yellow, color: 'bg-yellow-400' },
+									{ label: '🔴 Потерялся', bucket: comprehension.red, color: 'bg-red-500' }
+								].map(item => (
+									<div key={item.label} className="flex items-center gap-3 mb-2 last:mb-0">
+										<span className="w-28 text-sm text-neutral-300">{item.label}</span>
+										<div className="flex-1 bg-neutral-800 rounded-full h-2">
+											<div className={`${item.color} h-2 rounded-full`} style={{ width: `${item.bucket.pct}%` }} />
+										</div>
+										<span className="w-10 text-sm text-neutral-300 text-right">{item.bucket.pct}%</span>
+									</div>
+								))}
+							</div>
+						)}
+
+						{/* Nav */}
 						<div className="flex items-center justify-between mt-4">
 							<Tooltip>
 								<TooltipTrigger asChild>
@@ -906,9 +1297,14 @@ export function LivePresentationPage() {
 									<p>Предыдущий слайд</p>
 								</TooltipContent>
 							</Tooltip>
-							<span className="text-white text-sm bg-neutral-800 px-3 py-1.5 rounded-lg">
-								{currentSlide + 1} / {slidesData.length}
-							</span>
+							<div className="flex items-center gap-2">
+								<span className="text-white text-sm bg-neutral-800 px-3 py-1.5 rounded-lg">
+									{currentSlide + 1} / {slidesData.length}
+								</span>
+								<span className="text-neutral-300 text-sm bg-neutral-800 px-3 py-1.5 rounded-lg">
+									На слайде {formatTime(slideElapsed)}
+								</span>
+							</div>
 							<Tooltip>
 								<TooltipTrigger asChild>
 									<button
@@ -965,9 +1361,24 @@ export function LivePresentationPage() {
 
 				{/* Sidebar */}
 				{sidebarOpen && (
-					<div className="hidden lg:flex w-[340px] xl:w-[380px] bg-neutral-900 border-l border-neutral-800 flex-col flex-shrink-0">
+					<div
+						className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+						onClick={() => setSidebarOpen(false)}
+					/>
+				)}
+				{sidebarOpen && (
+					<div className="fixed inset-y-0 right-0 z-50 flex w-[min(100vw-2rem,380px)] bg-neutral-900 border-l border-neutral-800 flex-col flex-shrink-0 shadow-2xl lg:static lg:z-auto lg:w-[340px] lg:shadow-none xl:w-[380px]">
+						<div className="lg:hidden flex items-center justify-between px-3 py-3 border-b border-neutral-800">
+							<span className="text-sm text-white">Аудитория</span>
+							<button
+								onClick={() => setSidebarOpen(false)}
+								className="p-1.5 text-neutral-400 hover:text-white"
+							>
+								<X className="w-4 h-4" />
+							</button>
+						</div>
 						<div className="flex border-b border-neutral-800">
-							{(['questions', 'students'] as const).map(tab => (
+							{(['questions', 'polls', 'students'] as const).map(tab => (
 								<button
 									key={tab}
 									onClick={() => setActiveTab(tab)}
@@ -978,8 +1389,10 @@ export function LivePresentationPage() {
 									}`}
 								>
 									{tab === 'questions'
-										? `Вопросы (${questions.length})`
-										: `Студенты (${studentsCount})`}
+										? `Вопросы (${activeQuestions.length})`
+										: tab === 'polls'
+											? 'Опросы'
+											: `Студенты (${studentsCount})`}
 									{activeTab === tab && (
 										<div className="absolute bottom-0 left-0 right-0 h-0.5 bg-orange-500" />
 									)}
@@ -989,16 +1402,41 @@ export function LivePresentationPage() {
 
 						<div className="flex-1 overflow-y-auto p-3">
 							{activeTab === 'questions' ? (
-								questions.length === 0 ? (
-									<div className="text-neutral-500 text-sm text-center py-8">
-										Нет вопросов
+								<>
+									<div className="flex rounded-lg bg-neutral-800 p-1 mb-3">
+										{(['active', 'archive'] as const).map(view => (
+											<button
+												key={view}
+												onClick={() => setQuestionView(view)}
+												className={`flex-1 px-2 py-1.5 rounded-md text-xs transition-colors ${
+													questionView === view
+														? 'bg-neutral-700 text-white'
+														: 'text-neutral-400 hover:text-white'
+												}`}
+											>
+												{view === 'active'
+													? `Активные (${activeQuestions.length})`
+													: `Архив (${archivedQuestions.length})`}
+											</button>
+										))}
 									</div>
-								) : (
-									<div className="space-y-2">
-										{questions.map(q => (
+
+									{visibleQuestions.length === 0 ? (
+										<div className="text-neutral-500 text-sm text-center py-8">
+											{questionView === 'active'
+												? 'Нет активных вопросов'
+												: 'Архив пуст'}
+										</div>
+									) : (
+										<div className="space-y-2">
+											{visibleQuestions.map(q => (
 											<div
 												key={q.id}
-												className="bg-neutral-800 rounded-lg p-3"
+												className={`rounded-lg p-3 ${
+													isActiveQuestion(q)
+														? 'bg-neutral-800'
+														: 'bg-neutral-900 border border-neutral-800'
+												}`}
 											>
 												<div className="flex items-start gap-2 mb-2">
 													<div className="w-7 h-7 rounded-full bg-neutral-700 flex items-center justify-center text-xs text-white flex-shrink-0">
@@ -1017,14 +1455,24 @@ export function LivePresentationPage() {
 														</div>
 														<div className="text-neutral-400 text-xs">
 															{q.time}
+															{q.upvotes > 0 && (
+																<span className="ml-2 text-orange-400">+{q.upvotes}</span>
+															)}
 														</div>
 													</div>
 												</div>
 												<p className="text-neutral-300 text-sm mb-2">
 													{q.text}
 												</p>
+												{!isActiveQuestion(q) && (
+													<div className="text-xs text-neutral-500 mb-2">
+														{q.status === 'ANSWERED'
+															? `Отвечено${q.answer ? `: ${q.answer}` : ''}`
+															: 'В архиве без ответа'}
+													</div>
+												)}
 
-												{replyTo === q.id ? (
+												{!isActiveQuestion(q) ? null : replyTo === q.id ? (
 													<div className="space-y-2">
 														<textarea
 															value={replyText}
@@ -1086,7 +1534,113 @@ export function LivePresentationPage() {
 											</div>
 										))}
 									</div>
-								)
+									)}
+								</>
+							) : activeTab === 'polls' ? (
+								<div className="space-y-4">
+									{livePoll && (
+											<div className="rounded-lg border border-orange-500/40 bg-orange-500/10 p-3">
+												<div className="text-xs text-orange-300 mb-1">Идёт быстрый вопрос</div>
+												<div className="text-sm text-white mb-3">{livePoll.questionText}</div>
+											<div className="grid grid-cols-3 gap-2 text-center mb-3">
+												<div className="rounded bg-neutral-900 p-2">
+													<div className="text-lg text-white">{livePollAnswered}</div>
+													<div className="text-[11px] text-neutral-500">ответили</div>
+												</div>
+												<div className="rounded bg-neutral-900 p-2">
+													<div className="text-lg text-white">{studentsCount}</div>
+													<div className="text-[11px] text-neutral-500">студентов</div>
+												</div>
+												<div className="rounded bg-neutral-900 p-2">
+													<div className="text-lg text-white">
+														{livePoll.questionType === 'MULTIPLE' ? livePollCorrect : '—'}
+													</div>
+													<div className="text-[11px] text-neutral-500">верно</div>
+												</div>
+											</div>
+											{Object.keys(livePollDistribution).length > 0 && (
+												<div className="space-y-1.5">
+													{Object.entries(livePollDistribution).map(([answer, count]) => (
+														<div key={answer}>
+															<div className="flex justify-between text-xs text-neutral-300 mb-1">
+																<span className="truncate pr-2">{answer}</span>
+																<span>{count}</span>
+															</div>
+															<div className="h-1.5 rounded bg-neutral-800 overflow-hidden">
+																<div
+																	className="h-full bg-orange-500"
+																	style={{
+																		width: `${livePollAnswered ? Math.round((count / livePollAnswered) * 100) : 0}%`
+																	}}
+																/>
+															</div>
+														</div>
+													))}
+												</div>
+											)}
+										</div>
+									)}
+
+									<div>
+										<div className="text-sm text-white mb-2">Банк вопросов</div>
+										{bankExams.length === 0 ? (
+											<div className="text-neutral-500 text-sm py-6 text-center">
+												Нет тестов с вопросами
+											</div>
+										) : (
+											<div className="space-y-3">
+												<select
+													value={selectedBankExamId}
+													onChange={e => setSelectedBankExamId(e.target.value)}
+													className="w-full px-3 py-2 bg-neutral-800 text-white border border-neutral-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+												>
+													{bankExams.map(exam => (
+														<option
+															key={exam.id}
+															value={exam.id}
+														>
+															{exam.title}
+														</option>
+													))}
+												</select>
+
+												{loadingBankQuestions ? (
+													<div className="text-neutral-500 text-sm py-4 text-center">
+														Загрузка вопросов...
+													</div>
+												) : (
+													<div className="space-y-2">
+														{bankQuestions.map(question => (
+															<div
+																key={question.id}
+																className="rounded-lg bg-neutral-800 p-3"
+															>
+																<div className="text-sm text-neutral-200 mb-2">
+																	{question.text}
+																</div>
+																<button
+																	onClick={() => handleAskLiveQuestion(question)}
+																	disabled={launchingQuestionId === question.id}
+																	className="w-full px-3 py-1.5 bg-orange-500 text-white text-sm rounded hover:bg-orange-600 disabled:opacity-50"
+																>
+																	{launchingQuestionId === question.id
+																		? 'Отправляем...'
+																		: 'Спросить сейчас'}
+																</button>
+															</div>
+														))}
+													</div>
+												)}
+												<button
+													onClick={handleFinishLivePoll}
+													className="mt-3 w-full px-3 py-1.5 bg-neutral-800 text-white text-sm rounded hover:bg-neutral-700"
+												>
+													Завершить опрос
+												</button>
+											</div>
+										)}
+									</div>
+								</div>
 							) : (
 								<div className="flex flex-col h-full">
 									{students.length === 0 ? (
@@ -1106,45 +1660,25 @@ export function LivePresentationPage() {
 													<div className="flex items-center justify-between">
 														<div className="flex items-center gap-2 min-w-0">
 															<div className="w-8 h-8 bg-neutral-700 rounded-full flex items-center justify-center text-sm font-medium text-white flex-shrink-0">
-																{s.firstName?.[0] || 'С'}
+																{getStudentDisplayName(s)[0] || 'С'}
 															</div>
 															<div className="min-w-0">
 																<div className="text-white text-sm font-medium truncate">
-																	{s.firstName
-																		? `${s.firstName} ${s.lastName || ''}`
-																		: `Студент`}
+																	{getStudentDisplayName(s)}
 																</div>
 																<div className="text-orange-400/80 text-xs truncate">
-																	{s.username
-																		? `@${s.username}`
-																		: `ID: ${s.chatId}`}
+																	{getStudentSecondary(s)}
+																	</div>
 																</div>
 															</div>
+															<button
+																onClick={() => setKickTarget(s)}
+																className="p-1.5 text-neutral-500 hover:bg-red-500/10 hover:text-red-400 rounded transition-colors"
+																title="Выгнать из лекции"
+															>
+																<X className="w-4 h-4" />
+															</button>
 														</div>
-														<button
-															onClick={async () => {
-																if (
-																	!window.confirm(
-																		'Выгнать студента из лекции? Он больше не сможет зайти.'
-																	)
-																)
-																	return
-																try {
-																	await kickLectureStudent(lectureId!, s.chatId)
-																	setStudents(prev =>
-																		prev.filter(x => x.chatId !== s.chatId)
-																	)
-																	toast.success('Студент отключен')
-																} catch (e) {
-																	toast.error('Не удалось отключить студента')
-																}
-															}}
-															className="p-1.5 text-neutral-500 hover:bg-red-500/10 hover:text-red-400 rounded transition-colors"
-															title="Выгнать из лекции"
-														>
-															<X className="w-4 h-4" />
-														</button>
-													</div>
 													<div className="flex mt-1">
 														<button
 															onClick={() => setShowTestModal(s.chatId)}
@@ -1320,7 +1854,11 @@ export function LivePresentationPage() {
 
 						<div className="flex gap-2">
 							<button
-								onClick={() => setShowSatisfactionModal(false)}
+								onClick={() => {
+									setShowSatisfactionModal(false)
+									setEditingSatisfaction(false)
+									setSatisfactionDraft(satisfactionPreset)
+								}}
 								className="flex-1 px-4 py-2 border border-neutral-300 rounded-lg text-sm"
 							>
 								Отмена
@@ -1329,7 +1867,7 @@ export function LivePresentationPage() {
 								onClick={handleSendSatisfaction}
 								className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm"
 							>
-								Отправить ({studentsCount})
+								{`Отправить (${studentsCount})`}
 							</button>
 						</div>
 					</div>

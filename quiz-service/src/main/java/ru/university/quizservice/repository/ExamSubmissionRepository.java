@@ -10,4 +10,6 @@ import java.util.UUID;
 public interface ExamSubmissionRepository extends JpaRepository<ExamSubmission, UUID> {
     List<ExamSubmission> findByExam_IdOrderByStartedAtDesc(UUID examId);
     Optional<ExamSubmission> findByExam_IdAndChatId(UUID examId, Long chatId);
+    List<ExamSubmission> findByChatIdOrderByStartedAtDesc(Long chatId);
+    List<ExamSubmission> findByExam_LectureIdAndChatIdOrderByStartedAtDesc(Long lectureId, Long chatId);
 }

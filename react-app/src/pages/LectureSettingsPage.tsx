@@ -17,6 +17,7 @@ import {
 	Trash2,
 	X
 } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
@@ -63,9 +64,12 @@ export function LectureSettingsPage() {
 		'open' | 'password' | 'invitation'
 	>('open')
 	const [password, setPassword] = useState('')
+	const [hasExistingPassword, setHasExistingPassword] = useState(false)
 	const [showPassword, setShowPassword] = useState(false)
 	const [duration, setDuration] = useState('90')
 	const [allowQuestions, setAllowQuestions] = useState(true)
+	const [anonymousQuestions, setAnonymousQuestions] = useState(false)
+	const [requireStudentProfile, setRequireStudentProfile] = useState(true)
 	const [showQR, setShowQR] = useState(false)
 
     // Состояние для отслеживания изменений
@@ -81,7 +85,9 @@ export function LectureSettingsPage() {
         accessType: 'open' as 'open' | 'password' | 'invitation',
         password: '',
         duration: '90',
-        allowQuestions: true
+        allowQuestions: true,
+        anonymousQuestions: false,
+        requireStudentProfile: true
     })
 
 
@@ -95,37 +101,20 @@ export function LectureSettingsPage() {
             accessType !== initialValues.accessType ||
             password !== initialValues.password ||
             duration !== initialValues.duration ||
-            allowQuestions !== initialValues.allowQuestions
+            allowQuestions !== initialValues.allowQuestions ||
+            anonymousQuestions !== initialValues.anonymousQuestions ||
+            requireStudentProfile !== initialValues.requireStudentProfile
 
         setHasUnsavedChanges(hasChanges)
         return hasChanges
-    }, [lectureName, description, accessType, password, duration, allowQuestions, initialValues])
+    }, [lectureName, description, accessType, password, duration, allowQuestions, anonymousQuestions, requireStudentProfile, initialValues])
 
 // Следим за изменениями всех полей
     useEffect(() => {
         checkUnsavedChanges()
-    }, [lectureName, description, accessType, password, duration, allowQuestions, checkUnsavedChanges])
+    }, [lectureName, description, accessType, password, duration, allowQuestions, anonymousQuestions, requireStudentProfile, checkUnsavedChanges])
 
 // При загрузке данных устанавливаем initialValues
-    useEffect(() => {
-        if (!loadingLecture && lectureId && lectureId !== 'new') {
-            setInitialValues({
-                lectureName,
-                description,
-                accessType,
-                password,
-                duration,
-                allowQuestions
-            })
-        }
-    }, [loadingLecture, lectureId])
-
-
-
-
-
-
-
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
             if (hasUnsavedChanges) {
@@ -150,31 +139,36 @@ export function LectureSettingsPage() {
 
 
 
-	// Load lecture + restore access settings from localStorage
+	// Load lecture settings from server
 	useEffect(() => {
 		if (!lectureId || lectureId === 'new') {
 			setLoadingLecture(false)
 			return
 		}
 
-		// Restore access settings saved locally
-		try {
-			const saved = localStorage.getItem(`lecture_access_${lectureId}`)
-			if (saved) {
-				const parsed = JSON.parse(saved)
-				if (parsed.accessType) setAccessType(parsed.accessType)
-				if (parsed.password) setPassword(parsed.password)
-				if (parsed.duration) setDuration(parsed.duration)
-				if (parsed.allowQuestions !== undefined)
-					setAllowQuestions(parsed.allowQuestions)
-			}
-		} catch {}
-
 		;(async () => {
 			try {
 				setLoadingLecture(true)
 				const lecture = await getLecture(parseInt(lectureId))
 				setLectureName(lecture.name || '')
+				const serverAccessType =
+					lecture.accessType === 'PASSWORD'
+						? 'password'
+						: lecture.accessType === 'INVITATION'
+							? 'invitation'
+							: 'open'
+					const serverDuration = String(lecture.durationMinutes || 90)
+					const serverAllowQuestions = lecture.allowQuestions !== false
+					const serverAnonymousQuestions = Boolean(lecture.anonymousQuestions)
+					const serverRequireStudentProfile = lecture.requireStudentProfile !== false
+					const serverHasPassword = Boolean(lecture.hasPassword)
+				setAccessType(serverAccessType)
+				setPassword('')
+				setHasExistingPassword(serverHasPassword)
+					setDuration(serverDuration)
+					setAllowQuestions(serverAllowQuestions)
+					setAnonymousQuestions(serverAnonymousQuestions)
+					setRequireStudentProfile(serverRequireStudentProfile)
 
 				if (lecture.sequenceId) {
 					setSequenceId(lecture.sequenceId)
@@ -200,6 +194,17 @@ export function LectureSettingsPage() {
 						setNotesText(built[0].notes)
 					}
 				}
+				setInitialValues({
+					lectureName: lecture.name || '',
+					description,
+					accessType: serverAccessType,
+						password: '',
+						duration: serverDuration,
+						allowQuestions: serverAllowQuestions,
+						anonymousQuestions: serverAnonymousQuestions,
+						requireStudentProfile: serverRequireStudentProfile
+					})
+				setHasUnsavedChanges(false)
 			} catch (e) {
 				toast.error('Не удалось загрузить лекцию')
 			} finally {
@@ -212,7 +217,6 @@ export function LectureSettingsPage() {
 	const BOT_USERNAME = 'lecturer_assistant_bot'
 	const telegramLink = `https://t.me/${BOT_USERNAME}?start=join_${lectureId}`
 	const joinCommand = `/join ${lectureName || lectureId}`
-	const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(telegramLink)}`
 
 // LectureSettingsPage.tsx - обнови существующую функцию handleSave
 
@@ -221,40 +225,39 @@ export function LectureSettingsPage() {
             toast.error('Введите название лекции')
             return false
         }
-        if (accessType === 'password' && !password.trim()) {
+        if (accessType === 'password' && !password.trim() && !hasExistingPassword) {
             toast.error('Введите пароль')
             return false
         }
         if (!lectureId) return false
-
-        // Save access settings locally
-        localStorage.setItem(
-            `lecture_access_${lectureId}`,
-            JSON.stringify({
-                accessType,
-                password,
-                duration,
-                allowQuestions
-            })
-        )
 
         try {
             setSaving(true)
             await updateLecture(parseInt(lectureId), {
                 name: lectureName.trim(),
                 accessType: accessType.toUpperCase(),
-                password: accessType === 'password' ? password.trim() : ''
-            })
+	                password: accessType === 'password' ? password.trim() : '',
+	                durationMinutes: Number(duration),
+	                allowQuestions,
+	                anonymousQuestions,
+	                requireStudentProfile
+	            })
+            const passwordExists =
+                accessType === 'password' && (hasExistingPassword || Boolean(password.trim()))
+            setHasExistingPassword(passwordExists)
+            setPassword('')
 
             // После успешного сохранения обновляем initialValues
             setInitialValues({
                 lectureName,
                 description,
                 accessType,
-                password,
-                duration,
-                allowQuestions
-            })
+	                password: '',
+	                duration,
+	                allowQuestions,
+	                anonymousQuestions,
+	                requireStudentProfile
+	            })
             setHasUnsavedChanges(false)
 
             toast.success('Настройки сохранены')
@@ -274,7 +277,7 @@ export function LectureSettingsPage() {
             toast.error('Сначала заполните название')
             return
         }
-        if (accessType === 'password' && !password.trim()) {
+        if (accessType === 'password' && !password.trim() && !hasExistingPassword) {
             toast.error('Задайте пароль для лекции')
             return
         }
@@ -351,7 +354,7 @@ export function LectureSettingsPage() {
 
 	const startEditTitle = (uuid: string, current: string) => {
 		setEditingTitle({ uuid, value: current })
-		setTimeout(() => titleInputRef.current?.focus(), 0)
+		setTimeout(() => titleInputRef.current?.focus({ preventScroll: true }), 0)
 	}
 
 	const commitTitle = async (uuid: string, value: string) => {
@@ -452,55 +455,34 @@ export function LectureSettingsPage() {
 
         return (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
-                    <div className="p-6 border-b border-neutral-200">
-                        <h2 className="text-xl font-semibold text-neutral-900">
-                            Несохранённые изменения
-                        </h2>
-                        <p className="text-sm text-neutral-500 mt-1">
-                            В настройках лекции есть несохранённые изменения
-                        </p>
-                    </div>
-
-                    <div className="p-6">
-                        <div className="flex items-start gap-3 mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                            <div className="flex-shrink-0">
-                                <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                </svg>
-                            </div>
-                            <div className="flex-1">
-                                <p className="text-sm text-neutral-700 font-medium">
-                                    Вы хотите сохранить изменения перед запуском?
-                                </p>
-                                <p className="text-xs text-neutral-500 mt-1">
-                                    Если не сохранить, все внесённые изменения будут потеряны
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="p-6 border-t border-neutral-200 flex gap-3">
-                        <button
-                            onClick={handleCancel}
-                            className="flex-1 px-4 py-2 border border-neutral-300 rounded-lg text-neutral-700 hover:bg-neutral-50 transition-colors"
-                        >
-                            Отмена
-                        </button>
+                <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6">
+                    <h2 className="text-base font-semibold text-neutral-900 mb-1">
+                        Несохранённые изменения
+                    </h2>
+                    <p className="text-sm text-neutral-500 mb-5">
+                        Сохранить настройки перед запуском лекции?
+                    </p>
+                    <div className="flex flex-col gap-2">
                         <button
                             onClick={handleSaveAndStart}
                             disabled={saving}
-                            className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                            className="w-full px-4 py-2.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-50"
                         >
                             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                             Сохранить и запустить
                         </button>
                         <button
                             onClick={handleStartWithoutSave}
-                            className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                            className="w-full px-4 py-2.5 border border-neutral-200 rounded-lg text-neutral-700 hover:bg-neutral-50 transition-colors flex items-center justify-center gap-2 text-sm"
                         >
                             <Play className="w-4 h-4" />
                             Запустить без сохранения
+                        </button>
+                        <button
+                            onClick={handleCancel}
+                            className="w-full py-2 text-sm text-neutral-400 hover:text-neutral-600 transition-colors"
+                        >
+                            Отмена
                         </button>
                     </div>
                 </div>
@@ -810,12 +792,17 @@ export function LectureSettingsPage() {
 								</label>
 								<div className="flex gap-2">
 									<div className="relative flex-1">
-										<input
-											type={showPassword ? 'text' : 'password'}
-											value={password}
-											onChange={e => setPassword(e.target.value)}
-											className="w-full px-4 py-2.5 pr-10 bg-white border border-orange-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-										/>
+											<input
+												type={showPassword ? 'text' : 'password'}
+												value={password}
+												onChange={e => setPassword(e.target.value)}
+												placeholder={
+													hasExistingPassword
+														? 'Оставьте пустым, чтобы не менять пароль'
+														: 'Введите пароль'
+												}
+												className="w-full px-4 py-2.5 pr-10 bg-white border border-orange-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+											/>
 										<Tooltip>
 											<TooltipTrigger asChild>
 												<button
@@ -838,10 +825,11 @@ export function LectureSettingsPage() {
 									</div>
 									<Tooltip>
 										<TooltipTrigger asChild>
-											<button
-												onClick={() => copyToClipboard(password)}
-												className="px-3 py-2 border border-orange-300 rounded-lg hover:bg-orange-100 text-sm flex items-center gap-1"
-											>
+												<button
+													onClick={() => copyToClipboard(password)}
+													disabled={!password}
+													className="px-3 py-2 border border-orange-300 rounded-lg hover:bg-orange-100 text-sm flex items-center gap-1"
+												>
 												<Copy className="w-3.5 h-3.5" /> Копировать
 											</button>
 										</TooltipTrigger>
@@ -849,8 +837,13 @@ export function LectureSettingsPage() {
 											<p>Копировать пароль в буфер обмена</p>
 										</TooltipContent>
 									</Tooltip>
-								</div>
-								{password && (
+									</div>
+									{hasExistingPassword && !password && (
+										<p className="mt-2 text-sm text-neutral-600">
+											Пароль уже задан. Введите новый только если хотите заменить его.
+										</p>
+									)}
+									{password && (
 									<div className="mt-2 flex items-center gap-2 text-sm">
 										<span className="text-neutral-600">Пароль:</span>
 										<code className="bg-white px-2 py-0.5 rounded border border-orange-200 text-orange-700">
@@ -912,10 +905,11 @@ export function LectureSettingsPage() {
 									</div>
 									{showQR && (
 										<div className="flex justify-center p-4 bg-white rounded-lg border border-orange-200">
-											<img
-												src={qrUrl}
-												alt="QR Code"
-												className="w-48 h-48"
+											<QRCodeSVG
+												value={telegramLink}
+												size={192}
+												level="M"
+												aria-label="QR для подключения"
 											/>
 										</div>
 									)}
@@ -955,26 +949,49 @@ export function LectureSettingsPage() {
 							/>
 						</div>
 						<div className="space-y-3 border-t border-neutral-200 pt-4">
-							<div className="flex items-center justify-between">
-								<span className="text-sm">Разрешить вопросы</span>
-								<Toggle
-									value={allowQuestions}
-									onChange={() => setAllowQuestions(!allowQuestions)}
-								/>
+								<div className="flex items-center justify-between">
+									<span className="text-sm">Разрешить вопросы</span>
+									<Toggle
+										value={allowQuestions}
+										onChange={() => setAllowQuestions(!allowQuestions)}
+									/>
+								</div>
+								<div className="flex items-center justify-between">
+									<span className="text-sm">Анонимные вопросы</span>
+									<Toggle
+										value={anonymousQuestions}
+										onChange={() => setAnonymousQuestions(!anonymousQuestions)}
+									/>
+								</div>
+								<div className="flex items-center justify-between gap-4">
+									<div>
+										<span className="text-sm">Требовать ФИО и группу</span>
+										<p className="text-xs text-neutral-500">
+											Если выключено — используется имя из Telegram
+										</p>
+									</div>
+									<Toggle
+										value={requireStudentProfile}
+										onChange={() => setRequireStudentProfile(!requireStudentProfile)}
+									/>
+								</div>
 							</div>
-						</div>
 					</div>
 
-					{accessType === 'password' && password && (
-						<div className="bg-orange-500 text-white rounded-xl p-5">
+						{accessType === 'password' && (password || hasExistingPassword) && (
+							<div className="bg-orange-500 text-white rounded-xl p-5">
 							<div className="flex items-center gap-2 mb-2">
 								<Lock className="w-4 h-4" />
 								<span className="text-sm">Пароль для студентов</span>
 							</div>
-							<div className="text-2xl tracking-wider mb-1">{password}</div>
-							<p className="text-orange-100 text-xs">
-								Покажите студентам при подключении
-							</p>
+								<div className="text-2xl tracking-wider mb-1">
+									{password || 'Пароль задан'}
+								</div>
+								<p className="text-orange-100 text-xs">
+									{password
+										? 'Покажите студентам при подключении'
+										: 'Введите новый пароль, если нужно заменить текущий'}
+								</p>
 						</div>
 					)}
 
@@ -983,10 +1000,11 @@ export function LectureSettingsPage() {
 							<QrCode className="w-5 h-5 mx-auto mb-2" />
 							<p className="text-sm mb-2">QR → откроет бота в Telegram</p>
 							<div className="bg-white rounded-lg p-3 inline-block mb-2">
-								<img
-									src={qrUrl}
-									alt="QR"
-									className="w-32 h-32"
+								<QRCodeSVG
+									value={telegramLink}
+									size={128}
+									level="M"
+									aria-label="QR для подключения"
 								/>
 							</div>
 							<p className="text-orange-100 text-xs">

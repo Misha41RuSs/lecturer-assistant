@@ -11,6 +11,7 @@ public record ExamDetailDto(
         Integer totalTimeSec,
         String status,
         String examType,
+        boolean feedbackReleased,
         List<QuestionDto> questions
 ) {
     public record QuestionDto(

@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: root_db
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres-init/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -19,6 +19,7 @@ services:
   content-service:
     build: ./content-service
     container_name: content_service
+    restart: unless-stopped
     ports:
       - "8081:8081"
     environment:
@@ -28,12 +29,15 @@ services:
     depends_on:
       postgres:
         condition: service_started
+    volumes:
+      - content_slides:/app/storage/slides
     networks:
       - app-network
 
   lecture-broadcasting-service:
     build: ./lecture-broadcasting-service
     container_name: lecture_broadcasting_service
+    restart: unless-stopped
     ports:
       - "8082:8082"
     environment:
@@ -54,6 +58,7 @@ services:
   quiz-service:
     build: ./quiz-service
     container_name: quiz_service
+    restart: unless-stopped
     ports:
       - "8083:8083"
     environment:
@@ -69,6 +74,7 @@ services:
   analytics-service:
     build: ./analytics-service
     container_name: analytics_service
+    restart: unless-stopped
     ports:
       - "8084:8084"
     environment:
@@ -84,6 +90,7 @@ services:
   admin-gateway:
     build: ./admin-gateway
     container_name: admin_gateway
+    restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
@@ -104,16 +111,29 @@ services:
     container_name: prometheus
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
     ports:
       - "9090:9090"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
       - app-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
 
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
+    volumes:
+      - ./grafana-provisioning:/etc/grafana/provisioning
+      - ./dashboard_network.json:/var/lib/grafana/dashboards/dashboard_network.json
+      - ./dashboard_cpu_mem.json:/var/lib/grafana/dashboards/dashboard_cpu_mem.json
+      - ./grafana-dashboard_xapi.json:/var/lib/grafana/dashboards/dashboard_xapi.json
+      - ./dashboard_telegram_latency.json:/var/lib/grafana/dashboards/dashboard_telegram_latency.json
+      - ./monitoring/grafana/provisioning/dashboards/lecturer-actions.json:/var/lib/grafana/dashboards/dashboard_lecturer_actions.json
+      - grafana_data:/var/lib/grafana
     ports:
       - "3000:3000"
     environment:
@@ -129,3 +149,6 @@ networks:
 
 volumes:
   postgres_data:
+  prometheus_data:
+  grafana_data:
+  content_slides:

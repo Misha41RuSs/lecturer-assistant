@@ -33,6 +33,15 @@
   flex-shrink: 0;
 }
 
+.snp-header--draggable {
+  cursor: grab;
+  user-select: none;
+}
+
+.snp-header--draggable:active {
+  cursor: grabbing;
+}
+
 .snp-title {
   display: flex;
   align-items: center;

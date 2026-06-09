@@ -1,9 +1,12 @@
 package ru.university.lecturebroadcasting.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import java.time.Instant;
 
 @Entity
 @Table(name = "lectures")
@@ -34,7 +37,23 @@ public class Lecture {
     private AccessType accessType = AccessType.OPEN;
 
     @Column(name = "password", nullable = true)
+    @JsonIgnore
     private String password;
+
+    @Column(name = "duration_minutes")
+    private Integer durationMinutes = 90;
+
+    @Column(name = "allow_questions")
+    private Boolean allowQuestions = true;
+
+    @Column(name = "anonymous_questions")
+    private Boolean anonymousQuestions = false;
+
+    @Column(name = "require_student_profile")
+    private Boolean requireStudentProfile = true;
+
+    @Column(name = "notified_start_at")
+    private Instant notifiedStartAt;
 
     public Lecture(String name, java.util.UUID sequenceId) {
         this.name = name;
@@ -42,5 +61,9 @@ public class Lecture {
         this.status = LectureStatus.CREATED;
         this.currentSlide = 1;
         this.accessType = AccessType.OPEN;
+    }
+
+    public boolean isHasPassword() {
+        return password != null && !password.isBlank();
     }
 }

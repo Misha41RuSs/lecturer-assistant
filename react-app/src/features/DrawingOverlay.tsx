@@ -339,7 +339,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
                 className="w-7 h-7 rounded-lg border-2 border-neutral-600 hover:border-neutral-400 transition-colors"
                 style={{ backgroundColor: color }} title="Цвет" />
               {showColorPicker && (
-                <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-neutral-900 border border-neutral-700 rounded-xl p-2 shadow-xl grid grid-cols-5 gap-1.5">
+                <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-neutral-900 border border-neutral-700 rounded-xl p-2 shadow-xl grid grid-cols-5 gap-1.5 z-30 min-w-max">
                   {COLORS.map((c) => (
                     <button key={c} onClick={() => { setColor(c); setShowColorPicker(false); }}
                       className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 ${color === c ? "border-orange-500 scale-110" : "border-neutral-600"}`}

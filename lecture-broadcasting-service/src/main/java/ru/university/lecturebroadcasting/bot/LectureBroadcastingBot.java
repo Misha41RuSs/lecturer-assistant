@@ -1,6 +1,7 @@
 package ru.university.lecturebroadcasting.bot;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -9,15 +10,23 @@ import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.bots.DefaultBotOptions;
+import org.springframework.web.client.RestTemplate;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.university.lecturebroadcasting.entity.Student;
+import ru.university.lecturebroadcasting.entity.ComprehensionSignalValue;
 import ru.university.lecturebroadcasting.repository.StudentRepository;
+import io.micrometer.core.instrument.Timer;
 import ru.university.lecturebroadcasting.service.AnalyticsServiceClient;
+import ru.university.lecturebroadcasting.service.ComprehensionService;
 import ru.university.lecturebroadcasting.service.DeliveryMetricsService;
 import ru.university.lecturebroadcasting.service.LectureService;
 import ru.university.lecturebroadcasting.service.PasswordRequiredException;
+import ru.university.lecturebroadcasting.service.PostLectureSurveyService;
 import ru.university.lecturebroadcasting.service.QuizServiceClient;
 import ru.university.lecturebroadcasting.service.QuizServiceClient.ExamDetail.Question;
 import ru.university.lecturebroadcasting.service.StudentQuestionService;
@@ -40,9 +49,47 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private static final String CB_CURRENT_SLIDE = "current_slide";
     private static final String CB_GOTO_SLIDE = "goto_slide";
     private static final String CB_EXAM_OPT = "exam_opt:";
+    private static final String CB_PROFILE_NAME = "profile:name";
+    private static final String CB_PROFILE_GROUP = "profile:group";
+    private static final String CB_PROFILE_CLOSE = "profile:close";
+    private static final String CB_POST_RATING = "post:rating:";
+    private static final String CB_POST_PACE = "post:pace:";
+    private static final String CB_POST_SKIP = "post:skip";
+    private static final String CB_COMP = "comp:";
+    private static final String CB_Q_UPVOTE = "q:up:";
+    private static final String CB_ANON_YES = "q:anon";
+    private static final String CB_ANON_NO = "q:named";
+    private static final String BTN_JOIN = "🔌 Подключиться";
+    private static final String BTN_CURRENT = "📍 Текущий слайд";
+    private static final String BTN_PREV = "◀ Предыдущий слайд";
+    private static final String BTN_QUESTION = "❓ Задать вопрос";
+    private static final String BTN_RATE = "⭐ Оценить слайд";
+    private static final String BTN_PROFILE = "👤 Профиль";
+    private static final String BTN_HELP = "ℹ️ Помощь";
+    private static final java.util.regex.Pattern REAL_NAME_PATTERN =
+            java.util.regex.Pattern.compile("^[\\p{L}\\-]+\\s+[\\p{L}\\-]+(\\s+[\\p{L}\\-]+)?$");
+    private static final java.util.regex.Pattern GROUP_NAME_PATTERN =
+            java.util.regex.Pattern.compile("^[\\p{L}0-9\\-]{2,16}$");
+    private static final String HELP_TEXT = """
+            Команды бота:
+            /join <название или id> — подключиться к лекции
+            /question <текст> — задать вопрос преподавателю
+            /questions — посмотреть вопросы аудитории и подписаться
+            /rate <1-5> — оценить понимание текущего слайда
+            /current — повторно получить текущий слайд
+            /prev — получить предыдущий слайд
+            /slide — выбрать слайд по номеру
+            /profile — посмотреть или изменить ФИО и группу
+            /mystats — посмотреть свою статистику по тестам
+            /help — показать эту подсказку
+
+            Когда преподаватель запустит тест, вопросы придут автоматически.
+            """;
 
     private final ConcurrentHashMap<Long, String> pendingPasswordJoin = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, String> pendingCommand = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, PendingProfileFlow> pendingProfileFlow = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, PendingPostSurvey> pendingPostSurvey = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, ExamSession> examSessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Integer> lastSlideMessageId = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Integer> lastStudentPhotoMessageId = new ConcurrentHashMap<>();
@@ -50,7 +97,11 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final ConcurrentHashMap<Long, Integer> lectureCurrentSlide = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Integer> studentCurrentSlide = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Boolean> pendingGoToSlide = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<Long, Timer> questionTimers = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, java.util.Timer> questionTimers = new ConcurrentHashMap<>();
+    private final java.util.Set<Long> profilePendingChatIds = ConcurrentHashMap.newKeySet();
+
+    private record PendingQuestion(String text, Long slideId) {}
+    private final ConcurrentHashMap<Long, PendingQuestion> pendingQuestionAnon = new ConcurrentHashMap<>();
 
     private final String botUsername;
     private final StudentRepository studentRepository;
@@ -58,8 +109,19 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final QuizServiceClient quizServiceClient;
     private final AnalyticsServiceClient analyticsServiceClient;
     private final StudentQuestionService studentQuestionService;
+    private final PostLectureSurveyService postLectureSurveyService;
+    private final ComprehensionService comprehensionService;
     private final DeliveryMetricsService deliveryMetricsService;
+    private final RestTemplate restTemplate;
+    private final io.micrometer.core.instrument.MeterRegistry meterRegistry;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
+    private enum ProfileStep { NAME, GROUP, NAME_ONLY, GROUP_ONLY }
+
+    private record PendingProfileFlow(ProfileStep step, Long lectureId, boolean completeJoinAfter) {}
+    private record PendingPostSurvey(Long lectureId, int rating, String paceSignal, boolean waitingOpenText) {}
+
+    @Autowired
     public LectureBroadcastingBot(
             DefaultBotOptions options,
             @Value("${telegram.bot.token}") String botToken,
@@ -69,7 +131,11 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             QuizServiceClient quizServiceClient,
             AnalyticsServiceClient analyticsServiceClient,
             StudentQuestionService studentQuestionService,
-            DeliveryMetricsService deliveryMetricsService) {
+            PostLectureSurveyService postLectureSurveyService,
+            ComprehensionService comprehensionService,
+            DeliveryMetricsService deliveryMetricsService,
+            RestTemplate restTemplate,
+            io.micrometer.core.instrument.MeterRegistry meterRegistry) {
 
         super(options, botToken);
 
@@ -79,8 +145,23 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         this.quizServiceClient = quizServiceClient;
         this.analyticsServiceClient = analyticsServiceClient;
         this.studentQuestionService = studentQuestionService;
+        this.postLectureSurveyService = postLectureSurveyService;
+        this.comprehensionService = comprehensionService;
         this.deliveryMetricsService = deliveryMetricsService;
+        this.restTemplate = restTemplate;
+        this.meterRegistry = meterRegistry;
     }
+
+    private Timer buildTelegramApiTimer(String method, String lectureId) {
+        return Timer.builder("telegram.api.latency")
+                .description("Telegram API latency")
+                .tag("method", method)
+                .tag("lectureId", lectureId != null ? lectureId : "unknown")
+                .publishPercentileHistogram(true)
+                .register(meterRegistry);
+    }
+
+
 
     @Override
     public String getBotUsername() { return botUsername; }
@@ -104,9 +185,28 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         String text = update.getMessage().getText().trim();
         long chatId = update.getMessage().getChatId();
         org.telegram.telegrambots.meta.api.objects.User from = update.getMessage().getFrom();
+        text = normalizeKeyboardButton(text);
         String cmd = baseCommand(text.split("\\s+", 2)[0]);
 
         log.info("Telegram message: chatId={} cmd='{}'", chatId, cmd);
+
+        if (pendingProfileFlow.containsKey(chatId)) {
+            if ("/cancel".equals(cmd) || cmd.startsWith("/")) {
+                cancelProfileFlow(chatId);
+                if (!"/cancel".equals(cmd)) {
+                    handleTextMessage(update);
+                }
+            } else {
+                handleProfileFlowAnswer(chatId, text);
+            }
+            return;
+        }
+
+        PendingPostSurvey survey = pendingPostSurvey.get(chatId);
+        if (survey != null && survey.waitingOpenText() && !cmd.startsWith("/")) {
+            savePostSurvey(chatId, text);
+            return;
+        }
 
         // Ответ на пароль от лекции (приоритет выше прочих pending)
         if (pendingPasswordJoin.containsKey(chatId) && !cmd.startsWith("/")) {
@@ -121,11 +221,12 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
 
-        // Ответ на двухшаговую команду (/question, /join без аргументов)
+        // Ответ на двухшаговую команду (/question, /join, /rate без аргументов)
         if (pendingCommand.containsKey(chatId) && !cmd.startsWith("/")) {
             String pending = pendingCommand.remove(chatId);
             switch (pending) {
                 case "question" -> handleQuestionText(chatId, text.trim(), from);
+                case "rate" -> handleRatingText(chatId, text.trim(), from);
                 case "join" -> {
                     String key = LectureService.normalizeLectureJoinKey(text.trim());
                     if (key.isEmpty()) { sendText(chatId, "Укажите название лекции или её id."); return; }
@@ -148,13 +249,22 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 tryJoinWithPassword(chatId, lectureKey, null, from);
                 return;
             }
-            sendText(chatId,
-                    "Привет! Я бот для лекций.\n\n" +
-                            "/join — подключиться к лекции\n" +
-                            "/question — задать вопрос преподавателю\n" +
-                            "/current — просмотр текущего слайда\n" +
-                            "/ping — проверка связи\n\n" +
-                            "Когда преподаватель запустит тест, вопросы придут автоматически.");
+            sendTextWithMainKeyboard(chatId, "Привет! Я бот для лекций.\n\n" + HELP_TEXT);
+            return;
+        }
+
+        if ("/help".equals(cmd)) {
+            sendTextWithMainKeyboard(chatId, HELP_TEXT);
+            return;
+        }
+
+        if ("/profile".equals(cmd)) {
+            showProfile(chatId);
+            return;
+        }
+
+        if ("/mystats".equals(cmd)) {
+            sendMyStats(chatId);
             return;
         }
 
@@ -177,6 +287,11 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
 
+        if ("/questions".equals(cmd)) {
+            showOpenQuestions(chatId);
+            return;
+        }
+
         if ("/join".equals(cmd)) {
             String[] parts = text.split("\\s+", 2);
             if (parts.length >= 2 && !parts[1].isBlank()) {
@@ -185,6 +300,16 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 tryJoinWithPassword(chatId, key, null, from);
             } else {
                 requestInput(chatId, "join", "Введите название или ID лекции:");
+            }
+            return;
+        }
+
+        if ("/rate".equals(cmd)) {
+            String[] parts = text.split("\\s+", 2);
+            if (parts.length >= 2 && !parts[1].isBlank()) {
+                handleRatingText(chatId, parts[1].trim(), from);
+            } else {
+                requestInput(chatId, "rate", "Оцените понимание слайда (1-5):");
             }
             return;
         }
@@ -207,7 +332,36 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
 
-        sendText(chatId, "Команды:\n/join — подключиться к лекции\n/question — задать вопрос\n/current — просмотр текущего слайда\n/ping — проверка");
+        if ("/prev".equals(cmd)) {
+            handlePrevSlide(chatId);
+            return;
+        }
+
+        if ("/slide".equals(cmd)) {
+            String[] parts = text.split("\\s+", 2);
+            if (parts.length >= 2 && !parts[1].isBlank()) {
+                handleGoToSlideByNumber(chatId, parts[1].trim());
+            } else {
+                pendingGoToSlide.put(chatId, true);
+                sendText(chatId, "Введите номер слайда:");
+            }
+            return;
+        }
+
+        sendTextWithMainKeyboard(chatId, HELP_TEXT);
+    }
+
+    private String normalizeKeyboardButton(String text) {
+        return switch (text) {
+            case BTN_JOIN -> "/join";
+            case BTN_CURRENT -> "/current";
+            case BTN_PREV -> "/prev";
+            case BTN_QUESTION -> "/question";
+            case BTN_RATE -> "/rate";
+            case BTN_PROFILE -> "/profile";
+            case BTN_HELP -> "/help";
+            default -> text;
+        };
     }
 
     private void requestInput(long chatId, String commandKey, String promptText) {
@@ -223,15 +377,249 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         }
     }
 
+    private boolean profileIncomplete(Student student) {
+        return student.getRealName() == null || student.getRealName().isBlank()
+                || student.getGroupName() == null || student.getGroupName().isBlank();
+    }
+
+    private void startProfileFlow(long chatId, Student student) {
+        if (student == null || student.getLecture() == null) {
+            sendText(chatId, "Подключение не найдено. Используйте /join ещё раз.");
+            return;
+        }
+        profilePendingChatIds.add(chatId);
+        ProfileStep step = student.getRealName() == null || student.getRealName().isBlank()
+                ? ProfileStep.NAME
+                : ProfileStep.GROUP;
+        pendingProfileFlow.put(chatId, new PendingProfileFlow(step, student.getLecture().getId(), true));
+        String prompt = step == ProfileStep.NAME
+                ? "Введите Фамилию и Имя, например: Иванов Сергей\n\n/cancel — отменить подключение"
+                : "Укажите вашу группу, например: БВТ-21-1\n\n/cancel — отменить подключение";
+        sendText(chatId, prompt);
+    }
+
+    private void handleProfileFlowAnswer(long chatId, String text) {
+        PendingProfileFlow flow = pendingProfileFlow.get(chatId);
+        if (flow == null) return;
+
+        Optional<Student> studentOpt = studentRepository.findByChatId(chatId);
+        if (studentOpt.isEmpty() || studentOpt.get().getLecture() == null) {
+            pendingProfileFlow.remove(chatId);
+            sendText(chatId, "Подключение не найдено. Используйте /join ещё раз.");
+            return;
+        }
+
+        Student student = studentOpt.get();
+        if (flow.step() == ProfileStep.NAME || flow.step() == ProfileStep.NAME_ONLY) {
+            String realName = text.trim().replaceAll("\\s+", " ");
+            if (!REAL_NAME_PATTERN.matcher(realName).matches()) {
+                sendText(chatId, "Введите Фамилию и Имя через пробел, без цифр и лишних символов.");
+                return;
+            }
+            student.setRealName(realName);
+            studentRepository.save(student);
+            if (flow.step() == ProfileStep.NAME_ONLY) {
+                pendingProfileFlow.remove(chatId);
+                sendText(chatId, "ФИО обновлено.");
+                return;
+            }
+            pendingProfileFlow.put(chatId, new PendingProfileFlow(ProfileStep.GROUP, flow.lectureId(), true));
+            sendText(chatId, "Укажите вашу группу, например: БВТ-21-1");
+            return;
+        }
+
+        String groupName = text.trim().toUpperCase(Locale.ROOT);
+        if (!GROUP_NAME_PATTERN.matcher(groupName).matches()) {
+            sendText(chatId, "Группа должна содержать 2–16 символов: буквы, цифры и дефис.");
+            return;
+        }
+        student.setGroupName(groupName);
+        Student saved = studentRepository.save(student);
+        pendingProfileFlow.remove(chatId);
+        if (flow.completeJoinAfter()) {
+            sendText(chatId, "Готово! Профиль сохранён.");
+            completeJoin(chatId, saved);
+        } else {
+            sendTextWithMainKeyboard(chatId, "Профиль обновлён.");
+        }
+    }
+
+    private void cancelProfileFlow(long chatId) {
+        profilePendingChatIds.remove(chatId);
+        PendingProfileFlow flow = pendingProfileFlow.remove(chatId);
+        if (flow != null) {
+            studentRepository.findByChatId(chatId).ifPresent(student -> {
+                if (flow.lectureId() != null
+                        && student.getLecture() != null
+                        && student.getLecture().getId().equals(flow.lectureId())) {
+                    student.setLecture(null);
+                    studentRepository.save(student);
+                }
+            });
+        }
+        sendTextWithMainKeyboard(chatId, "Подключение отменено. Чтобы попробовать снова, используйте /join.");
+    }
+
+    private void showProfile(long chatId) {
+        studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
+            String realName = student.getRealName() != null && !student.getRealName().isBlank()
+                    ? student.getRealName()
+                    : "не указано";
+            String groupName = student.getGroupName() != null && !student.getGroupName().isBlank()
+                    ? student.getGroupName()
+                    : "не указана";
+            String text = "Ваш профиль:\nФИО: " + realName + "\nГруппа: " + groupName;
+            try {
+                execute(SendMessage.builder()
+                        .chatId(chatId)
+                        .text(text)
+                        .replyMarkup(profileKeyboard())
+                        .build());
+            } catch (TelegramApiException e) {
+                log.warn("showProfile failed chatId={}: {}", chatId, e.getMessage());
+            }
+        }, () -> {
+            sendText(chatId, "Профиль ещё не создан. Подключитесь к лекции через /join.");
+        });
+    }
+
+    private void sendMyStats(long chatId) {
+        QuizServiceClient.StudentStats stats = quizServiceClient.getStudentStats(chatId);
+        if (stats == null || stats.lectures() == null || stats.lectures().isEmpty()) {
+            sendTextWithMainKeyboard(chatId, "Пока нет данных. Сдай первый тест!");
+            return;
+        }
+
+        StringBuilder text = new StringBuilder("📈 Твоя статистика\n\n");
+        for (QuizServiceClient.LectureStats lecture : stats.lectures()) {
+            text.append(lecture.lectureTitle());
+            if (lecture.date() != null && !lecture.date().isBlank()) {
+                text.append(" (").append(lecture.date()).append(")");
+            }
+            text.append("\n");
+            for (QuizServiceClient.ExamStats exam : lecture.exams()) {
+                text.append("  ").append(exam.examTitle()).append(": ")
+                        .append(exam.score()).append("/").append(exam.maxScore())
+                        .append(" (").append(exam.pct()).append("%)")
+                        .append(" · лучше ").append(exam.groupPercentile()).append("% группы\n");
+            }
+            text.append("\n");
+        }
+        text.append("───────────────────────\n");
+        text.append("Среднее по всем тестам: ").append(stats.overallPct()).append("%");
+        sendTextWithMainKeyboard(chatId, text.toString());
+    }
+
+    private InlineKeyboardMarkup profileKeyboard() {
+        return InlineKeyboardMarkup.builder()
+                .keyboard(List.of(
+                        List.of(
+                                InlineKeyboardButton.builder()
+                                        .text("Изменить имя")
+                                        .callbackData(CB_PROFILE_NAME)
+                                        .build(),
+                                InlineKeyboardButton.builder()
+                                        .text("Изменить группу")
+                                        .callbackData(CB_PROFILE_GROUP)
+                                        .build()
+                        ),
+                        List.of(InlineKeyboardButton.builder()
+                                .text("Закрыть")
+                                .callbackData(CB_PROFILE_CLOSE)
+                                .build())
+                ))
+                .build();
+    }
+
     private void handleQuestionText(long chatId, String questionText, org.telegram.telegrambots.meta.api.objects.User from) {
         studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
             if (student.getLecture() == null || student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
-                sendText(chatId, "Вы не подключены к активной лекции.");
+                sendTextWithMainKeyboard(chatId, "Вы не подключены к активной лекции.");
                 return;
             }
-            studentQuestionService.add(student.getLecture().getId(), chatId, questionText);
-            sendText(chatId, "✅ Ваш вопрос отправлен преподавателю.");
-        }, () -> sendText(chatId, "Вы не подключены. Используйте /join."));
+            if (Boolean.FALSE.equals(student.getLecture().getAllowQuestions())) {
+                sendTextWithMainKeyboard(chatId, "Преподаватель отключил вопросы для этой лекции.");
+                return;
+            }
+            Integer slideNumber = studentCurrentSlide.get(chatId);
+            Long slideId = slideNumber != null ? (long) slideNumber : null;
+            if (Boolean.TRUE.equals(student.getLecture().getAnonymousQuestions())) {
+                pendingQuestionAnon.put(chatId, new PendingQuestion(questionText, slideId));
+                try {
+                    execute(SendMessage.builder()
+                            .chatId(chatId)
+                            .text("Как отправить вопрос?")
+                            .replyMarkup(InlineKeyboardMarkup.builder()
+                                    .keyboard(List.of(List.of(
+                                            InlineKeyboardButton.builder().text("🕵️ Анонимно").callbackData(CB_ANON_YES).build(),
+                                            InlineKeyboardButton.builder().text("👤 С именем").callbackData(CB_ANON_NO).build()
+                                    )))
+                                    .build())
+                            .build());
+                } catch (TelegramApiException e) {
+                    log.warn("anon choice keyboard failed chatId={}: {}", chatId, e.getMessage());
+                }
+            } else {
+                studentQuestionService.add(student.getLecture().getId(), chatId, questionText, slideId, false);
+                sendTextWithMainKeyboard(chatId, "✅ Ваш вопрос отправлен преподавателю.\nСтатус: отправлен.");
+            }
+        }, () -> sendTextWithMainKeyboard(chatId, "Вы не подключены. Используйте /join."));
+    }
+
+    private void showOpenQuestions(long chatId) {
+        studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
+            if (student.getLecture() == null ||
+                    student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
+                sendTextWithMainKeyboard(chatId, "Вы не подключены к активной лекции.");
+                return;
+            }
+            List<StudentQuestionService.Question> questions =
+                    studentQuestionService.topOpen(student.getLecture().getId(), 5);
+            if (questions.isEmpty()) {
+                sendTextWithMainKeyboard(chatId, "Пока нет открытых вопросов.");
+                return;
+            }
+            for (StudentQuestionService.Question question : questions) {
+                try {
+                    execute(SendMessage.builder()
+                            .chatId(chatId)
+                            .text("Вопрос +" + question.upvotes() + ":\n" + question.text())
+                            .replyMarkup(InlineKeyboardMarkup.builder()
+                                    .keyboard(List.of(List.of(
+                                            InlineKeyboardButton.builder()
+                                                    .text("+1 Тоже хочу знать")
+                                                    .callbackData(CB_Q_UPVOTE + question.id())
+                                                    .build()
+                                    )))
+                                    .build())
+                            .build());
+                } catch (TelegramApiException e) {
+                    log.warn("questions list failed chatId={}: {}", chatId, e.getMessage());
+                }
+            }
+        }, () -> sendTextWithMainKeyboard(chatId, "Вы не подключены. Используйте /join."));
+    }
+
+    private void handleRatingText(long chatId, String ratingText, org.telegram.telegrambots.meta.api.objects.User from) {
+        studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
+            if (student.getLecture() == null || student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
+                sendTextWithMainKeyboard(chatId, "Вы не подключены к активной лекции.");
+                return;
+            }
+            try {
+                int rating = Integer.parseInt(ratingText.trim());
+                if (rating < 1 || rating > 5) {
+                    sendTextWithMainKeyboard(chatId, "Оценка должна быть от 1 до 5.");
+                    return;
+                }
+                Integer slideNumber = studentCurrentSlide.get(chatId);
+                Long slideId = slideNumber != null ? (long) slideNumber : null;
+                studentQuestionService.sendRating(student.getLecture().getId(), chatId, rating, slideId);
+                sendTextWithMainKeyboard(chatId, "✅ Ваша оценка (" + rating + "/5) записана.");
+            } catch (NumberFormatException e) {
+                sendTextWithMainKeyboard(chatId, "Пожалуйста, введите число от 1 до 5.");
+            }
+        }, () -> sendTextWithMainKeyboard(chatId, "Вы не подключены. Используйте /join."));
     }
 
     private void handleCallbackQuery(Update update) {
@@ -267,6 +655,96 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
 
+        if (CB_PROFILE_NAME.equals(data)) {
+            pendingProfileFlow.put(chatId, new PendingProfileFlow(ProfileStep.NAME_ONLY, null, false));
+            sendText(chatId, "Введите Фамилию и Имя, например: Иванов Сергей");
+            return;
+        }
+
+        if (CB_PROFILE_GROUP.equals(data)) {
+            pendingProfileFlow.put(chatId, new PendingProfileFlow(ProfileStep.GROUP_ONLY, null, false));
+            sendText(chatId, "Укажите вашу группу, например: БВТ-21-1");
+            return;
+        }
+
+        if (CB_PROFILE_CLOSE.equals(data)) {
+            try {
+                execute(EditMessageText.builder()
+                        .chatId(chatId)
+                        .messageId(update.getCallbackQuery().getMessage().getMessageId())
+                        .text("Профиль закрыт.")
+                        .build());
+            } catch (TelegramApiException e) {
+                log.debug("profile close edit failed: {}", e.getMessage());
+            }
+            return;
+        }
+
+        if (CB_ANON_YES.equals(data) || CB_ANON_NO.equals(data)) {
+            boolean anonymous = CB_ANON_YES.equals(data);
+            PendingQuestion pq = pendingQuestionAnon.remove(chatId);
+            if (pq == null) {
+                sendTextWithMainKeyboard(chatId, "Вопрос не найден. Попробуйте отправить снова.");
+                return;
+            }
+            studentRepository.findByChatId(chatId).ifPresent(student -> {
+                if (student.getLecture() != null
+                        && student.getLecture().getStatus() == ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
+                    studentQuestionService.add(student.getLecture().getId(), chatId, pq.text(), pq.slideId(), anonymous);
+                    String label = anonymous ? "анонимно" : "с именем";
+                    sendTextWithMainKeyboard(chatId, "✅ Вопрос отправлен " + label + ".\nСтатус: отправлен.");
+                }
+            });
+            return;
+        }
+
+        if (data.startsWith(CB_POST_RATING)) {
+            int rating;
+            try {
+                rating = Integer.parseInt(data.substring(CB_POST_RATING.length()));
+            } catch (NumberFormatException e) {
+                sendText(chatId, "Оценка должна быть от 1 до 5.");
+                return;
+            }
+            if (rating < 1 || rating > 5) {
+                sendText(chatId, "Оценка должна быть от 1 до 5.");
+                return;
+            }
+            PendingPostSurvey current = pendingPostSurvey.get(chatId);
+            if (current == null) return;
+            pendingPostSurvey.put(chatId, new PendingPostSurvey(current.lectureId(), rating, null, false));
+            sendPaceQuestion(chatId);
+            return;
+        }
+
+        if (data.startsWith(CB_POST_PACE)) {
+            String pace = data.substring(CB_POST_PACE.length());
+            PendingPostSurvey current = pendingPostSurvey.get(chatId);
+            if (current == null) return;
+            pendingPostSurvey.put(chatId, new PendingPostSurvey(current.lectureId(), current.rating(), pace, true));
+            sendOpenPostSurveyQuestion(chatId);
+            return;
+        }
+
+        if (CB_POST_SKIP.equals(data)) {
+            savePostSurvey(chatId, null);
+            return;
+        }
+
+        if (data.startsWith(CB_COMP)) {
+            handleComprehensionSignal(chatId, data.substring(CB_COMP.length()));
+            return;
+        }
+
+        if (data.startsWith(CB_Q_UPVOTE)) {
+            String questionId = data.substring(CB_Q_UPVOTE.length());
+            studentQuestionService.upvote(questionId, chatId).ifPresentOrElse(
+                    q -> sendTextWithMainKeyboard(chatId, "Вы подписались на вопрос: «" + q.text() + "»"),
+                    () -> sendTextWithMainKeyboard(chatId, "Вопрос уже закрыт или не найден.")
+            );
+            return;
+        }
+
         if (data.startsWith(CB_EXAM_OPT)) {
             String optionId = data.substring(CB_EXAM_OPT.length());
             handleMultipleChoiceAnswer(chatId, optionId);
@@ -293,8 +771,41 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         }, () -> sendText(chatId, "Вы не подключены. Используйте /join."));
     }
 
+    private void handleComprehensionSignal(long chatId, String signalValue) {
+        studentRepository.findByChatId(chatId).ifPresentOrElse(student -> {
+            if (student.getLecture() == null ||
+                    student.getLecture().getStatus() != ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE) {
+                sendText(chatId, "Вы не подключены к активной лекции.");
+                return;
+            }
+            int slideIndex = student.getLecture().getCurrentSlide() != null ? student.getLecture().getCurrentSlide() : 1;
+            try {
+                comprehensionService.save(
+                        student.getLecture().getId(),
+                        chatId,
+                        slideIndex,
+                        ComprehensionSignalValue.valueOf(signalValue)
+                );
+                sendText(chatId, "Сигнал понимания записан.");
+            } catch (Exception e) {
+                log.warn("comprehension signal failed chatId={}: {}", chatId, e.getMessage());
+                sendText(chatId, "Не удалось записать сигнал.");
+            }
+        }, () -> sendText(chatId, "Вы не подключены. Используйте /join."));
+    }
+
+    private InlineKeyboardMarkup comprehensionKeyboard() {
+        return InlineKeyboardMarkup.builder()
+                .keyboard(List.of(List.of(
+                        InlineKeyboardButton.builder().text("🟢 Понял").callbackData(CB_COMP + "GREEN").build(),
+                        InlineKeyboardButton.builder().text("🟡 Не до конца").callbackData(CB_COMP + "YELLOW").build(),
+                        InlineKeyboardButton.builder().text("🔴 Потерялся").callbackData(CB_COMP + "RED").build()
+                )))
+                .build();
+    }
+
     private void cancelQuestionTimer(long chatId) {
-        Timer t = questionTimers.remove(chatId);
+        java.util.Timer t = questionTimers.remove(chatId);
         if (t != null) t.cancel();
     }
 
@@ -316,7 +827,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private void scheduleQuestionTimer(long chatId, ExamSession session, Question q, Integer msgId) {
         if (q.timeLimitSec() == null) return;
         int totalSec = q.timeLimitSec();
-        Timer t = new Timer(true);
+        java.util.Timer t = new java.util.Timer(true);
         questionTimers.put(chatId, t);
         int qIdx = session.currentIndex();
         String header = String.format("Вопрос %d/%d", qIdx + 1, session.total());
@@ -327,7 +838,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         if (msgId != null) {
             for (int elapsed = 10; elapsed < totalSec; elapsed += 10) {
                 final int remaining = totalSec - elapsed;
-                t.schedule(new TimerTask() {
+                t.schedule(new java.util.TimerTask() {
                     @Override
                     public void run() {
                         ExamSession cur = examSessions.get(chatId);
@@ -350,7 +861,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             }
         }
 
-        t.schedule(new TimerTask() {
+        t.schedule(new java.util.TimerTask() {
             @Override
             public void run() {
                 ExamSession cur = examSessions.get(chatId);
@@ -403,9 +914,10 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         }
 
         if (!session.hasMore()) {
+            UUID examId = session.getExamId();
             examSessions.remove(chatId);
             cancelQuestionTimer(chatId);
-            sendText(chatId, "✅ Тест завершён! Ваши ответы записаны. Результаты сообщит преподаватель.");
+            sendText(chatId, buildExamResultMessage(chatId, examId));
             return;
         }
 
@@ -440,6 +952,24 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         scheduleQuestionTimer(chatId, session, q, sent != null ? sent.getMessageId() : null);
     }
 
+    private String buildExamResultMessage(long chatId, UUID examId) {
+        return quizServiceClient.getSubmissions(examId).stream()
+                .filter(result -> Objects.equals(result.chatId(), chatId))
+                .findFirst()
+                .map(result -> {
+                    String percent = result.maxScore() > 0
+                            ? " (" + Math.round(result.totalScore() * 100f / result.maxScore()) + "%)"
+                            : "";
+                    String reviewNotice = result.hasUngraded()
+                            ? "\nЕсть открытые ответы — преподаватель проверит их отдельно."
+                            : "";
+                    return "✅ Тест завершён!\n\nВаш результат: "
+                            + result.totalScore() + "/" + result.maxScore() + percent
+                            + reviewNotice;
+                })
+                .orElse("✅ Тест завершён! Ваши ответы записаны.");
+    }
+
     public void sendExamToStudent(long chatId, UUID examId) {
         QuizServiceClient.ExamDetail detail = quizServiceClient.startSubmission(examId, chatId);
         if (detail == null || detail.questions().isEmpty()) {
@@ -462,8 +992,15 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             String username = tgUser != null ? tgUser.getUserName() : null;
             Student student = lectureService.joinLecture(lectureName, chatId, password, firstName, lastName, username);
             pendingPasswordJoin.remove(chatId);
-            sendText(chatId, "Вы подключились к лекции: " + student.getLecture().getName());
-            analyticsServiceClient.sendStudentJoinedEvent(student.getLecture().getId(), chatId);
+            if (student.getLecture() == null) {
+                sendText(chatId, "Подключение не найдено. Используйте /join ещё раз.");
+                return;
+            }
+            if (Boolean.TRUE.equals(student.getLecture().getRequireStudentProfile()) && profileIncomplete(student)) {
+                startProfileFlow(chatId, student);
+                return;
+            }
+            completeJoin(chatId, student);
 
         } catch (PasswordRequiredException e) {
             pendingPasswordJoin.put(chatId, lectureName);
@@ -481,6 +1018,16 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         }
     }
 
+    private void completeJoin(long chatId, Student student) {
+        profilePendingChatIds.remove(chatId);
+        sendTextWithMainKeyboard(chatId, "Вы подключились к лекции: " + student.getLecture().getName());
+        analyticsServiceClient.sendStudentJoinedEvent(student.getLecture().getId(), chatId);
+        int currentSlide = student.getLecture().getCurrentSlide();
+        if (student.getLecture().getStatus() == ru.university.lecturebroadcasting.entity.LectureStatus.ACTIVE && currentSlide > 0) {
+            sendSlideToStudent(student.getLecture().getId(), chatId, null, currentSlide);
+        }
+    }
+
     public void notifyLectureEndedToStudents(Long lectureId, String lectureName, List<Long> chatIds) {
         if (chatIds == null || chatIds.isEmpty()) return;
         String title = Objects.requireNonNullElse(lectureName, "лекция");
@@ -488,14 +1035,119 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         for (Long chatId : chatIds) sendTrackedText(lectureId, chatId, msg);
     }
 
+    public void sendPostLectureSurvey(Long lectureId, String lectureName, List<Long> chatIds) {
+        if (chatIds == null || chatIds.isEmpty()) return;
+        String title = Objects.requireNonNullElse(lectureName, "лекция");
+        for (Long chatId : chatIds) {
+            pendingPostSurvey.put(chatId, new PendingPostSurvey(lectureId, 0, null, false));
+            try {
+                execute(SendMessage.builder()
+                        .chatId(chatId)
+                        .text("Лекция «" + title + "» завершена. Оцени её:")
+                        .replyMarkup(InlineKeyboardMarkup.builder()
+                                .keyboard(List.of(List.of(
+                                        InlineKeyboardButton.builder().text("⭐").callbackData(CB_POST_RATING + "1").build(),
+                                        InlineKeyboardButton.builder().text("⭐⭐").callbackData(CB_POST_RATING + "2").build(),
+                                        InlineKeyboardButton.builder().text("⭐⭐⭐").callbackData(CB_POST_RATING + "3").build(),
+                                        InlineKeyboardButton.builder().text("⭐⭐⭐⭐").callbackData(CB_POST_RATING + "4").build(),
+                                        InlineKeyboardButton.builder().text("⭐⭐⭐⭐⭐").callbackData(CB_POST_RATING + "5").build()
+                                )))
+                                .build())
+                        .build());
+            } catch (TelegramApiException e) {
+                log.warn("post lecture survey failed chatId={}: {}", chatId, e.getMessage());
+            }
+        }
+    }
+
+    private void sendPaceQuestion(long chatId) {
+        try {
+            execute(SendMessage.builder()
+                    .chatId(chatId)
+                    .text("Успевал за темпом?")
+                    .replyMarkup(InlineKeyboardMarkup.builder()
+                            .keyboard(List.of(
+                                    List.of(InlineKeyboardButton.builder().text("✅ Да, комфортно").callbackData(CB_POST_PACE + "COMFORTABLE").build()),
+                                    List.of(InlineKeyboardButton.builder().text("⚡ Местами быстро").callbackData(CB_POST_PACE + "FAST").build()),
+                                    List.of(InlineKeyboardButton.builder().text("😵 Слишком быстро").callbackData(CB_POST_PACE + "TOO_FAST").build())
+                            ))
+                            .build())
+                    .build());
+        } catch (TelegramApiException e) {
+            log.warn("post lecture pace question failed chatId={}: {}", chatId, e.getMessage());
+        }
+    }
+
+    private void sendOpenPostSurveyQuestion(long chatId) {
+        try {
+            execute(SendMessage.builder()
+                    .chatId(chatId)
+                    .text("Что было непонятным? Напиши текст или нажми «Пропустить».")
+                    .replyMarkup(InlineKeyboardMarkup.builder()
+                            .keyboard(List.of(List.of(
+                                    InlineKeyboardButton.builder().text("Пропустить").callbackData(CB_POST_SKIP).build()
+                            )))
+                            .build())
+                    .build());
+        } catch (TelegramApiException e) {
+            log.warn("post lecture open question failed chatId={}: {}", chatId, e.getMessage());
+        }
+    }
+
+    private void savePostSurvey(long chatId, String openText) {
+        PendingPostSurvey survey = pendingPostSurvey.remove(chatId);
+        if (survey == null || survey.rating() < 1 || survey.paceSignal() == null) {
+            sendTextWithMainKeyboard(chatId, "Опрос не найден или уже завершён.");
+            return;
+        }
+        try {
+            postLectureSurveyService.saveResponse(
+                    survey.lectureId(),
+                    chatId,
+                    survey.rating(),
+                    ru.university.lecturebroadcasting.entity.PaceSignal.valueOf(survey.paceSignal()),
+                    openText
+            );
+            sendTextWithMainKeyboard(chatId, "Спасибо! Ответ записан.");
+        } catch (Exception e) {
+            log.warn("post survey save failed chatId={}: {}", chatId, e.getMessage());
+            sendTextWithMainKeyboard(chatId, "Не удалось сохранить ответ. Попробуйте позже.");
+        }
+    }
+
+    public void notifyLectureStartedToStudents(Long lectureId, String lectureName, int currentSlide, List<Long> chatIds) {
+        if (chatIds == null || chatIds.isEmpty()) return;
+        String title = Objects.requireNonNullElse(lectureName, "лекция");
+        String msg = "Лекция «" + title + "» началась.\n\n"
+                + "Используйте /current, чтобы повторно получить текущий слайд.";
+        for (Long chatId : chatIds) {
+            sendTrackedText(lectureId, chatId, msg);
+            try {
+                execute(SendMessage.builder()
+                        .chatId(chatId)
+                        .text("Как идёт понимание? Можно менять сигнал в любой момент лекции.")
+                        .replyMarkup(comprehensionKeyboard())
+                        .build());
+            } catch (TelegramApiException e) {
+                log.warn("comprehension keyboard failed chatId={}: {}", chatId, e.getMessage());
+            }
+            if (currentSlide > 0) {
+                sendSlideToStudent(lectureId, chatId, null, currentSlide);
+            }
+        }
+    }
+
     // Вызывается лектором при смене слайда — только текст, всегда последнее сообщение
     public void sendSlideToStudent(Long lectureId, long chatId, byte[] imageBytes, int slideNumber) {
+        if (profilePendingChatIds.contains(chatId)) return;
         lectureCurrentSlide.put(chatId, slideNumber);
 
         Integer prevMsgId = lastSlideMessageId.remove(chatId);
         if (prevMsgId != null) {
             try {
+                Timer.Sample deleteSample = Timer.start(meterRegistry);
                 execute(DeleteMessage.builder().chatId(chatId).messageId(prevMsgId).build());
+                deleteSample.stop(buildTelegramApiTimer("deleteMessage", lectureId != null ? lectureId.toString() : "unknown"));
             } catch (TelegramApiException e) {
                 log.debug("deleteMessage failed chatId={} msgId={}: {}", chatId, prevMsgId, e.getMessage());
             }
@@ -510,11 +1162,13 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                 .build();
 
         try {
+            Timer.Sample sample = Timer.start(meterRegistry);
             Message sent = execute(SendMessage.builder()
                     .chatId(chatId)
                     .text("Лектор показывает слайд " + slideNumber)
                     .replyMarkup(markup)
                     .build());
+            sample.stop(buildTelegramApiTimer("sendMessage", lectureId != null ? lectureId.toString() : "unknown"));
             lastSlideMessageId.put(chatId, sent.getMessageId());
             deliveryMetricsService.recordDeliveryStatus(lectureId, true);
         } catch (TelegramApiException e) {
@@ -540,14 +1194,21 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             }
         }
 
+        String lecIdStr = studentRepository.findByChatId(chatId)
+                .map(s -> s.getLecture())
+                .filter(Objects::nonNull)
+                .map(l -> l.getId().toString())
+                .orElse("unknown");
+
         try {
-            Message sent = execute(SendPhoto.builder()
+            Timer.Sample sample = Timer.start(meterRegistry);
+            Message sent = executeSendPhoto(SendPhoto.builder()
                     .chatId(chatId)
                     .photo(new InputFile(new ByteArrayInputStream(imageBytes), "slide.jpg"))
                     .caption("Слайд " + slideNumber)
                     .build());
+            sample.stop(buildTelegramApiTimer("sendPhoto", lecIdStr));
             lastStudentPhotoMessageId.put(chatId, sent.getMessageId());
-            // Отправляем событие в аналитику
             studentRepository.findByChatId(chatId).ifPresent(student -> {
                 if (student.getLecture() != null) {
                     analyticsServiceClient.sendSlideRequestedEvent(
@@ -588,7 +1249,9 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
 
     private void sendTrackedText(Long lectureId, long chatId, String text) {
         try {
+            Timer.Sample sample = Timer.start(meterRegistry);
             execute(SendMessage.builder().chatId(chatId).text(text).build());
+            sample.stop(buildTelegramApiTimer("sendMessage", lectureId != null ? lectureId.toString() : "unknown"));
             deliveryMetricsService.recordDeliveryStatus(lectureId, true);
         } catch (TelegramApiException e) {
             log.error("sendText failed chatId={}", chatId, e);
@@ -598,10 +1261,196 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
 
     private void sendText(long chatId, String text) {
         try {
+            Timer.Sample sample = Timer.start(meterRegistry);
             execute(SendMessage.builder().chatId(chatId).text(text).build());
+            sample.stop(buildTelegramApiTimer("sendMessage", "unknown"));
         } catch (TelegramApiException e) {
             log.error("sendText failed chatId={}", chatId, e);
         }
     }
-}
 
+    private void sendTextWithMainKeyboard(long chatId, String text) {
+        try {
+            Timer.Sample sample = Timer.start(meterRegistry);
+            execute(SendMessage.builder()
+                    .chatId(chatId)
+                    .text(text)
+                    .replyMarkup(mainKeyboard())
+                    .build());
+            sample.stop(buildTelegramApiTimer("sendMessage", "unknown"));
+        } catch (TelegramApiException e) {
+            log.error("sendText failed chatId={}", chatId, e);
+        }
+    }
+
+    private ReplyKeyboardMarkup mainKeyboard() {
+        KeyboardRow row1 = new KeyboardRow();
+        row1.add(new KeyboardButton(BTN_CURRENT));
+        row1.add(new KeyboardButton(BTN_PREV));
+
+        KeyboardRow row2 = new KeyboardRow();
+        row2.add(new KeyboardButton(BTN_QUESTION));
+        row2.add(new KeyboardButton(BTN_RATE));
+
+        KeyboardRow row3 = new KeyboardRow();
+        row3.add(new KeyboardButton(BTN_PROFILE));
+        row3.add(new KeyboardButton(BTN_HELP));
+
+        KeyboardRow row4 = new KeyboardRow();
+        row4.add(new KeyboardButton(BTN_JOIN));
+
+        return ReplyKeyboardMarkup.builder()
+                .keyboard(List.of(row1, row2, row3, row4))
+                .resizeKeyboard(true)
+                .oneTimeKeyboard(false)
+                .build();
+    }
+
+    private String getLectureIdFromChatId(String chatIdStr) {
+        if (chatIdStr == null || chatIdStr.trim().isEmpty()) return "unknown";
+        try {
+            long chatId = Long.parseLong(chatIdStr);
+            Optional<Student> studentOpt = studentRepository.findByChatId(chatId);
+            if (studentOpt.isPresent() && studentOpt.get().getLecture() != null) {
+                return String.valueOf(studentOpt.get().getLecture().getId());
+            }
+        } catch (Exception ignored) {}
+        return "unknown";
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T extends java.io.Serializable, Method extends org.telegram.telegrambots.meta.api.methods.BotApiMethod<T>> T execute(Method method) throws TelegramApiException {
+        String chatIdStr = null;
+        try {
+            java.lang.reflect.Method getChatIdMethod = method.getClass().getMethod("getChatId");
+            Object val = getChatIdMethod.invoke(method);
+            if (val != null) {
+                chatIdStr = String.valueOf(val);
+            }
+        } catch (Exception ignored) {}
+
+        String lectureId = getLectureIdFromChatId(chatIdStr);
+
+        try {
+            String url = getOptions().getBaseUrl() + getBotToken() + "/" + method.getMethod();
+
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+            headers.set("X-Lecture-Id", lectureId);
+
+            String requestJson = objectMapper.writeValueAsString(method);
+            org.springframework.http.HttpEntity<String> entity = new org.springframework.http.HttpEntity<>(requestJson, headers);
+
+            org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(
+                    url,
+                    org.springframework.http.HttpMethod.POST,
+                    entity,
+                    String.class
+            );
+
+            return method.deserializeResponse(response.getBody());
+        } catch (Exception e) {
+            log.error("Error executing Telegram API method: {}", e.getMessage(), e);
+            throw new TelegramApiException("Failed to execute bot method via RestTemplate", e);
+        }
+    }
+
+    public Message executeSendPhoto(SendPhoto sendPhoto) throws TelegramApiException {
+        String lectureId = getLectureIdFromChatId(sendPhoto.getChatId());
+
+        try {
+            String url = getOptions().getBaseUrl() + getBotToken() + "/sendPhoto";
+
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.setContentType(org.springframework.http.MediaType.MULTIPART_FORM_DATA);
+            headers.set("X-Lecture-Id", lectureId);
+
+            org.springframework.util.MultiValueMap<String, Object> body = new org.springframework.util.LinkedMultiValueMap<>();
+            body.add("chat_id", sendPhoto.getChatId());
+            if (sendPhoto.getCaption() != null) {
+                body.add("caption", sendPhoto.getCaption());
+            }
+            if (sendPhoto.getReplyMarkup() != null) {
+                body.add("reply_markup", objectMapper.writeValueAsString(sendPhoto.getReplyMarkup()));
+            }
+
+            InputFile photo = sendPhoto.getPhoto();
+            if (photo.getNewMediaFile() != null) {
+                body.add("photo", new org.springframework.core.io.FileSystemResource(photo.getNewMediaFile()));
+            } else if (photo.getNewMediaStream() != null) {
+                byte[] bytes = photo.getNewMediaStream().readAllBytes();
+                body.add("photo", new org.springframework.core.io.ByteArrayResource(bytes) {
+                    @Override
+                    public String getFilename() {
+                        return photo.getMediaName() != null ? photo.getMediaName() : "photo.jpg";
+                    }
+                });
+            } else {
+                body.add("photo", photo.getAttachName());
+            }
+
+            org.springframework.http.HttpEntity<org.springframework.util.MultiValueMap<String, Object>> entity =
+                    new org.springframework.http.HttpEntity<>(body, headers);
+
+            org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(
+                    url,
+                    org.springframework.http.HttpMethod.POST,
+                    entity,
+                    String.class
+            );
+
+            TelegramResponse<Message> apiResponse = objectMapper.readValue(
+                    response.getBody(),
+                    new com.fasterxml.jackson.core.type.TypeReference<TelegramResponse<Message>>() {}
+            );
+
+            if (!apiResponse.isOk()) {
+                throw new TelegramApiException("Telegram error: " + apiResponse.getDescription());
+            }
+            return apiResponse.getResult();
+        } catch (Exception e) {
+            log.error("Error executing sendPhoto: {}", e.getMessage(), e);
+            throw new TelegramApiException("Failed to execute sendPhoto via RestTemplate", e);
+        }
+    }
+
+    public double getLectureTrafficMb(String lectureId) {
+        double outboundBytes = 0;
+        double inboundBytes = 0;
+
+        try {
+            io.micrometer.core.instrument.Counter outboundCounter = meterRegistry.find("telegram.traffic.outbound.bytes")
+                    .tag("lecture_id", lectureId)
+                    .counter();
+            if (outboundCounter != null) {
+                outboundBytes = outboundCounter.count();
+            }
+        } catch (Exception ignored) {}
+
+        try {
+            io.micrometer.core.instrument.Counter inboundCounter = meterRegistry.find("telegram.traffic.inbound.bytes")
+                    .tag("lecture_id", lectureId)
+                    .counter();
+            if (inboundCounter != null) {
+                inboundBytes = inboundCounter.count();
+            }
+        } catch (Exception ignored) {}
+
+        double totalBytes = outboundBytes + inboundBytes;
+        return totalBytes / (1024.0 * 1024.0);
+    }
+
+    public static class TelegramResponse<T> {
+        private boolean ok;
+        private T result;
+        private String description;
+
+        public boolean isOk() { return ok; }
+        public void setOk(boolean ok) { this.ok = ok; }
+        public T getResult() { return result; }
+        public void setResult(T result) { this.result = result; }
+        public String getDescription() { return description; }
+        public void setDescription(String description) { this.description = description; }
+    }
+}

@@ -33,6 +33,12 @@ public class Student {
     @Column(name = "username")
     private String username;
 
+    @Column(name = "real_name", length = 128)
+    private String realName;
+
+    @Column(name = "group_name", length = 32)
+    private String groupName;
+
     public Student(Long chatId, Lecture lecture) {
         this.chatId = chatId;
         this.lecture = lecture;

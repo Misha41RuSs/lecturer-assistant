@@ -18,8 +18,8 @@
 *.iml
 *.iws
 
-# Task tracking
-CHANGES_TASK5.md
+# Claude Code
+.claude/
 
 # VS Code
 .vscode/

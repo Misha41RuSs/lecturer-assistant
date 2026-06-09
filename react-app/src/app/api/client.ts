@@ -143,11 +143,27 @@ export async function updateCurrentSlide(lectureId: number, slideId: string) {
 
 export async function updateLecture(
 	lectureId: number,
-	body: { name: string; accessType?: string; password?: string }
+	body: {
+		name: string
+		accessType?: string
+		password?: string
+		durationMinutes?: number
+		allowQuestions?: boolean
+		anonymousQuestions?: boolean
+		requireStudentProfile?: boolean
+	}
 ) {
 	const payload: Record<string, string> = { name: body.name.trim() }
 	if (body.accessType) payload.accessType = body.accessType
 	if (body.password !== undefined) payload.password = body.password
+	if (body.durationMinutes !== undefined)
+		payload.durationMinutes = String(body.durationMinutes)
+	if (body.allowQuestions !== undefined)
+		payload.allowQuestions = String(body.allowQuestions)
+	if (body.anonymousQuestions !== undefined)
+		payload.anonymousQuestions = String(body.anonymousQuestions)
+	if (body.requireStudentProfile !== undefined)
+		payload.requireStudentProfile = String(body.requireStudentProfile)
 
 	const res = await fetch(`${BASE_URL}/lectures/${lectureId}`, {
 		method: 'PUT',
@@ -170,6 +186,8 @@ export interface StudentDto {
 	firstName: string | null
 	lastName: string | null
 	username: string | null
+	realName?: string | null
+	groupName?: string | null
 	kicked: boolean
 }
 
@@ -185,6 +203,27 @@ export async function getAllStudents(lectureId: string): Promise<StudentDto[]> {
 	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/all-students`)
 	if (!res.ok) throw new Error('Failed to load all students')
 	return res.json()
+}
+
+export async function getPostSurveyResults(lectureId: string): Promise<{
+	totalStudents: number
+	responded: number
+	avgRating: number
+	ratingDistribution: Record<string, number>
+	pace: Record<string, number>
+	openTexts: string[]
+}> {
+	return apiFetch(`/lectures/${lectureId}/post-survey/results`)
+}
+
+export async function getCurrentComprehension(lectureId: string): Promise<{
+	slideIndex: number
+	totalResponses: number
+	green: { count: number; pct: number }
+	yellow: { count: number; pct: number }
+	red: { count: number; pct: number }
+}> {
+	return apiFetch(`/lectures/${lectureId}/comprehension/current`)
 }
 
 export async function kickLectureStudent(lectureId: string, chatId: number): Promise<void> {
@@ -204,10 +243,42 @@ export async function broadcastMessage(lectureId: string, text: string): Promise
 	}
 }
 
-export async function getStudentQuestions(lectureId: string): Promise<{ id: string; text: string; createdAt: string }[]> {
+export async function getStudentQuestions(lectureId: string): Promise<{
+	id: string
+	text: string
+	answer?: string | null
+	status?: 'OPEN' | 'SEEN' | 'ANSWERED' | 'DISMISSED'
+	createdAt: string
+	chatId?: number
+	realName?: string
+	groupName?: string
+	studentName?: string
+	username?: string
+	upvotes?: number
+}[]> {
 	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/student-questions`)
 	if (!res.ok) throw new Error('Failed to load questions')
 	return res.json()
+}
+
+export async function dismissStudentQuestion(lectureId: string, questionId: string): Promise<void> {
+	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/student-questions/${questionId}/dismiss`, {
+		method: 'PUT'
+	})
+	if (!res.ok) {
+		const t = await res.text()
+		throw new Error(`Failed to dismiss question: ${res.status} ${t}`)
+	}
+}
+
+export async function markStudentQuestionsSeen(lectureId: string): Promise<void> {
+	const res = await fetch(`${BASE_URL}/lectures/${lectureId}/student-questions/seen`, {
+		method: 'PUT'
+	})
+	if (!res.ok) {
+		const t = await res.text()
+		throw new Error(`Failed to mark questions seen: ${res.status} ${t}`)
+	}
 }
 
 export async function sendPrivateReply(lectureId: string, questionId: string, text: string): Promise<void> {
@@ -299,6 +370,53 @@ export function createLectureSocket(
 		} catch (e) {
 			console.error('Invalid WS message', e)
 		}
+	}
+
+	return ws
+}
+
+export function createStompTopicSocket(
+	topic: string,
+	onMessage: (data: any) => void
+) {
+	const ws = new WebSocket(`${WS_URL}/ws/broadcasting-native`)
+
+	const sendFrame = (command: string, headers: Record<string, string> = {}, body = '') => {
+		const headerLines = Object.entries(headers)
+			.map(([key, value]) => `${key}:${value}`)
+			.join('\n')
+		ws.send(`${command}\n${headerLines}\n\n${body}\0`)
+	}
+
+	ws.onopen = () => {
+		sendFrame('CONNECT', {
+			'accept-version': '1.2',
+			'heart-beat': '0,0'
+		})
+	}
+
+	ws.onmessage = event => {
+		String(event.data)
+			.split('\0')
+			.filter(Boolean)
+			.forEach(frame => {
+				const [head, body = ''] = frame.split('\n\n')
+				const command = head.split('\n')[0]
+				if (command === 'CONNECTED') {
+					sendFrame('SUBSCRIBE', {
+						id: `sub-${topic.replace(/[^a-zA-Z0-9]/g, '-')}`,
+						destination: topic
+					})
+					return
+				}
+				if (command === 'MESSAGE') {
+					try {
+						onMessage(JSON.parse(body))
+					} catch (e) {
+						console.error('Invalid STOMP message', e)
+					}
+				}
+			})
 	}
 
 	return ws

@@ -50,6 +50,19 @@ public class AnalyticsServiceClient {
 
 
     @Async
+    public void recordLecturerAction(String actionType, Long lectureId) {
+        try {
+            String url = analyticsServiceUrl + "/internal/actions";
+            Map<String, String> body = new HashMap<>();
+            body.put("type", actionType);
+            body.put("lectureId", String.valueOf(lectureId));
+            restTemplate.postForObject(url, body, Void.class);
+        } catch (Exception e) {
+            System.err.println("Failed to record lecturer action: " + e.getMessage());
+        }
+    }
+
+    @Async
     public void sendSlideRequestedEvent(Long lectureId, Long chatId, int slideNumber) {
         try {
             String url = analyticsServiceUrl + "/analytics/events/user";

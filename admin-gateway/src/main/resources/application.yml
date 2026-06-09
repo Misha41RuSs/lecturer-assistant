@@ -60,3 +60,8 @@ spring:
           uri: ${ANALYTICS_SERVICE_URL:http://localhost:8084}
           predicates:
             - Path=/analytics/**
+
+        - id: xapi-route
+          uri: ${ANALYTICS_SERVICE_URL:http://localhost:8084}
+          predicates:
+            - Path=/xapi/**

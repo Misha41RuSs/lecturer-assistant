@@ -19,6 +19,8 @@ import ru.university.lecturebroadcasting.repository.StudentRepository;
 import ru.university.lecturebroadcasting.dto.StudentDto;
 
 import java.text.Normalizer;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
@@ -34,6 +36,7 @@ public class LectureService {
     private final ContentServiceClient contentServiceClient;
     private final AnalyticsServiceClient analyticsServiceClient;
     private final EntityManager entityManager;
+    private final CpuMonitoringService cpuMonitoringService;
 
     @Transactional
     public Lecture createLecture(String name, java.util.UUID sequenceId) {
@@ -42,6 +45,26 @@ public class LectureService {
 
     @Transactional
     public Lecture createLecture(String name, java.util.UUID sequenceId, AccessType accessType, String password) {
+        return createLecture(name, sequenceId, accessType, password, null, null);
+    }
+
+    @Transactional
+    public Lecture createLecture(String name, java.util.UUID sequenceId, AccessType accessType, String password,
+                                 Integer durationMinutes, Boolean allowQuestions) {
+        return createLecture(name, sequenceId, accessType, password, durationMinutes, allowQuestions, null);
+    }
+
+    @Transactional
+    public Lecture createLecture(String name, java.util.UUID sequenceId, AccessType accessType, String password,
+                                 Integer durationMinutes, Boolean allowQuestions, Boolean anonymousQuestions) {
+        return createLecture(name, sequenceId, accessType, password, durationMinutes, allowQuestions,
+                anonymousQuestions, null);
+    }
+
+    @Transactional
+    public Lecture createLecture(String name, java.util.UUID sequenceId, AccessType accessType, String password,
+                                 Integer durationMinutes, Boolean allowQuestions, Boolean anonymousQuestions,
+                                 Boolean requireStudentProfile) {
         String cleaned = normalizeLectureJoinKey(name);
         if (cleaned.isEmpty()) {
             throw new IllegalArgumentException("Lecture name must not be blank");
@@ -49,6 +72,18 @@ public class LectureService {
         Lecture lecture = new Lecture(cleaned, sequenceId);
         lecture.setAccessType(accessType != null ? accessType : AccessType.OPEN);
         lecture.setPassword(password != null && !password.isBlank() ? password.trim() : null);
+        if (durationMinutes != null) {
+            lecture.setDurationMinutes(durationMinutes);
+        }
+        if (allowQuestions != null) {
+            lecture.setAllowQuestions(allowQuestions);
+        }
+        if (anonymousQuestions != null) {
+            lecture.setAnonymousQuestions(anonymousQuestions);
+        }
+        if (requireStudentProfile != null) {
+            lecture.setRequireStudentProfile(requireStudentProfile);
+        }
         Lecture saved = lectureRepository.save(lecture);
         log.info("Lecture created: id={} name={} status={} accessType={} sequenceId={}",
                 saved.getId(), saved.getName(), saved.getStatus(), saved.getAccessType(), saved.getSequenceId());
@@ -83,11 +118,18 @@ public class LectureService {
     }
 
     @Transactional
-    public Lecture startLecture(Long id) {
+    public StartLectureResult startLecture(Long id) {
         Lecture lecture = lectureRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Lecture not found: " + id));
+        Instant now = Instant.now();
+        boolean shouldNotify = lecture.getNotifiedStartAt() == null ||
+                lecture.getNotifiedStartAt().isBefore(now.minus(30, ChronoUnit.MINUTES));
         lecture.setStatus(LectureStatus.ACTIVE);
-        return lectureRepository.save(lecture);
+        if (shouldNotify) {
+            lecture.setNotifiedStartAt(now);
+        }
+        cpuMonitoringService.startMonitoring(id);
+        return new StartLectureResult(lectureRepository.save(lecture), shouldNotify);
     }
 
     @Transactional
@@ -109,6 +151,7 @@ public class LectureService {
     }
 
     public record StopLectureResult(Lecture lecture, List<Long> disconnectedChatIds) {}
+    public record StartLectureResult(Lecture lecture, boolean notifyStudents) {}
 
     @Transactional
     public Student joinLecture(String lectureNameOrId, Long chatId, String firstName, String lastName, String username) {
@@ -190,6 +233,26 @@ public class LectureService {
 
     @Transactional
     public Lecture updateLecture(Long id, String name, AccessType accessType, String password) {
+        return updateLecture(id, name, accessType, password, null, null);
+    }
+
+    @Transactional
+    public Lecture updateLecture(Long id, String name, AccessType accessType, String password,
+                                 Integer durationMinutes, Boolean allowQuestions) {
+        return updateLecture(id, name, accessType, password, durationMinutes, allowQuestions, null);
+    }
+
+    @Transactional
+    public Lecture updateLecture(Long id, String name, AccessType accessType, String password,
+                                 Integer durationMinutes, Boolean allowQuestions, Boolean anonymousQuestions) {
+        return updateLecture(id, name, accessType, password, durationMinutes, allowQuestions,
+                anonymousQuestions, null);
+    }
+
+    @Transactional
+    public Lecture updateLecture(Long id, String name, AccessType accessType, String password,
+                                 Integer durationMinutes, Boolean allowQuestions, Boolean anonymousQuestions,
+                                 Boolean requireStudentProfile) {
         String cleaned = normalizeLectureJoinKey(name);
         if (cleaned.isEmpty()) {
             throw new IllegalArgumentException("Lecture name must not be blank");
@@ -204,6 +267,18 @@ public class LectureService {
             lecture.setPassword(password.trim());
         } else if (accessType == AccessType.OPEN) {
             lecture.setPassword(null);
+        }
+        if (durationMinutes != null) {
+            lecture.setDurationMinutes(durationMinutes);
+        }
+        if (allowQuestions != null) {
+            lecture.setAllowQuestions(allowQuestions);
+        }
+        if (anonymousQuestions != null) {
+            lecture.setAnonymousQuestions(anonymousQuestions);
+        }
+        if (requireStudentProfile != null) {
+            lecture.setRequireStudentProfile(requireStudentProfile);
         }
         return lectureRepository.save(lecture);
     }
@@ -276,6 +351,7 @@ public class LectureService {
                 lectureId, slideNumber, chatIds.size());
 
         analyticsServiceClient.sendSlideChangedEvent(lectureId, slideNumber);
+        analyticsServiceClient.recordLecturerAction("NEXT_SLIDE", lectureId);
 
         return new SlideUpdateResult(lecture, imageBytes, chatIds);
     }
@@ -296,7 +372,9 @@ public class LectureService {
     public List<StudentDto> getStudents(Long lectureId) {
         return studentRepository.findByLecture_Id(lectureId)
                 .stream()
-                .map(s -> new StudentDto(s.getChatId(), s.getFirstName(), s.getLastName(), s.getUsername(), false))
+                .map(s -> new StudentDto(
+                        s.getChatId(), s.getFirstName(), s.getLastName(), s.getUsername(),
+                        s.getRealName(), s.getGroupName(), false))
                 .toList();
     }
 
@@ -304,7 +382,14 @@ public class LectureService {
         List<LectureParticipant> participants = participantRepository.findByLectureId(lectureId);
         if (!participants.isEmpty()) {
             return participants.stream()
-                    .map(p -> new StudentDto(p.getChatId(), p.getFirstName(), p.getLastName(), p.getUsername(), p.isKicked()))
+                    .map(p -> {
+                        Student student = studentRepository.findByChatId(p.getChatId()).orElse(null);
+                        return new StudentDto(
+                                p.getChatId(), p.getFirstName(), p.getLastName(), p.getUsername(),
+                                student != null ? student.getRealName() : null,
+                                student != null ? student.getGroupName() : null,
+                                p.isKicked());
+                    })
                     .toList();
         }
         // Если participants пусты — лекция активна и никто ещё не заджойнился через новый код

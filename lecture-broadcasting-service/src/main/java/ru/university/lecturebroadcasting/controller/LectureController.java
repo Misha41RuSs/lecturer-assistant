@@ -11,9 +11,12 @@ import ru.university.lecturebroadcasting.bot.LectureBroadcastingBot;
 import ru.university.lecturebroadcasting.dto.LectureListItem;
 import ru.university.lecturebroadcasting.dto.StudentDto;
 import ru.university.lecturebroadcasting.entity.AccessType;
+import ru.university.lecturebroadcasting.entity.ComprehensionSignalValue;
 import ru.university.lecturebroadcasting.entity.Lecture;
-import ru.university.lecturebroadcasting.service.DeliveryMetricsService;
+import ru.university.lecturebroadcasting.entity.PaceSignal;
+import ru.university.lecturebroadcasting.service.ComprehensionService;
 import ru.university.lecturebroadcasting.service.LectureService;
+import ru.university.lecturebroadcasting.service.PostLectureSurveyService;
 import ru.university.lecturebroadcasting.service.QuizServiceClient;
 import ru.university.lecturebroadcasting.service.StudentQuestionService;
 import ru.university.lecturebroadcasting.websocket.SlideUpdateMessage;
@@ -33,7 +36,8 @@ public class LectureController {
     private final SimpMessagingTemplate messagingTemplate;
     private final QuizServiceClient quizServiceClient;
     private final StudentQuestionService studentQuestionService;
-    private final DeliveryMetricsService deliveryMetricsService;
+    private final PostLectureSurveyService postLectureSurveyService;
+    private final ComprehensionService comprehensionService;
 
     @PostMapping
     public ResponseEntity<Lecture> createLecture(@RequestBody Map<String, String> body) {
@@ -41,7 +45,13 @@ public class LectureController {
         java.util.UUID sequenceId = seqString != null ? java.util.UUID.fromString(seqString) : null;
         AccessType accessType = parseAccessType(body.get("accessType"));
         String password = body.get("password");
-        Lecture lecture = lectureService.createLecture(body.get("name"), sequenceId, accessType, password);
+        Integer durationMinutes = parseInteger(body.get("durationMinutes"));
+        Boolean allowQuestions = parseBoolean(body.get("allowQuestions"));
+        Boolean anonymousQuestions = parseBoolean(body.get("anonymousQuestions"));
+        Boolean requireStudentProfile = parseBoolean(body.get("requireStudentProfile"));
+        Lecture lecture = lectureService.createLecture(
+                body.get("name"), sequenceId, accessType, password, durationMinutes, allowQuestions,
+                anonymousQuestions, requireStudentProfile);
         return ResponseEntity.ok(lecture);
     }
 
@@ -86,7 +96,13 @@ public class LectureController {
         String name = body.get("name");
         AccessType accessType = parseAccessType(body.get("accessType"));
         String password = body.get("password");
-        return ResponseEntity.ok(lectureService.updateLecture(id, name, accessType, password));
+        Integer durationMinutes = parseInteger(body.get("durationMinutes"));
+        Boolean allowQuestions = parseBoolean(body.get("allowQuestions"));
+        Boolean anonymousQuestions = parseBoolean(body.get("anonymousQuestions"));
+        Boolean requireStudentProfile = parseBoolean(body.get("requireStudentProfile"));
+        return ResponseEntity.ok(lectureService.updateLecture(
+                id, name, accessType, password, durationMinutes, allowQuestions,
+                anonymousQuestions, requireStudentProfile));
     }
 
     @DeleteMapping("/{id}")
@@ -120,18 +136,86 @@ public class LectureController {
         }
     }
 
+    private static Integer parseInteger(String value) {
+        if (value == null || value.isBlank()) return null;
+        return Integer.parseInt(value.trim());
+    }
+
+    private static Boolean parseBoolean(String value) {
+        if (value == null || value.isBlank()) return null;
+        return Boolean.parseBoolean(value.trim());
+    }
+
     @PostMapping("/{id}/start")
     public ResponseEntity<Lecture> startLecture(@PathVariable Long id) {
-        return ResponseEntity.ok(lectureService.startLecture(id));
+        LectureService.StartLectureResult result = lectureService.startLecture(id);
+        Lecture lecture = result.lecture();
+        if (result.notifyStudents()) {
+            List<Long> chatIds = lectureService.getStudentChatIds(id);
+            bot.notifyLectureStartedToStudents(
+                    id,
+                    lecture.getName(),
+                    lecture.getCurrentSlide() != null ? lecture.getCurrentSlide() : 1,
+                    chatIds
+            );
+        }
+        return ResponseEntity.ok(lecture);
     }
 
     @PostMapping("/{id}/stop")
     public ResponseEntity<Lecture> stopLecture(@PathVariable Long id) {
         quizServiceClient.closeAllExamsForLecture(id);
         LectureService.StopLectureResult result = lectureService.stopLecture(id);
-        studentQuestionService.clearByLecture(id);
         bot.notifyLectureEndedToStudents(id, result.lecture().getName(), result.disconnectedChatIds());
+        bot.sendPostLectureSurvey(id, result.lecture().getName(), result.disconnectedChatIds());
+        studentQuestionService.clearByLecture(id);
         return ResponseEntity.ok(result.lecture());
+    }
+
+    @PostMapping("/{id}/post-survey")
+    public ResponseEntity<Void> savePostSurvey(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        Long chatId = Long.parseLong(body.get("chatId"));
+        int rating = Integer.parseInt(body.get("rating"));
+        PaceSignal pace = PaceSignal.valueOf(body.get("paceSignal"));
+        postLectureSurveyService.saveResponse(id, chatId, rating, pace, body.get("openText"));
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/{id}/post-survey/results")
+    public Map<String, Object> getPostSurveyResults(@PathVariable Long id) {
+        PostLectureSurveyService.Results results = postLectureSurveyService.results(id);
+        return Map.of(
+                "totalStudents", results.totalStudents(),
+                "responded", results.responded(),
+                "avgRating", results.avgRating(),
+                "ratingDistribution", results.ratingDistribution(),
+                "pace", results.paceCounts(),
+                "openTexts", results.openTexts()
+        );
+    }
+
+    @PostMapping("/{id}/comprehension")
+    public ResponseEntity<ComprehensionService.Aggregate> saveComprehension(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        return ResponseEntity.ok(comprehensionService.save(
+                id,
+                Long.parseLong(body.get("chatId")),
+                Integer.parseInt(body.get("slideIndex")),
+                ComprehensionSignalValue.valueOf(body.get("signal"))
+        ));
+    }
+
+    @GetMapping("/{id}/comprehension/current")
+    public ComprehensionService.Aggregate getCurrentComprehension(@PathVariable Long id) {
+        return comprehensionService.current(id);
+    }
+
+    @GetMapping("/{id}/comprehension/history")
+    public Map<Integer, ComprehensionService.Aggregate> getComprehensionHistory(@PathVariable Long id) {
+        return comprehensionService.history(id);
     }
 
     @PostMapping("/{id}/broadcast-message")
@@ -162,16 +246,6 @@ public class LectureController {
     }
 
 
-    @GetMapping("/{id}/delivery-metrics")
-    public ResponseEntity<Map<String, Object>> getDeliveryMetrics(@PathVariable Long id) {
-        DeliveryMetricsService.DeliveryStats stats = deliveryMetricsService.getMetrics(id);
-        return ResponseEntity.ok(Map.of(
-                "totalSent", stats.totalSent(),
-                "totalFailed", stats.totalFailed(),
-                "errorRate", stats.errorRate()
-        ));
-    }
-
     @PutMapping("/{id}/current-slide")
     public ResponseEntity<Void> updateCurrentSlide(
             @PathVariable Long id,
@@ -181,13 +255,14 @@ public class LectureController {
         LectureService.SlideUpdateResult result = lectureService.updateCurrentSlide(id, slideNumber);
 
         // рассылка в Telegram всем подписанным студентам
-        if (result.imageBytes() != null) {
+        if (!result.chatIds().isEmpty()) {
             log.info("Broadcasting slide {} to {} students", slideNumber, result.chatIds().size());
             for (Long chatId : result.chatIds()) {
                 bot.sendSlideToStudent(id, chatId, result.imageBytes(), slideNumber);
             }
-        } else {
-            log.error("Failed to broadcast slide {} - imageBytes is null from content-service. lectureId={}", slideNumber, id);
+        }
+        if (result.imageBytes() == null) {
+            log.warn("Slide image unavailable for lectureId={} slide={} (content-service unreachable or no presentation)", id, slideNumber);
         }
 
         // рассылка через WebSocket проектору / интерфейсу лектора
@@ -197,5 +272,10 @@ public class LectureController {
         );
 
         return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/{id}/traffic")
+    public ResponseEntity<Double> getLectureTraffic(@PathVariable Long id) {
+        return ResponseEntity.ok(bot.getLectureTrafficMb(String.valueOf(id)));
     }
 }
