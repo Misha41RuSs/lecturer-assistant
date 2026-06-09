@@ -923,7 +923,9 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
 
         Question q = session.currentQuestion();
         String header = String.format("Вопрос %d/%d", session.currentIndex() + 1, session.total());
-        String timeHint = q.timeLimitSec() != null ? " ⏱ " + q.timeLimitSec() + " с" : "";
+        String timeHint = q.timeLimitSec() != null
+                ? "\n⏱ Время на ответ: " + q.timeLimitSec() + " сек — отвечайте быстро!"
+                : "";
 
         Message sent = null;
         try {
@@ -980,8 +982,17 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         ExamSession session = new ExamSession(examId, detail);
         examSessions.put(chatId, session);
 
-        sendText(chatId, "📝 Начался тест: " + detail.title() +
-                (detail.totalTimeSec() != null ? "\nВремя: " + detail.totalTimeSec() / 60 + " мин." : ""));
+        boolean anyQuestionTimed = detail.questions().stream()
+                .anyMatch(q -> q.timeLimitSec() != null && q.timeLimitSec() > 0);
+        StringBuilder intro = new StringBuilder("📝 Начался тест: ").append(detail.title()).append("\n");
+        intro.append("Вопросов: ").append(detail.questions().size()).append("\n");
+        if (detail.totalTimeSec() != null) {
+            intro.append("⏰ Общее время: ").append(detail.totalTimeSec() / 60).append(" мин.\n");
+        }
+        if (anyQuestionTimed) {
+            intro.append("⚠️ Некоторые вопросы имеют ограничение по времени — отвечайте быстро!");
+        }
+        sendText(chatId, intro.toString().trim());
         sendNextQuestion(chatId, session);
     }
 
