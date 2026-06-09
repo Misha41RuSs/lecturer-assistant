@@ -2,9 +2,9 @@ package ru.university.lecturebroadcasting.bot;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.context.annotation.Bean; // <--- ДОБАВИТЬ ИМПОРТ
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.telegram.telegrambots.bots.DefaultBotOptions; // <--- ДОБАВИТЬ ИМПОРТ
+import org.telegram.telegrambots.bots.DefaultBotOptions;
 import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
 import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
@@ -55,8 +55,16 @@ public class TelegramBotConfig {
             bot.execute(SetMyCommands.builder()
                     .commands(List.of(
                             BotCommand.builder().command("start").description("Начало работы").build(),
+                            BotCommand.builder().command("help").description("Показать подсказку").build(),
                             BotCommand.builder().command("join").description("Подключиться к лекции").build(),
                             BotCommand.builder().command("question").description("Задать вопрос преподавателю").build(),
+                            BotCommand.builder().command("questions").description("Вопросы аудитории").build(),
+                            BotCommand.builder().command("rate").description("Оценить текущий слайд").build(),
+                            BotCommand.builder().command("current").description("Получить текущий слайд").build(),
+                            BotCommand.builder().command("prev").description("Получить предыдущий слайд").build(),
+                            BotCommand.builder().command("slide").description("Выбрать слайд по номеру").build(),
+                            BotCommand.builder().command("profile").description("Профиль студента").build(),
+                            BotCommand.builder().command("mystats").description("Статистика по тестам").build(),
                             BotCommand.builder().command("ping").description("Проверка связи").build()
                     ))
                     .build());

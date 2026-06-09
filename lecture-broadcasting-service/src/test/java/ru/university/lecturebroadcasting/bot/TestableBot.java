@@ -20,6 +20,8 @@ public class TestableBot extends LectureBroadcastingBot {
                        DeliveryMetricsService deliveryMetricsService) {
         super(new org.telegram.telegrambots.bots.DefaultBotOptions(), botToken, botUsername, studentRepository, lectureService,
               quizServiceClient, analyticsServiceClient, studentQuestionService,
+              null,
+              null,
               deliveryMetricsService,
               new org.springframework.web.client.RestTemplate(),
               new io.micrometer.core.instrument.simple.SimpleMeterRegistry());

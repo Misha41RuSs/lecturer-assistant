@@ -52,9 +52,9 @@ class LectureServiceTest {
         when(lectureRepository.findById(1L)).thenReturn(Optional.of(lecture));
         when(lectureRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        Lecture result = lectureService.startLecture(1L);
+        var result = lectureService.startLecture(1L);
 
-        assertEquals(LectureStatus.ACTIVE, result.getStatus());
+        assertEquals(LectureStatus.ACTIVE, result.lecture().getStatus());
     }
 
     @Test

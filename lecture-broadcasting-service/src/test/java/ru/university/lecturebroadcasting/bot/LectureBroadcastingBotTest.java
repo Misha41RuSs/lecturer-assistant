@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.telegram.telegrambots.meta.api.methods.BotApiMethod;
+import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Chat;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -13,12 +15,17 @@ import ru.university.lecturebroadcasting.entity.Lecture;
 import ru.university.lecturebroadcasting.entity.Student;
 import ru.university.lecturebroadcasting.repository.StudentRepository;
 import ru.university.lecturebroadcasting.service.AnalyticsServiceClient;
+import ru.university.lecturebroadcasting.service.ComprehensionService;
 import ru.university.lecturebroadcasting.service.DeliveryMetricsService;
 import ru.university.lecturebroadcasting.service.LectureService;
+import ru.university.lecturebroadcasting.service.PostLectureSurveyService;
 import ru.university.lecturebroadcasting.service.QuizServiceClient;
 import ru.university.lecturebroadcasting.service.StudentQuestionService;
 
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -44,26 +51,28 @@ class LectureBroadcastingBotTest {
     private StudentQuestionService studentQuestionService;
 
     @Mock
+    private PostLectureSurveyService postLectureSurveyService;
+
+    @Mock
+    private ComprehensionService comprehensionService;
+
+    @Mock
     private DeliveryMetricsService deliveryMetricsService;
 
-    private LectureBroadcastingBot bot;
+    private CapturingBot bot;
 
     @BeforeEach
     void setUp() {
-        bot = new LectureBroadcastingBot(
+        bot = new CapturingBot(
                 new org.telegram.telegrambots.bots.DefaultBotOptions(),
                 "fake_token", "fake_bot",
                 studentRepository, lectureService,
                 quizServiceClient, analyticsServiceClient, studentQuestionService,
+                postLectureSurveyService, comprehensionService,
                 deliveryMetricsService,
                 new org.springframework.web.client.RestTemplate(),
                 new io.micrometer.core.instrument.simple.SimpleMeterRegistry()
-        ) {
-            @Override
-            public <T extends Serializable, Method extends org.telegram.telegrambots.meta.api.methods.BotApiMethod<T>> T execute(Method method) {
-                return null;
-            }
-        };
+        );
     }
 
     private Update buildTextUpdate(long chatId, String text) {
@@ -91,6 +100,21 @@ class LectureBroadcastingBotTest {
     @Test
     void startCommand_doesNotThrow() {
         assertDoesNotThrow(() -> bot.onUpdateReceived(buildTextUpdate(100L, "/start")));
+    }
+
+    @Test
+    void helpCommand_sendsHelpTextWithMainKeyboard() {
+        bot.onUpdateReceived(buildTextUpdate(100L, "/help"));
+
+        SendMessage message = bot.lastSendMessage().orElseThrow();
+
+        assertAll(
+                () -> assertTrue(message.getText().contains("Команды бота:")),
+                () -> assertTrue(message.getText().contains("/join <название или id>")),
+                () -> assertTrue(message.getText().contains("/mystats")),
+                () -> assertTrue(message.getText().contains("/ping")),
+                () -> assertNotNull(message.getReplyMarkup())
+        );
     }
 
     @Test
@@ -123,6 +147,8 @@ class LectureBroadcastingBotTest {
                 "fake_token", "fake_bot",
                 studentRepository, lectureService,
                 quizServiceClient, analyticsServiceClient, studentQuestionService,
+                postLectureSurveyService, comprehensionService,
+                deliveryMetricsService,
                 mockRestTemplate, registry
         );
         
@@ -173,5 +199,40 @@ class LectureBroadcastingBotTest {
         
         double totalMb = testBot.getLectureTrafficMb("42");
         assertEquals((outbound + 100.0) / (1024.0 * 1024.0), totalMb, 1e-9);
+    }
+
+    private static class CapturingBot extends LectureBroadcastingBot {
+        private final List<BotApiMethod<?>> sentMethods = new ArrayList<>();
+
+        CapturingBot(org.telegram.telegrambots.bots.DefaultBotOptions options,
+                     String botToken,
+                     String botUsername,
+                     StudentRepository studentRepository,
+                     LectureService lectureService,
+                     QuizServiceClient quizServiceClient,
+                     AnalyticsServiceClient analyticsServiceClient,
+                     StudentQuestionService studentQuestionService,
+                     PostLectureSurveyService postLectureSurveyService,
+                     ComprehensionService comprehensionService,
+                     DeliveryMetricsService deliveryMetricsService,
+                     org.springframework.web.client.RestTemplate restTemplate,
+                     io.micrometer.core.instrument.MeterRegistry meterRegistry) {
+            super(options, botToken, botUsername, studentRepository, lectureService, quizServiceClient,
+                    analyticsServiceClient, studentQuestionService, postLectureSurveyService,
+                    comprehensionService, deliveryMetricsService, restTemplate, meterRegistry);
+        }
+
+        @Override
+        public <T extends Serializable, Method extends BotApiMethod<T>> T execute(Method method) {
+            sentMethods.add(method);
+            return null;
+        }
+
+        Optional<SendMessage> lastSendMessage() {
+            return sentMethods.stream()
+                    .filter(SendMessage.class::isInstance)
+                    .map(SendMessage.class::cast)
+                    .reduce((first, second) -> second);
+        }
     }
 }
