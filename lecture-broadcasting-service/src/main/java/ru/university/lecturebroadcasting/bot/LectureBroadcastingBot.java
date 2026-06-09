@@ -971,6 +971,10 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     }
 
     public void sendExamToStudent(long chatId, UUID examId) {
+        if (examSessions.containsKey(chatId)) {
+            log.warn("Student {} already has active exam session, skipping new exam {}", chatId, examId);
+            return;
+        }
         QuizServiceClient.ExamDetail detail = quizServiceClient.startSubmission(examId, chatId);
         if (detail == null || detail.questions().isEmpty()) {
             sendText(chatId, "Не удалось загрузить тест.");
@@ -1141,6 +1145,8 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     public void sendSlideToStudent(Long lectureId, long chatId, byte[] imageBytes, int slideNumber) {
         if (profilePendingChatIds.contains(chatId)) return;
         lectureCurrentSlide.put(chatId, slideNumber);
+        // Сбрасываем ручную навигацию: «предыдущий» теперь считается от нового слайда лектора
+        studentCurrentSlide.remove(chatId);
 
         Integer prevMsgId = lastSlideMessageId.remove(chatId);
         if (prevMsgId != null) {
