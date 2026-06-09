@@ -268,8 +268,21 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       setTextInput(null);
     };
 
-    const handleUndo = () => { if (annotations.length > 0) setAnnotations(annotations.slice(0, -1)); };
-    const handleClear = () => { if (annotations.length > 0) { setAnnotations([]); toast.success("Рисунки на слайде очищены"); } };
+    const handleUndo = useCallback(() => {
+      setAllAnnotations(prev => {
+        const current = prev[slideIndex] || [];
+        if (current.length === 0) return prev;
+        return { ...prev, [slideIndex]: current.slice(0, -1) };
+      });
+    }, [slideIndex]);
+
+    const handleClear = useCallback(() => {
+      setAllAnnotations(prev => {
+        if ((prev[slideIndex] || []).length === 0) return prev;
+        toast.success("Рисунки на слайде очищены");
+        return { ...prev, [slideIndex]: [] };
+      });
+    }, [slideIndex]);
 
     const handleSaveAnnotations = () => {
       const total = Object.values(allAnnotations).reduce((s, a) => s + a.length, 0);
@@ -298,6 +311,18 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
 
     const hasAnnotations = annotations.length > 0;
     const totalAnnotations = Object.values(allAnnotations).reduce((s, a) => s + a.length, 0);
+
+    useEffect(() => {
+      if (!active) return;
+      const onKeyDown = (e: KeyboardEvent) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+          e.preventDefault();
+          handleUndo();
+        }
+      };
+      window.addEventListener("keydown", onKeyDown);
+      return () => window.removeEventListener("keydown", onKeyDown);
+    }, [active, handleUndo]);
 
     return (
       <>
