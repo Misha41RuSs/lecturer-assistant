@@ -274,6 +274,7 @@ export function LivePresentationPage() {
 
 	const drawingRef = useRef<DrawingOverlayHandle>(null)
 	const broadcastChannelRef = useRef<BroadcastChannel | null>(null)
+	const slidesDataRef = useRef<SlideData[]>([])
 
 	const [accessType, setAccessType] = useState<
 		'open' | 'password' | 'invitation'
@@ -341,6 +342,7 @@ export function LivePresentationPage() {
 						: realSlides
 
 					setSlidesData(slides)
+					slidesDataRef.current = slides
 
 					// QR slide starts at 0; for INVITATION always begin there on load
 					if (isInvitation) {
@@ -503,17 +505,20 @@ export function LivePresentationPage() {
 
 	const broadcastCompositeToProjector = useCallback(async (idx: number) => {
 		if (!drawingRef.current) return
+		const slideData = slidesDataRef.current[idx]
+		if (!slideData || slideData.isQrSlide) return
+		const realIdx = slideData.index - 1
 		const blob = await drawingRef.current.getAnnotationsBlob(idx)
 		if (blob) {
 			broadcastChannelRef.current?.postMessage({
 				type: 'annotations-update',
-				slideIndex: idx,
+				slideIndex: realIdx,
 				blob
 			})
 		} else {
 			broadcastChannelRef.current?.postMessage({
 				type: 'slide-change',
-				slideIndex: idx
+				slideIndex: realIdx
 			})
 		}
 	}, [])
@@ -553,7 +558,10 @@ export function LivePresentationPage() {
 	)
 
 	useEffect(() => {
-		localStorage.setItem('lecture_slide', String(currentSlide))
+		const s = slidesDataRef.current[currentSlide]
+		if (s && !s.isQrSlide) {
+			localStorage.setItem('lecture_slide', String(s.index - 1))
+		}
 	}, [currentSlide])
 
 	useEffect(() => {
@@ -814,14 +822,14 @@ export function LivePresentationPage() {
 
 		// Оптимистичный update — UI реагирует мгновенно, до ответа сервера
 		setCurrentSlide(newSlideIndex)
-		localStorage.setItem('lecture_slide', String(newSlideIndex))
+		localStorage.setItem('lecture_slide', String(newSlide.index - 1))
 
 		if (drawingRef.current?.hasAnnotations(newSlideIndex)) {
 			broadcastCompositeToProjector(newSlideIndex)
 		} else {
 			broadcastChannelRef.current?.postMessage({
 				type: 'slide-change',
-				slideIndex: newSlideIndex
+				slideIndex: newSlide.index - 1
 			})
 		}
 
@@ -1200,9 +1208,9 @@ export function LivePresentationPage() {
 				</AlertDialogContent>
 			</AlertDialog>
 
-			<div className="flex-1 flex overflow-hidden">
+			<div className="flex-1 flex overflow-hidden min-h-0">
 				{/* Main area */}
-				<div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 min-w-0">
+				<div className="flex-1 flex flex-col items-center p-4 sm:p-6 min-w-0 overflow-y-auto">
 					<div className="w-full max-w-5xl">
 						{/* Slide */}
 						<div className="relative">
@@ -1256,7 +1264,23 @@ export function LivePresentationPage() {
 							)}
 						</div>
 
-						{/* Nav */}
+						{/* Полоса переключения слайдов */}
+						<div className="flex gap-0.5 mt-2">
+							{slidesData.map((s, i) => (
+								<button
+									key={s.id}
+									onClick={() => !isChangingSlide && handleSlideChange(i)}
+									disabled={isChangingSlide}
+									title={s.isQrSlide ? 'QR' : `Слайд ${s.index}`}
+									className={`flex-1 h-1.5 rounded-full transition-all disabled:cursor-wait ${
+										i === currentSlide
+											? 'bg-orange-500'
+											: 'bg-neutral-700 hover:bg-neutral-500'
+									}`}
+								/>
+							))}
+						</div>
+
 						{comprehension && (
 							<div className="mt-4 bg-neutral-900 border border-neutral-800 rounded-xl p-4 text-white">
 								<div className="flex items-center justify-between mb-3">
