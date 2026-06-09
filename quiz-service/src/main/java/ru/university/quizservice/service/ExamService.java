@@ -165,9 +165,16 @@ public class ExamService {
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Question not found: " + questionId));
 
-        ExamAnswer answer = new ExamAnswer();
-        answer.setSubmission(sub);
-        answer.setQuestion(question);
+        ExamAnswer answer = answerRepository.findBySubmission_IdAndQuestion_Id(sub.getId(), questionId)
+                .orElseGet(() -> {
+                    ExamAnswer newAnswer = new ExamAnswer();
+                    newAnswer.setSubmission(sub);
+                    newAnswer.setQuestion(question);
+                    return newAnswer;
+                });
+        answer.setSelectedOptionId(null);
+        answer.setOpenText(null);
+        answer.setScore(null);
 
         if (question.getType() == QuestionType.MULTIPLE) {
             if (dto.selectedOptionId() != null) {
@@ -185,7 +192,7 @@ public class ExamService {
 
         ExamAnswer saved = answerRepository.save(answer);
 
-        long answered = answerRepository.findBySubmission_Id(sub.getId()).size();
+        long answered = countAnsweredQuestions(answerRepository.findBySubmission_Id(sub.getId()));
         if (answered >= exam.getQuestions().size()) {
             sub.setCompletedAt(Instant.now());
             submissionRepository.save(sub);
@@ -206,7 +213,7 @@ public class ExamService {
                 .collect(Collectors.toMap(ExamQuestion::getId, q -> q));
 
         return subs.stream().map(sub -> {
-            List<ExamAnswer> answers = answerRepository.findBySubmission_Id(sub.getId());
+            List<ExamAnswer> answers = currentAnswers(answerRepository.findBySubmission_Id(sub.getId()));
 
             int totalScore = 0, maxScore = 0;
             boolean hasUngraded = false;
@@ -517,7 +524,7 @@ public class ExamService {
     }
 
     private SubmissionScore scoreSubmission(ExamSubmission submission) {
-        List<ExamAnswer> answers = answerRepository.findBySubmission_Id(submission.getId());
+        List<ExamAnswer> answers = currentAnswers(answerRepository.findBySubmission_Id(submission.getId()));
         int score = 0;
         int maxScore = 0;
         for (ExamAnswer answer : answers) {
@@ -528,6 +535,36 @@ public class ExamService {
     }
 
     private record SubmissionScore(int score, int maxScore) {}
+
+    private long countAnsweredQuestions(List<ExamAnswer> answers) {
+        return answers.stream()
+                .map(answer -> answer.getQuestion().getId())
+                .distinct()
+                .count();
+    }
+
+    private List<ExamAnswer> currentAnswers(List<ExamAnswer> answers) {
+        Map<UUID, ExamAnswer> byQuestion = new LinkedHashMap<>();
+        for (ExamAnswer answer : answers) {
+            byQuestion.put(answer.getQuestion().getId(), answer);
+        }
+        return byQuestion.values().stream()
+                .sorted(Comparator.comparingInt(answer -> answer.getQuestion().getOrderIndex()))
+                .toList();
+    }
+
+    private List<ExamAnswer> currentAnswersBySubmissionAndQuestion(List<ExamAnswer> answers) {
+        Map<SubmissionQuestionKey, ExamAnswer> bySubmissionQuestion = new LinkedHashMap<>();
+        for (ExamAnswer answer : answers) {
+            bySubmissionQuestion.put(
+                    new SubmissionQuestionKey(answer.getSubmission().getId(), answer.getQuestion().getId()),
+                    answer
+            );
+        }
+        return new ArrayList<>(bySubmissionQuestion.values());
+    }
+
+    private record SubmissionQuestionKey(UUID submissionId, UUID questionId) {}
 
     @Transactional(readOnly = true)
     public StudentCardDto getStudentCard(Long chatId) {
@@ -595,7 +632,7 @@ public class ExamService {
     public ExamAnalyticsDto getAnalytics(UUID examId) {
         Exam exam = getExam(examId);
         List<ExamSubmission> subs = submissionRepository.findByExam_IdOrderByStartedAtDesc(examId);
-        List<ExamAnswer> allAnswers = answerRepository.findWithQuestionByExamId(examId);
+        List<ExamAnswer> allAnswers = currentAnswersBySubmissionAndQuestion(answerRepository.findWithQuestionByExamId(examId));
 
         // Build option lookup
         Map<UUID, ExamOption> optionMap = exam.getQuestions().stream()

@@ -7,12 +7,16 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.telegram.telegrambots.meta.api.methods.BotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
+import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Chat;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.User;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import ru.university.lecturebroadcasting.entity.Lecture;
+import ru.university.lecturebroadcasting.entity.LectureStatus;
+import ru.university.lecturebroadcasting.entity.PaceSignal;
 import ru.university.lecturebroadcasting.entity.Student;
 import ru.university.lecturebroadcasting.repository.StudentRepository;
 import ru.university.lecturebroadcasting.service.AnalyticsServiceClient;
@@ -93,6 +97,28 @@ class LectureBroadcastingBotTest {
         return update;
     }
 
+    private Update buildCallbackUpdate(long chatId, String data) {
+        User tgUser = new User();
+        tgUser.setId(chatId);
+        tgUser.setFirstName("Тест");
+
+        Message msg = new Message();
+        msg.setMessageId(1);
+        Chat chat = new Chat();
+        chat.setId(chatId);
+        msg.setChat(chat);
+        msg.setFrom(tgUser);
+
+        CallbackQuery callbackQuery = new CallbackQuery();
+        callbackQuery.setFrom(tgUser);
+        callbackQuery.setMessage(msg);
+        callbackQuery.setData(data);
+
+        Update update = new Update();
+        update.setCallbackQuery(callbackQuery);
+        return update;
+    }
+
     private Student buildFakeStudent() {
         Lecture lecture = new Lecture("Алгебра", UUID.randomUUID());
         return new Student(100L, lecture);
@@ -151,6 +177,17 @@ class LectureBroadcastingBotTest {
     }
 
     @Test
+    void postLectureSurveyCallbacks_saveSelectedRatingAndPace() {
+        bot.sendPostLectureSurvey(42L, "Алгебра", List.of(100L));
+
+        bot.onUpdateReceived(buildCallbackUpdate(100L, "post:rating:4"));
+        bot.onUpdateReceived(buildCallbackUpdate(100L, "post:pace:FAST"));
+        bot.onUpdateReceived(buildCallbackUpdate(100L, "post:skip"));
+
+        verify(postLectureSurveyService).saveResponse(42L, 100L, 4, PaceSignal.FAST, null);
+    }
+
+    @Test
     void lectureStartedComprehensionKeyboard_stacksLongButtons() {
         bot.notifyLectureStartedToStudents(1L, "Алгебра", 0, List.of(100L));
 
@@ -178,6 +215,30 @@ class LectureBroadcastingBotTest {
                 () -> assertTrue(message.getText().contains("◀ назад")),
                 () -> assertTrue(message.getText().contains("№ выбрать")),
                 () -> assertEquals(List.of("◀", "📍", "№"), firstRowTexts(keyboard))
+        );
+    }
+
+    @Test
+    void slideNavigationCallbacks_requestExpectedSlides() {
+        Lecture lecture = new Lecture("Алгебра", UUID.randomUUID());
+        lecture.setId(42L);
+        lecture.setStatus(LectureStatus.ACTIVE);
+        lecture.setCurrentSlide(3);
+        Student student = new Student(100L, lecture);
+
+        when(studentRepository.findByChatId(100L)).thenReturn(Optional.of(student));
+        when(lectureService.getSlideImage(lecture, 2)).thenReturn(new byte[] {1});
+        when(lectureService.getSlideImage(lecture, 3)).thenReturn(new byte[] {2});
+
+        bot.onUpdateReceived(buildCallbackUpdate(100L, "prev_slide"));
+        bot.onUpdateReceived(buildCallbackUpdate(100L, "current_slide"));
+        bot.onUpdateReceived(buildCallbackUpdate(100L, "goto_slide"));
+
+        SendMessage message = bot.lastSendMessage().orElseThrow();
+        assertAll(
+                () -> verify(lectureService).getSlideImage(lecture, 2),
+                () -> verify(lectureService).getSlideImage(lecture, 3),
+                () -> assertEquals("Введите номер слайда:", message.getText())
         );
     }
 
@@ -315,6 +376,13 @@ class LectureBroadcastingBotTest {
                 return (T) message;
             }
             return null;
+        }
+
+        @Override
+        public Message executeSendPhoto(SendPhoto sendPhoto) {
+            Message message = new Message();
+            message.setMessageId(sentMethods.size() + 1);
+            return message;
         }
 
         Optional<SendMessage> lastSendMessage() {

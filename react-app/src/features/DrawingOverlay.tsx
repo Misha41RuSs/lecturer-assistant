@@ -99,14 +99,22 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
 
     const [allAnnotations, setAllAnnotations] = useState<Record<number, DrawAction[]>>({});
     const [drawing, setDrawing] = useState(false);
-    const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
-    const [startPoint, setStartPoint] = useState<Point | null>(null);
     const [textInput, setTextInput] = useState<{ pos: Point; value: string } | null>(null);
+    const currentPointsRef = useRef<Point[]>([]);
+    const startPointRef = useRef<Point | null>(null);
+    const activePointerIdRef = useRef<number | null>(null);
 
     const annotations = allAnnotations[slideIndex] || [];
 
     const setAnnotations = useCallback((acts: DrawAction[]) => {
       setAllAnnotations((prev) => ({ ...prev, [slideIndex]: acts }));
+    }, [slideIndex]);
+
+    const appendAnnotation = useCallback((action: DrawAction) => {
+      setAllAnnotations((prev) => ({
+        ...prev,
+        [slideIndex]: [...(prev[slideIndex] || []), action],
+      }));
     }, [slideIndex]);
 
     // Fire onAnnotationsChange AFTER React commits the new allAnnotations state
@@ -203,35 +211,44 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
 
     useEffect(() => { redraw(); }, [redraw]);
 
-    const getPos = (e: React.MouseEvent | React.TouchEvent): Point => {
+    const getPos = (e: React.PointerEvent<HTMLCanvasElement>): Point => {
       const canvas = canvasRef.current!;
       const rect = canvas.getBoundingClientRect();
-      let clientX: number, clientY: number;
-      if ("touches" in e) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; }
-      else { clientX = e.clientX; clientY = e.clientY; }
-      return { x: (clientX - rect.left) / rect.width, y: (clientY - rect.top) / rect.height };
+      const x = (e.clientX - rect.left) / rect.width;
+      const y = (e.clientY - rect.top) / rect.height;
+      return {
+        x: Math.min(1, Math.max(0, x)),
+        y: Math.min(1, Math.max(0, y)),
+      };
     };
 
-    const handlePointerDown = (e: React.MouseEvent) => {
+    const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
       if (!active || textInput) return;
+      e.preventDefault();
       const pos = getPos(e);
       if (tool === "text") { setTextInput({ pos, value: "" }); return; }
+      e.currentTarget.setPointerCapture(e.pointerId);
+      activePointerIdRef.current = e.pointerId;
       setDrawing(true);
-      if (tool === "pen" || tool === "eraser") setCurrentPoints([pos]);
-      else setStartPoint(pos);
+      if (tool === "pen" || tool === "eraser") {
+        currentPointsRef.current = [pos];
+      } else {
+        startPointRef.current = pos;
+      }
     };
 
-    const handlePointerMove = (e: React.MouseEvent) => {
-      if (!drawing || !active) return;
+    const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (!drawing || !active || activePointerIdRef.current !== e.pointerId) return;
+      e.preventDefault();
       const pos = getPos(e);
       const canvas = canvasRef.current!;
       const ctx = canvas.getContext("2d")!;
 
       if (tool === "pen" || tool === "eraser") {
-        setCurrentPoints((prev) => [...prev, pos]);
+        const pts = [...currentPointsRef.current, pos];
+        currentPointsRef.current = pts;
         ctx.strokeStyle = color; ctx.lineWidth = size; ctx.lineCap = "round"; ctx.lineJoin = "round";
         ctx.globalCompositeOperation = tool === "eraser" ? "destination-out" : "source-over";
-        const pts = [...currentPoints, pos];
         if (pts.length >= 2) {
           ctx.beginPath();
           ctx.moveTo(pts[pts.length - 2].x * canvas.width, pts[pts.length - 2].y * canvas.height);
@@ -239,32 +256,36 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
           ctx.stroke();
         }
         ctx.globalCompositeOperation = "source-over";
-      } else if (startPoint) {
+      } else if (startPointRef.current) {
         redraw();
-        renderAction(ctx, { tool, color, size, start: startPoint, end: pos }, canvas.width, canvas.height);
+        renderAction(ctx, { tool, color, size, start: startPointRef.current, end: pos }, canvas.width, canvas.height);
       }
     };
 
-    const handlePointerUp = () => {
-      if (!drawing) return;
+    const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (!drawing || activePointerIdRef.current !== e.pointerId) return;
+      e.preventDefault();
+      const endPos = getPos(e);
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
       setDrawing(false);
       if (tool === "pen" || tool === "eraser") {
-        if (currentPoints.length > 0) setAnnotations([...annotations, { tool, color, size, points: currentPoints }]);
-        setCurrentPoints([]);
-      } else if (startPoint) setStartPoint(null);
-    };
-
-    const handleShapeEnd = (e: React.MouseEvent) => {
-      if (!drawing || !startPoint) return;
-      setDrawing(false);
-      const endPos = getPos(e);
-      setAnnotations([...annotations, { tool, color, size, start: startPoint, end: endPos }]);
-      setStartPoint(null);
+        const pts = currentPointsRef.current.length > 1
+          ? currentPointsRef.current
+          : [...currentPointsRef.current, endPos];
+        if (pts.length > 1) appendAnnotation({ tool, color, size, points: pts });
+        currentPointsRef.current = [];
+      } else if (startPointRef.current) {
+        appendAnnotation({ tool, color, size, start: startPointRef.current, end: endPos });
+        startPointRef.current = null;
+      }
+      activePointerIdRef.current = null;
     };
 
     const handleTextSubmit = () => {
       if (!textInput || !textInput.value.trim()) { setTextInput(null); return; }
-      setAnnotations([...annotations, { tool: "text", color, size, text: textInput.value, position: textInput.pos }]);
+      appendAnnotation({ tool: "text", color, size, text: textInput.value, position: textInput.pos });
       setTextInput(null);
     };
 
@@ -305,10 +326,11 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
           <canvas
             ref={canvasRef}
             className={`w-full h-full ${active ? "cursor-crosshair" : ""}`}
-            onMouseDown={handlePointerDown}
-            onMouseMove={handlePointerMove}
-            onMouseUp={tool === "pen" || tool === "eraser" ? handlePointerUp : handleShapeEnd}
-            onMouseLeave={tool === "pen" || tool === "eraser" ? handlePointerUp : handleShapeEnd}
+            style={{ touchAction: active ? "none" : "auto" }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
           />
           {textInput && active && (
             <div className="absolute z-20" style={{ left: `${textInput.pos.x * 100}%`, top: `${textInput.pos.y * 100}%` }}>
@@ -369,8 +391,8 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
         )}
 
           {(active && totalAnnotations > 0) && (
-              <div className="relative z-30 flex items-center justify-between mt-2 gap-2">
-                  <div className="text-neutral-500 text-xs">
+              <div className="absolute bottom-3 left-3 right-3 z-20 flex items-center justify-between gap-2 bg-neutral-900/95 backdrop-blur border border-neutral-700 rounded-xl p-2 shadow-xl">
+                  <div className="text-neutral-300 text-xs">
                       {hasAnnotations ? `${annotations.length} элементов на слайде` : "Рисуйте прямо поверх слайда"}
                       {totalAnnotations > 0 && ` · ${totalAnnotations} всего`}
                   </div>

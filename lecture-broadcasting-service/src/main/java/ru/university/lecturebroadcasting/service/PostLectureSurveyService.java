@@ -5,6 +5,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.university.lecturebroadcasting.entity.Lecture;
 import ru.university.lecturebroadcasting.entity.PaceSignal;
 import ru.university.lecturebroadcasting.entity.PostLectureResponse;
+import ru.university.lecturebroadcasting.repository.LectureParticipantRepository;
 import ru.university.lecturebroadcasting.repository.LectureRepository;
 import ru.university.lecturebroadcasting.repository.PostLectureResponseRepository;
 import ru.university.lecturebroadcasting.repository.StudentRepository;
@@ -17,13 +18,16 @@ public class PostLectureSurveyService {
     private final PostLectureResponseRepository responseRepository;
     private final LectureRepository lectureRepository;
     private final StudentRepository studentRepository;
+    private final LectureParticipantRepository participantRepository;
 
     public PostLectureSurveyService(PostLectureResponseRepository responseRepository,
                                     LectureRepository lectureRepository,
-                                    StudentRepository studentRepository) {
+                                    StudentRepository studentRepository,
+                                    LectureParticipantRepository participantRepository) {
         this.responseRepository = responseRepository;
         this.lectureRepository = lectureRepository;
         this.studentRepository = studentRepository;
+        this.participantRepository = participantRepository;
     }
 
     @Transactional
@@ -44,7 +48,9 @@ public class PostLectureSurveyService {
     @Transactional(readOnly = true)
     public Results results(Long lectureId) {
         List<PostLectureResponse> responses = responseRepository.findByLecture_Id(lectureId);
-        int totalStudents = Math.max(studentRepository.findByLecture_Id(lectureId).size(), responses.size());
+        int activeStudents = studentRepository.findByLecture_Id(lectureId).size();
+        int persistedParticipants = participantRepository.findByLectureId(lectureId).size();
+        int totalStudents = Math.max(Math.max(activeStudents, persistedParticipants), responses.size());
         double avgRating = responses.stream()
                 .mapToInt(PostLectureResponse::getRating)
                 .average()
