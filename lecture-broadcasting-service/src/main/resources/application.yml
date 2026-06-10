@@ -38,10 +38,6 @@ analytics-service:
 quiz-service:
   url: ${QUIZ_SERVICE_URL:http://localhost:8083}
 
-logging:
-  level:
-    org.telegram: DEBUG
-
 management:
   endpoints:
     web:
@@ -50,3 +46,7 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+
+logging:
+  level:
+    org.telegram: DEBUG

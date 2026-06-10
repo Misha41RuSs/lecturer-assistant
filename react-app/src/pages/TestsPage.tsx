@@ -1279,20 +1279,6 @@ export function TestsPage() {
 					<Tooltip>
 						<TooltipTrigger asChild>
 							<button
-								onClick={startCreate}
-								disabled={!selectedLectureId}
-								className="flex items-center gap-2 bg-orange-500 text-white px-5 py-2.5 rounded-full hover:bg-orange-600 text-sm disabled:opacity-40"
-							>
-								<Plus className="w-4 h-4" /> Создать тест
-							</button>
-						</TooltipTrigger>
-						<TooltipContent>
-							<p>Создать новый тест для выбранной лекции</p>
-						</TooltipContent>
-					</Tooltip>
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<button
 								onClick={() => giftInputRef.current?.click()}
 								disabled={!selectedLectureId || importing}
 								className="flex items-center gap-2 border border-neutral-300 px-4 py-2.5 rounded-full text-sm hover:bg-neutral-50 disabled:opacity-40"

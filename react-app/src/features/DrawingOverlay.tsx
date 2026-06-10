@@ -268,8 +268,21 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
       setTextInput(null);
     };
 
-    const handleUndo = () => { if (annotations.length > 0) setAnnotations(annotations.slice(0, -1)); };
-    const handleClear = () => { if (annotations.length > 0) { setAnnotations([]); toast.success("Рисунки на слайде очищены"); } };
+    const handleUndo = useCallback(() => {
+      setAllAnnotations(prev => {
+        const current = prev[slideIndex] || [];
+        if (current.length === 0) return prev;
+        return { ...prev, [slideIndex]: current.slice(0, -1) };
+      });
+    }, [slideIndex]);
+
+    const handleClear = useCallback(() => {
+      setAllAnnotations(prev => {
+        if ((prev[slideIndex] || []).length === 0) return prev;
+        toast.success("Рисунки на слайде очищены");
+        return { ...prev, [slideIndex]: [] };
+      });
+    }, [slideIndex]);
 
     const handleSaveAnnotations = () => {
       const total = Object.values(allAnnotations).reduce((s, a) => s + a.length, 0);
@@ -299,6 +312,18 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
     const hasAnnotations = annotations.length > 0;
     const totalAnnotations = Object.values(allAnnotations).reduce((s, a) => s + a.length, 0);
 
+    useEffect(() => {
+      if (!active) return;
+      const onKeyDown = (e: KeyboardEvent) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+          e.preventDefault();
+          handleUndo();
+        }
+      };
+      window.addEventListener("keydown", onKeyDown);
+      return () => window.removeEventListener("keydown", onKeyDown);
+    }, [active, handleUndo]);
+
     return (
       <>
         <div ref={containerRef} className={`absolute inset-0 rounded-lg ${active ? "z-10" : "z-[5] pointer-events-none"}`}>
@@ -323,9 +348,7 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
               </div>
             </div>
           )}
-        </div>
-
-        {active && (
+          {active && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 bg-neutral-900/95 backdrop-blur border border-neutral-700 rounded-xl p-1.5 shadow-xl">
             {tools.map((t) => (
               <button key={t.id} onClick={() => setTool(t.id)} title={t.label}
@@ -366,7 +389,8 @@ export const DrawingOverlay = forwardRef<DrawingOverlayHandle, Props>(
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
-        )}
+          )}
+        </div>
 
           {(active && totalAnnotations > 0) && (
               <div className="relative z-30 flex items-center justify-between mt-2 gap-2">

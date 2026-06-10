@@ -274,6 +274,7 @@ export function LivePresentationPage() {
 
 	const drawingRef = useRef<DrawingOverlayHandle>(null)
 	const broadcastChannelRef = useRef<BroadcastChannel | null>(null)
+	const handleSlideChangeRef = useRef<(index: number) => void>(() => {})
 
 	const [accessType, setAccessType] = useState<
 		'open' | 'password' | 'invitation'
@@ -565,10 +566,10 @@ export function LivePresentationPage() {
 				return
 			if (e.key === 'ArrowRight' || e.key === ' ') {
 				e.preventDefault()
-				handleSlideChange(Math.min(currentSlide + 1, slidesData.length - 1))
+				handleSlideChangeRef.current(Math.min(currentSlide + 1, slidesData.length - 1))
 			}
 			if (e.key === 'ArrowLeft')
-				handleSlideChange(Math.max(currentSlide - 1, 0))
+				handleSlideChangeRef.current(Math.max(currentSlide - 1, 0))
 		}
 		window.addEventListener('keydown', handler)
 		return () => window.removeEventListener('keydown', handler)
@@ -835,7 +836,7 @@ export function LivePresentationPage() {
 			}).catch(() => {})
 
 			// xAPI: отправляем событие появления слайда для сбора метрик
-			sendXapiSlideShown(parseInt(lectureId), newSlide.id as any)
+			sendXapiSlideShown(parseInt(lectureId), newSlide.index)
 
 			if (drawingRef.current?.hasAnnotations(newSlideIndex)) {
 				drawingRef.current
@@ -854,6 +855,7 @@ export function LivePresentationPage() {
 			setIsChangingSlide(false)
 		}
 	}
+	handleSlideChangeRef.current = handleSlideChange
 
 	const openProjection = () => {
 		if (window.electronAPI?.openProjector) {
@@ -1202,7 +1204,7 @@ export function LivePresentationPage() {
 
 			<div className="flex-1 flex overflow-hidden">
 				{/* Main area */}
-				<div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 min-w-0">
+				<div className="flex-1 flex flex-col items-center p-4 sm:p-6 min-w-0 overflow-y-auto">
 					<div className="w-full max-w-5xl">
 						{/* Slide */}
 						<div className="relative">
@@ -1299,7 +1301,7 @@ export function LivePresentationPage() {
 							</Tooltip>
 							<div className="flex items-center gap-2">
 								<span className="text-white text-sm bg-neutral-800 px-3 py-1.5 rounded-lg">
-									{currentSlide + 1} / {slidesData.length}
+									{slide?.isQrSlide ? 'QR' : slide?.index} / {slidesData.filter(s => !s.isQrSlide).length}
 								</span>
 								<span className="text-neutral-300 text-sm bg-neutral-800 px-3 py-1.5 rounded-lg">
 									На слайде {formatTime(slideElapsed)}

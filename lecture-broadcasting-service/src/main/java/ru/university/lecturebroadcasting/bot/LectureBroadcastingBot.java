@@ -90,6 +90,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
     private final ConcurrentHashMap<Long, String> pendingCommand = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, PendingProfileFlow> pendingProfileFlow = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, PendingPostSurvey> pendingPostSurvey = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, DeferredSurvey> deferredPostSurvey = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, ExamSession> examSessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Integer> lastSlideMessageId = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Integer> lastStudentPhotoMessageId = new ConcurrentHashMap<>();
@@ -120,6 +121,7 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
 
     private record PendingProfileFlow(ProfileStep step, Long lectureId, boolean completeJoinAfter) {}
     private record PendingPostSurvey(Long lectureId, int rating, String paceSignal, boolean waitingOpenText) {}
+    private record DeferredSurvey(Long lectureId, String lectureTitle) {}
 
     @Autowired
     public LectureBroadcastingBot(
@@ -202,6 +204,12 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
 
+        // Студент проходит тест — ввёл открытый ответ (приоритет выше опроса)
+        if (examSessions.containsKey(chatId) && !cmd.startsWith("/")) {
+            handleOpenAnswer(chatId, text.trim());
+            return;
+        }
+
         PendingPostSurvey survey = pendingPostSurvey.get(chatId);
         if (survey != null && survey.waitingOpenText() && !cmd.startsWith("/")) {
             savePostSurvey(chatId, text);
@@ -236,11 +244,6 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             return;
         }
 
-        // Студент проходит тест — ввёл открытый ответ
-        if (examSessions.containsKey(chatId) && !cmd.startsWith("/")) {
-            handleOpenAnswer(chatId, text.trim());
-            return;
-        }
 
         if ("/start".equals(cmd)) {
             String[] parts = text.split("\\s+", 2);
@@ -918,12 +921,18 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
             examSessions.remove(chatId);
             cancelQuestionTimer(chatId);
             sendText(chatId, buildExamResultMessage(chatId, examId));
+            DeferredSurvey deferred = deferredPostSurvey.remove(chatId);
+            if (deferred != null) {
+                sendPostLectureSurvey(deferred.lectureId(), deferred.lectureTitle(), List.of(chatId));
+            }
             return;
         }
 
         Question q = session.currentQuestion();
         String header = String.format("Вопрос %d/%d", session.currentIndex() + 1, session.total());
-        String timeHint = q.timeLimitSec() != null ? " ⏱ " + q.timeLimitSec() + " с" : "";
+        String timeHint = q.timeLimitSec() != null
+                ? "\n⏱ Время на ответ: " + q.timeLimitSec() + " сек — отвечайте быстро!"
+                : "";
 
         Message sent = null;
         try {
@@ -980,8 +989,17 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         ExamSession session = new ExamSession(examId, detail);
         examSessions.put(chatId, session);
 
-        sendText(chatId, "📝 Начался тест: " + detail.title() +
-                (detail.totalTimeSec() != null ? "\nВремя: " + detail.totalTimeSec() / 60 + " мин." : ""));
+        boolean anyQuestionTimed = detail.questions().stream()
+                .anyMatch(q -> q.timeLimitSec() != null && q.timeLimitSec() > 0);
+        StringBuilder intro = new StringBuilder("📝 Начался тест: ").append(detail.title()).append("\n");
+        intro.append("Вопросов: ").append(detail.questions().size()).append("\n");
+        if (detail.totalTimeSec() != null) {
+            intro.append("⏰ Общее время: ").append(detail.totalTimeSec() / 60).append(" мин.\n");
+        }
+        if (anyQuestionTimed) {
+            intro.append("⚠️ Некоторые вопросы имеют ограничение по времени — отвечайте быстро!");
+        }
+        sendText(chatId, intro.toString().trim());
         sendNextQuestion(chatId, session);
     }
 
@@ -1039,6 +1057,10 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
         if (chatIds == null || chatIds.isEmpty()) return;
         String title = Objects.requireNonNullElse(lectureName, "лекция");
         for (Long chatId : chatIds) {
+            if (examSessions.containsKey(chatId)) {
+                deferredPostSurvey.put(chatId, new DeferredSurvey(lectureId, title));
+                continue;
+            }
             pendingPostSurvey.put(chatId, new PendingPostSurvey(lectureId, 0, null, false));
             try {
                 execute(SendMessage.builder()
@@ -1046,11 +1068,11 @@ public class LectureBroadcastingBot extends TelegramLongPollingBot {
                         .text("Лекция «" + title + "» завершена. Оцени её:")
                         .replyMarkup(InlineKeyboardMarkup.builder()
                                 .keyboard(List.of(List.of(
-                                        InlineKeyboardButton.builder().text("⭐").callbackData(CB_POST_RATING + "1").build(),
-                                        InlineKeyboardButton.builder().text("⭐⭐").callbackData(CB_POST_RATING + "2").build(),
-                                        InlineKeyboardButton.builder().text("⭐⭐⭐").callbackData(CB_POST_RATING + "3").build(),
-                                        InlineKeyboardButton.builder().text("⭐⭐⭐⭐").callbackData(CB_POST_RATING + "4").build(),
-                                        InlineKeyboardButton.builder().text("⭐⭐⭐⭐⭐").callbackData(CB_POST_RATING + "5").build()
+                                        InlineKeyboardButton.builder().text("1").callbackData(CB_POST_RATING + "1").build(),
+                                        InlineKeyboardButton.builder().text("2").callbackData(CB_POST_RATING + "2").build(),
+                                        InlineKeyboardButton.builder().text("3").callbackData(CB_POST_RATING + "3").build(),
+                                        InlineKeyboardButton.builder().text("4").callbackData(CB_POST_RATING + "4").build(),
+                                        InlineKeyboardButton.builder().text("5").callbackData(CB_POST_RATING + "5").build()
                                 )))
                                 .build())
                         .build());

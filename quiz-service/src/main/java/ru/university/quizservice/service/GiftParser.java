@@ -9,9 +9,10 @@ import java.util.regex.Pattern;
 
 public class GiftParser {
 
-    private static final Pattern OPTION_PATTERN = Pattern.compile("(?<!\\\\)([=~])((?:[^=~\\\\]|\\\\.)*)");
-    private static final Pattern PERCENT_PATTERN = Pattern.compile("^%(-?\\d+)%");
-    private static final Pattern PERCENT_CLEANUP = Pattern.compile("^%-?\\d+%");
+    private static final Pattern OPTION_PATTERN = Pattern.compile("(?<!\\\\)([=~])((?:[^=~\\\\#]|\\\\.)*)");
+    private static final Pattern PERCENT_PATTERN = Pattern.compile("^%(-?\\d+(?:\\.\\d+)?)%");
+    private static final Pattern PERCENT_CLEANUP = Pattern.compile("^%-?\\d+(?:\\.\\d+)?%");
+    private static final Pattern FORMAT_ANNOTATION = Pattern.compile("^\\[(html|plain|markdown|moodle)\\]", Pattern.CASE_INSENSITIVE);
 
     public List<CreateExamDto.QuestionDto> parse(String giftText) {
         List<CreateExamDto.QuestionDto> questions = new ArrayList<>();
@@ -28,7 +29,6 @@ public class GiftParser {
         return questions;
     }
 
-    // Extracts question blocks by finding each { ... } pair with everything preceding it
     private List<String> extractBlocks(String text) {
         List<String> blocks = new ArrayList<>();
         int pos = 0;
@@ -62,12 +62,13 @@ public class GiftParser {
     private String removeLineComments(String text) {
         StringBuilder sb = new StringBuilder();
         for (String line : text.split("\n", -1)) {
-            sb.append(line.replaceAll("(?<!\\\\)//.*$", "")).append("\n");
+            // Удаляем // только если они не предшествуют :/  (защита от URL http://)
+            String cleaned = line.replaceAll("(?<!:)(?<!\\\\)//.*$", "");
+            sb.append(cleaned).append("\n");
         }
         return sb.toString();
     }
 
-    // Удаляет строки-подзаголовки вида "== Название секции ==" (GIFT-расширение)
     private String removeSubheadings(String text) {
         StringBuilder sb = new StringBuilder();
         for (String line : text.split("\n", -1)) {
@@ -79,21 +80,53 @@ public class GiftParser {
     }
 
     private CreateExamDto.QuestionDto parseBlock(String block) {
-        // Remove optional ::title:: prefix
+        // Убираем опциональный ::title:: префикс
         if (block.startsWith("::")) {
             int end = block.indexOf("::", 2);
             if (end >= 0) block = block.substring(end + 2).trim();
         }
 
-        int braceStart = block.indexOf('{');
-        int braceEnd = block.lastIndexOf('}');
-        if (braceStart < 0 || braceEnd < 0 || braceEnd <= braceStart) return null;
+        // Убираем формат-аннотацию [html], [markdown], [plain]
+        Matcher fmt = FORMAT_ANNOTATION.matcher(block);
+        if (fmt.find()) {
+            block = block.substring(fmt.end()).trim();
+        }
+
+        // Ищем открывающую нескейпнутую фигурную скобку
+        int braceStart = findUnescaped(block, '{', 0);
+        if (braceStart < 0) return null;
+
+        // Закрывающая скобка — соответствующая открывающей (парная), не просто lastIndexOf
+        int braceEnd = findMatchingClose(block, braceStart);
+        if (braceEnd < 0) return null;
 
         String questionText = unescape(block.substring(0, braceStart).trim());
         if (questionText.isEmpty()) return null;
         String answerBlock = block.substring(braceStart + 1, braceEnd).trim();
 
         return parseQuestion(questionText, answerBlock);
+    }
+
+    // Находит позицию символа target, пропуская экранированные (\target)
+    private int findUnescaped(String s, char target, int from) {
+        for (int i = from; i < s.length(); i++) {
+            if (s.charAt(i) == '\\' && i + 1 < s.length()) { i++; continue; }
+            if (s.charAt(i) == target) return i;
+        }
+        return -1;
+    }
+
+    // Находит позицию закрывающей '}' с учётом вложенности
+    private int findMatchingClose(String s, int openPos) {
+        int depth = 1;
+        int i = openPos + 1;
+        while (i < s.length() && depth > 0) {
+            if (s.charAt(i) == '\\' && i + 1 < s.length()) { i += 2; continue; }
+            if (s.charAt(i) == '{') depth++;
+            else if (s.charAt(i) == '}') depth--;
+            i++;
+        }
+        return depth == 0 ? i - 1 : -1;
     }
 
     private CreateExamDto.QuestionDto parseQuestion(String questionText, String answerBlock) {
@@ -113,9 +146,8 @@ public class GiftParser {
         if (answerBlock.startsWith("#")) return openQuestion(questionText);
         if (answerBlock.contains("->")) return openQuestion(questionText);
 
-        // Multiple choice (has ~ or = options)
         if (answerBlock.contains("~") || answerBlock.contains("=")) {
-            // Short-answer: only = and no ~
+            // Только = без ~ → короткий ответ, трактуем как открытый
             if (!answerBlock.contains("~")) return openQuestion(questionText);
 
             List<CreateExamDto.OptionDto> options = parseOptions(answerBlock);
@@ -132,15 +164,15 @@ public class GiftParser {
             char prefix = m.group(1).charAt(0);
             String text = m.group(2).trim();
 
-            // Remove feedback (#...)
-            int hashIdx = text.indexOf('#');
+            // Убираем фидбек (#...)
+            int hashIdx = findUnescaped(text, '#', 0);
             if (hashIdx >= 0) text = text.substring(0, hashIdx).trim();
 
-            // Check percentage before stripping: %50% → correct, %-50% → wrong
+            // Проверяем процентный вес: %50% → частично верно, %-100% → неверно
             boolean percentCorrect = false;
             Matcher pm = PERCENT_PATTERN.matcher(text);
             if (pm.find()) {
-                int pct = Integer.parseInt(pm.group(1));
+                double pct = Double.parseDouble(pm.group(1));
                 percentCorrect = pct > 0;
             }
             text = PERCENT_CLEANUP.matcher(text).replaceFirst("").trim();
@@ -158,8 +190,7 @@ public class GiftParser {
         while (i < text.length()) {
             char c = text.charAt(i);
             if (c == '\\' && i + 1 < text.length()) {
-                char next = text.charAt(i + 1);
-                sb.append(next);
+                sb.append(text.charAt(i + 1));
                 i += 2;
             } else {
                 sb.append(c);
