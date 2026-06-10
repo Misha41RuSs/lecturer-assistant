@@ -42,7 +42,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: prometheus,health
+        include: health, info, prometheus
   metrics:
     tags:
       application: ${spring.application.name}
@@ -50,12 +50,3 @@ management:
 logging:
   level:
     org.telegram: DEBUG
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health, info, prometheus
-  metrics:
-    tags:
-      application: ${spring.application.name}
