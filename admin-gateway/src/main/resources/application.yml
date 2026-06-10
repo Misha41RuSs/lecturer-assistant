@@ -49,7 +49,7 @@ spring:
         - id: lecture-broadcasting-service-route
           uri: ${LECTURE_BROADCASTING_SERVICE_URL:http://localhost:8082}
           predicates:
-            - Path=/lectures/**,/ws/broadcasting/**
+            - Path=/lectures/**,/ws/broadcasting/**,/ws/broadcasting-native,/ws/broadcasting-native/**
 
         - id: quiz-service-route
           uri: ${QUIZ_SERVICE_URL:http://localhost:8083}
