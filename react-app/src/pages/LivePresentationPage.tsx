@@ -1204,7 +1204,7 @@ export function LivePresentationPage() {
 
 			<div className="flex-1 flex overflow-hidden">
 				{/* Main area */}
-				<div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 min-w-0">
+				<div className="flex-1 flex flex-col items-center p-4 sm:p-6 min-w-0 overflow-y-auto">
 					<div className="w-full max-w-5xl">
 						{/* Slide */}
 						<div className="relative">
