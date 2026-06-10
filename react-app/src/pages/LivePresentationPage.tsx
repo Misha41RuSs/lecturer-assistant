@@ -836,7 +836,7 @@ export function LivePresentationPage() {
 			}).catch(() => {})
 
 			// xAPI: отправляем событие появления слайда для сбора метрик
-			sendXapiSlideShown(parseInt(lectureId), newSlide.id as any)
+			sendXapiSlideShown(parseInt(lectureId), newSlide.index)
 
 			if (drawingRef.current?.hasAnnotations(newSlideIndex)) {
 				drawingRef.current
